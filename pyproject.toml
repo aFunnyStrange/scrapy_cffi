@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrapy_cffi-test"
+version = "0.1.0.dev1"
+description = "完全异步、支持会话功能的仿 scrapy 框架"
+authors = [{name = "aFunnyStrange"}]
+license = {text = "BSD-3-Clause"}
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "curl_cffi",
+    "orjson",
+    "json5",
+    "bbpb",
+    "toml"
+]
+
+[project.urls]
+Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"
+
+[tool.setuptools.packages.find]
+include = ["scrapy_cffi"]
+exclude = ["docs*", "tests*", "examples*"]
+
+[project.scripts]
+scrapy_cffi = "scrapy_cffi.commands.main:main"
+
+[tool.setuptools]
+include-package-data = false

@@ -1,0 +1,12 @@
+from {{ base_import }} import {{ base_class }}
+from scrapy_cffi.internet import *
+from typing import Union
+
+class {{ class_name }}({{ base_class }}):
+    name = "{{ spider_name }}"
+    robot_scheme = "https"
+    allowed_domains = ["{{ domain }}"]
+    {{ start_urls }}
+
+    async def parse(self, response: Union[HttpResponse, WebSocketResponse]):
+        print("Got response:", response.session_id)
