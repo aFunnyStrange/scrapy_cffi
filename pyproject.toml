@@ -33,7 +33,7 @@ unix = ["python-magic"]
 Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"
 
 [tool.setuptools.packages.find]
-include = ["scrapy_cffi"]
+include = ["scrapy_cffi", "scrapy_cffi.*"]
 exclude = ["docs*", "tests*", "examples*"]
 
 [project.scripts]
