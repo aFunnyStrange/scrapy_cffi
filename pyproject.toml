@@ -40,4 +40,4 @@ exclude = ["docs*", "tests*", "examples*"]
 scrapy_cffi = "scrapy_cffi.commands.main:main"
 
 [tool.setuptools]
-include-package-data = false
+include-package-data = true
