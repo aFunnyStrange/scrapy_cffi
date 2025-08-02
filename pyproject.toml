@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy_cffi-test"
-version = "0.1.0.dev1"
+version = "0.1.0.dev2"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = {text = "BSD-3-Clause"}
@@ -12,11 +12,22 @@ readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
     "curl_cffi",
+    "PyExecjs",
     "orjson",
     "json5",
     "bbpb",
-    "toml"
+    "toml",
+    "pydantic>=2.0.0",
+    "jinja2",
+    "tenacity",
+    "redis>=5.0.0",
+    "parsel",
+    "Pillow",
+    "hachoir",
 ]
+[project.optional-dependencies]
+windows = ["python-magic-bin"]
+unix = ["python-magic"]
 
 [project.urls]
 Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"

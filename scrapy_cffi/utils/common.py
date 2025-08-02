@@ -1,5 +1,4 @@
 import math, secrets, importlib, importlib.util, sys, os, inspect, json, time, traceback, toml, blackboxprotobuf, gzip
-from blackboxprotobuf.lib.payloads import grpc
 import asyncio, threading, multiprocessing
 from typing import Any, Callable, TYPE_CHECKING, Union, Dict, List, Optional, Awaitable, Tuple
 if TYPE_CHECKING:
