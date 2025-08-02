@@ -47,3 +47,15 @@ When running `run_all_spiders`, all spiders execute within the **same thread and
 However, if isolation is needed—such as giving each spider its own environment or event loop—you can switch to a multi-threaded or multi-process mode using `run_spider`. The framework's interface is designed with this flexibility in mind: it supports multiple spiders per loop, **while also enabling users to fully control execution at a higher level**. See [scheduler](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/scheduler.jpg) for how to build custom orchestration logic.
 
 This design allows `scrapy_cffi` to adapt cleanly to both **monolithic** and **distributed** usage patterns.
+
+
+**Note:**
+In `run_all_spiders` mode, all spiders share the same scheduler instance. 
+As a result, different spiders from separate tasks may compete for the same queue of tasks. 
+Please ensure that you understand this behavior and use run_all_spiders mode appropriately.
+
+Example: Suppose one spider relies on WebSocket communication and submits a request with 
+an associated callback expecting a specific response. If the scheduler deduplicates the request 
+and another spider’s engine processes it instead, the response may be delivered to the wrong spider. 
+This can result in the WebSocket-based spider never receiving the expected response and continuously 
+listening, causing the program to hang indefinitely.
