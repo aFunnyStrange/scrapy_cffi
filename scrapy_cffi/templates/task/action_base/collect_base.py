@@ -21,7 +21,7 @@ class CollectBase(BaseFlow):
 
     async def collect_base_interface(self):
         await asyncio.sleep(0.1)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             return {"status": res, "data": {"text": "collect_base_interface sucess", "response_data": random.randint(50, 100)}}
         return {"status": res, "data": {"text": "collect_base_interface fail", "response_data": random.randint(10, 50)}}

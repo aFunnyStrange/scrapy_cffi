@@ -21,7 +21,7 @@ class FunctionFlow(FunctionBase):
 
         data = base_interface_1_data * random.randint(50, 100) + base_interface_2_data * random.randint(1, 50)
         await asyncio.sleep(3)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             data = f"{uuid.uuid4()}|{data}|{self.functionBase_data}"
             return {"status": res, "data": {"text": "create_collect_task_flow sucess", "response_data": data}}

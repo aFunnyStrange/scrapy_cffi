@@ -1,6 +1,6 @@
 import asyncio, hashlib, json, time
 from ..downloader.internet import Request, HttpRequest, WebSocketRequest
-from typing import TYPE_CHECKING, Set
+from typing import TYPE_CHECKING, Set, List, Dict
 # from ...utils import run_with_timeout
 from ...extensions import signals
 from ...models.api import SingalInfo
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 class BaseScheduler:
     def __init__(
         self, 
+        spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
         sessions: "SessionManager"=None, 
@@ -22,6 +23,7 @@ class BaseScheduler:
         signalManager: "SignalManager"=None, 
         **kwargs
     ):
+        self.spiders_name = spiders_name
         self.stop_event = stop_event
         self.settings = settings
         self.sessions = sessions
@@ -32,8 +34,9 @@ class BaseScheduler:
         self.is_distributed = False
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
         return cls(
+            spiders_name=spiders_name, 
             stop_event=crawler.stop_event,
             settings=crawler.settings,
             sessions=crawler.sessions,
@@ -73,6 +76,7 @@ class BaseScheduler:
 class Scheduler(BaseScheduler):
     def __init__(
         self, 
+        spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
         sessions: "SessionManager"=None, 
@@ -80,23 +84,39 @@ class Scheduler(BaseScheduler):
         signalManager: "SignalManager"=None, 
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, sessions=sessions, sessions_lock=sessions_lock, signalManager=signalManager, **kwargs)
-        self._queue = asyncio.Queue()
+        super().__init__(
+            spiders_name=spiders_name, 
+            stop_event=stop_event, 
+            settings=settings, 
+            sessions=sessions, 
+            sessions_lock=sessions_lock, 
+            signalManager=signalManager, 
+            **kwargs
+        )
+        self._queue_map: Dict[str, asyncio.Queue] = {}
+        if self.settings.PROJECT_NAME:
+            self._queue_map[self.settings.PROJECT_NAME] = asyncio.Queue()
+        else:
+            for spider_name in self.spiders_name:
+                self._queue_map[f"{spider_name}_req"] = asyncio.Queue()
         self.filter_lock = asyncio.Lock()
         self.filter_new_seen_req_set = set() # Requests marked as seen but not yet sent
         self.filter_is_req_set = set() # Requests that have been seen and already sent
 
+    def get_queue_key(self, spider: "Spider") -> str:
+        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
+
     async def put(self, request: Request, spider: "Spider", **kwargs):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
         if request.dont_filter or (isinstance(request, WebSocketRequest) and request.websocket_end):
-            await self._queue.put(request)
+            await self._queue_map[self.get_queue_key(spider=spider)].put(request)
             self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
             return True
         else:
             async with self.filter_lock:
                 is_seen = self.request_seen(filter_set=self.filter_new_seen_req_set, request=request)
                 if not is_seen:
-                    await self._queue.put(request)
+                    await self._queue_map[self.get_queue_key(spider=spider)].put(request)
                     self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
                     return True
                 else:
@@ -111,10 +131,10 @@ class Scheduler(BaseScheduler):
                 self.filter_is_req_set.add(self.get_fingerprint(request=request))
 
     async def get(self, spider: "Spider"=None, **kwargs):
-        return await self._queue.get()
+        return await self._queue_map[self.get_queue_key(spider=spider)].get()
 
     def empty(self, spider: "Spider", **kwargs) -> bool:
-        return self._queue.empty()
+        return self._queue_map[self.get_queue_key(spider=spider)].empty()
     
     def request_seen(self, filter_set: Set, request: "Request", **kwargs):
         fingerprint = self.get_fingerprint(request=request)
@@ -130,6 +150,7 @@ class Scheduler(BaseScheduler):
 class RedisScheduler(BaseScheduler):
     def __init__(
         self, 
+        spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
         sessions: "SessionManager"=None, 
@@ -138,7 +159,15 @@ class RedisScheduler(BaseScheduler):
         redisManager: "RedisManager"=None, 
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, sessions=sessions, sessions_lock=sessions_lock, signalManager=signalManager, **kwargs)
+        super().__init__(
+            spiders_name=spiders_name, 
+            stop_event=stop_event, 
+            settings=settings, 
+            sessions=sessions, 
+            sessions_lock=sessions_lock, 
+            signalManager=signalManager, 
+            **kwargs
+        )
         self.redisManager = redisManager
         self.filter_new_seen_req_key = self.settings._FILTER_NEW_SEEN_REQ_KEY
         self.filter_is_req_key = self.settings._FILTER_IS_REQ_KEY
@@ -147,8 +176,9 @@ class RedisScheduler(BaseScheduler):
         self.is_distributed = True
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
         return cls(
+            spiders_name=spiders_name, 
             stop_event=crawler.stop_event,
             settings=crawler.settings,
             sessions=crawler.sessions,
@@ -157,8 +187,8 @@ class RedisScheduler(BaseScheduler):
             redisManager=crawler.redisManager
         )
     
-    def get_queue_key(self, spider: "Spider", default_key=None) -> str:
-        return self.settings.PROJECT_NAME
+    def get_queue_key(self, spider: "Spider") -> str:
+        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
 
     async def put(self, request: "Request", spider: "Spider", **kwargs):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated

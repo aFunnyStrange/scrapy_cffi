@@ -1,6 +1,6 @@
 import asyncio, sys
 from _action_core.reqBase import ReqBase
-from utils.common import init_logger # 绝对路径导入
+from utils.common import init_logger # Absolute path import
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from typing import TYPE_CHECKING

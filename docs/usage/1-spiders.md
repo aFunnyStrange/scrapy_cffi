@@ -20,7 +20,7 @@ Execute JavaScript via PyExecJS and return the result.
     **ctx_key**: **str**, the name of the JS file (without suffix)
     **funcname**: **str**, the name of the function to call
     **params**: **tuple**, positional arguments; must pass a tuple even if no parameters
-- **返回值**: The result returned by executing the JS function
+- **Returns**: The result returned by executing the JS function
 Example: given a loaded file `demo.js`:
 ``` js 
 function count(a, b) {return a + b + 1;}

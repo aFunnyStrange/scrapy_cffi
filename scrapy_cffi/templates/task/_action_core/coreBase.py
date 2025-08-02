@@ -13,21 +13,17 @@ class Base(ReqBase):
         self.publish_baseurl = publish_baseurl
 
     async def some_base_interface_1(self):
-        """
-        调度底层的逻辑，用于编写公共的接口
-        """
+        """Scheduling the underlying logic for writing common interfaces"""
         await asyncio.sleep(0.1)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             return {"status": res, "data": {"text": "some_base_interface_1 sucess", "response_data": 1}}
         return {"status": res, "data": {"text": "some_base_interface_1 fail", "response_data": 0}}
 
     async def some_base_interface_2(self):
-        """
-        调度底层的逻辑，用于编写公共的接口
-        """
+        """Scheduling the underlying logic for writing common interfaces"""
         await asyncio.sleep(0.5)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             return {"status": res, "data": {"text": "some_base_interface_1 sucess", "response_data": 2}}
         return {"status": res, "data": {"text": "some_base_interface_1 fail", "response_data": 3}}

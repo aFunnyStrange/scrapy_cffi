@@ -75,14 +75,6 @@ class Crawler:
             from .databases import RedisManager
             self.redisManager = RedisManager.from_crawler(self)
 
-        scheduler_path = self.settings.SCHEDULER
-        if scheduler_path:
-            scheduler_cls = load_object(path=scheduler_path)
-        else:
-            from .core.scheduler import Scheduler
-            scheduler_cls = Scheduler
-        self.scheduler = scheduler_cls.from_crawler(self)
-        
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
 
@@ -106,9 +98,18 @@ class Crawler:
             start_type = 0
         if start_type:
             self.spiders = [load_object(path=self.settings.SPIDERS_PATH)]
+            spiders_name = [spider.name for spider in self.spiders]
         else:
             self.spiders = get_all_spiders_cls(spiders_dir=self.settings.SPIDERS_PATH)
-            get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
+            spiders_name = get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
+
+        scheduler_path = self.settings.SCHEDULER
+        if scheduler_path:
+            scheduler_cls = load_object(path=scheduler_path)
+        else:
+            from .core.scheduler import Scheduler
+            scheduler_cls = Scheduler
+        self.scheduler = scheduler_cls.from_crawler(self, spiders_name)
 
         for spider_cls in self.spiders:
             has_redis_key = getattr(spider_cls, "redis_key", None)

@@ -33,5 +33,5 @@ This method is called when the spider is closed.
 It can be used to release resources, such as closing database connections.
 
 > **Note:**
-> When using the run_all_spiders mode, all spiders share a common task counter managed by the framework.
+> When using the `run_all_spiders` mode, all spiders share a common task counter managed by the framework.
 > As a result, spiders will not shut down individually after completing their own tasks, but will instead all close together after the entire task queue is processed.

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class RetryCapable(Protocol):
     max_fail_count: int
 
-# 死循环重试直到上限
+# Loop retry until the limit is reached
 def custom_retry(delay_retry_time=5):
     def decorator(func: Callable[..., Awaitable[dict]]):
         @wraps(func)
@@ -95,20 +95,20 @@ class ReqBase(object):
             photo_size = len(photo_data)
             photo_type = guess_content_type(byte_data=photo_data)
             if not photo_type:
-                return {"status": 0, "data": {"text": f'图片 {photo_info.inner_mediaurl} 类型识别失败', "response_data": photo_type}}
+                return {"status": 0, "data": {"text": f'Type recognition failed for image {photo_info.inner_mediaurl}', "response_data": photo_type}}
             photo_info.media_data = photo_data
             photo_info.media_size = photo_size
             photo_info.media_type = photo_type
-            return {"status": 1, "data": {"text": f'图片 {photo_info.inner_mediaurl} 类型识别成功：{photo_type}', "response_data": photo_info}}
+            return {"status": 1, "data": {"text": f'Type recognition success for image {photo_info.inner_mediaurl}：{photo_type}', "response_data": photo_info}}
         return get_img_content_result
 
     async def update_base_videoinfo(self, video_info: VideoInfo):
         all_file_data = []
         part_byte_start=0
-        single_part_size = 2999999 # 一个分段的字节大小
+        single_part_size = 2999999 # The byte size of a segment
         part_byte_end = single_part_size
         while True:
-            if video_info.media_size < part_byte_end: # 最后一个分段的大小 = 文件总大小 - 下一分段获取文件字节的起始索引
+            if video_info.media_size < part_byte_end: # The size of the last segment = total file size - the starting index of the next segment to obtain the file bytes
                 part_byte_end = video_info.media_size - part_byte_start
             else:
                 part_byte_end = part_byte_start + single_part_size
@@ -122,35 +122,35 @@ class ReqBase(object):
             if part_byte_start >= video_info.media_size:
                 video_data = b''.join(all_file_data)
                 if not video_data:
-                    return {"status": 0, "data": {"text": f'获取{video_info.fill_text}失败，视频内容为空', "response_data": video_data}}
-                video_size = len(video_data) # 字节数
+                    return {"status": 0, "data": {"text": f'Failed to retrieve {video_info.fill_text}, video content is empty', "response_data": video_data}}
+                video_size = len(video_data) # Byte count
                 video_type = guess_content_type(byte_data=video_data)
                 if not video_type:
-                    return {"status": 0, "data": {"text": f'图片 {video_info.inner_mediaurl} 类型识别失败', "response_data": video_type}}
+                    return {"status": 0, "data": {"text": f'Type recognition failed for video {video_info.inner_mediaurl}', "response_data": video_type}}
                 video_info.media_data = video_data
                 video_info.media_size = video_size
                 video_info.media_type = video_type
                 break
-        return {"status": 1, "data": {"text": f'视频 {video_info.inner_mediaurl} 基础信息成功', "response_data": video_info}}
+        return {"status": 1, "data": {"text": f'Successful acquisition of basic information for video {video_info.inner_mediaurl}', "response_data": video_info}}
 
-    # 获取内部图片资源内容
+    # Obtain internal image resource content
     @custom_retry(delay_retry_time=5)
     async def get_img_content(self, inner_url=""):
         try:
             async with requests.AsyncSession() as session:
                 img_response = await session.get(inner_url)
                 img_response_content = img_response.content
-                return {"status": 1, "data": {"text": f"获取图片 {inner_url} 成功", "response_data": img_response_content}}
+                return {"status": 1, "data": {"text": f"Successfully obtained image {inner_url}“", "response_data": img_response_content}}
         except Exception as e:
-            return {"status": 0, "data": {"text": f"获取图片 {inner_url} 失败：{e}", "response_data": ""}}
+            return {"status": 0, "data": {"text": f"Failed to retrieve image {inner_url}: {e}", "response_data": ""}}
        
-    # 获取内部视频资源内容（分段获取）
+    # Obtain internal video resource content (segmented acquisition)
     @custom_retry(delay_retry_time=5)
     async def get_video_content(self, inner_url="", part_byte_start=0, part_byte_end=2999999):
         try:
             async with requests.AsyncSession() as session:
                 video_response = await session.get(inner_url, headers={"Range": f"bytes={part_byte_start}-{part_byte_end}"}, timeout=self.max_req_timeout)
                 video_response_content = video_response.content
-                return {"status": 1, "data": {"text": f"获取视频 {inner_url} 分段 {part_byte_start}~{part_byte_end} 成功", "response_data": video_response_content}}
+                return {"status": 1, "data": {"text": f"Successfully obtained video {inner_url} segments {part_byte_start}~{part_byte_end}", "response_data": video_response_content}}
         except Exception as e:
-            return {"status": 0, "data": {"text": f"获取视频 {inner_url} 分段 {part_byte_start}~{part_byte_end} 失败：{e}", "response_data": ""}}
+            return {"status": 0, "data": {"text": f"Failed to retrieve video {inner_url}  segments {part_byte_start}~{part_byte_end}: {e}", "response_data": ""}}

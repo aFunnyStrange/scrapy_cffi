@@ -37,7 +37,7 @@ Converts `settings.py` to `.toml` format.
 **4.ScrapyRunner**
 Launches a Scrapy project via subprocess using a Python script. Useful for hybrid scheduling.
 
-## 4.2 scrapy_cffi 设计思想
+## 4.2 scrapy_cffi design idea
 The lifecycle of a single spider is consistent with Scrapy. For details, refer to [spider](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/spider.jpg).
 
 Each spider is bound to its own **engine**, while all other components (middleware managers, downloader, signal hooks, etc.) are **shared** across spiders and coordinated by a top-level `Crawler` object, which manages the overall lifecycle. See [structure](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/structure.jpg) for a full architecture diagram.

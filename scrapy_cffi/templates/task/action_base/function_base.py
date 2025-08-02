@@ -16,21 +16,17 @@ class FunctionBase(BaseFlow):
         self.functionBase_data = str(uuid.uuid4())
         
     async def action_port_1(self):
-        """
-        用于编写实现某个功能的所有接口
-        """
+        """Used to write all interfaces for implementing a certain function"""
         await asyncio.sleep(0.1)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             return {"status": res, "data": {"text": "some_base_interface_1 sucess", "response_data": self.functionBase_data}}
         return {"status": res, "data": {"text": "some_base_interface_1 fail", "response_data": 0}}
     
     async def action_port_2(self):
-        """
-        用于编写实现某个功能的所有接口
-        """
+        """Used to write all interfaces for implementing a certain function"""
         await asyncio.sleep(0.1)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             return {"status": res, "data": {"text": "some_base_interface_1 sucess", "response_data": self.functionBase_data}}
         return {"status": res, "data": {"text": "some_base_interface_1 fail", "response_data": 0}}

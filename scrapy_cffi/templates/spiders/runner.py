@@ -9,11 +9,11 @@ if sys.platform.startswith("win"):
 from scrapy_cffi.utils import setup_uvloop_once
 setup_uvloop_once()
 
-# 普通用户
+# Ordinary users
 def main(*args, **kwargs):
     settings = create_settings(spider_path="spiders.CustomSpider")
 
-    # 兼容 scrapy settings.py
+    # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
@@ -24,17 +24,17 @@ def main_all(*args, **kwargs):
     spider_path = str(get_run_py_dir() / "spiders") # must be a directory when mode is 'run_all_spiders', since all spider files will be loaded from it
     settings = create_settings(spider_path=spider_path)
 
-    # 兼容 scrapy settings.py
+    # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
     
     scrapy_cffi.run_all_spiders_sync(settings=settings, *args, **kwargs)
 
-# 高级用户
+# Advanced Users
 async def advance_main(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler, asyncio.Task]:
     settings = create_settings(spider_path="spiders.CustomSpider")
 
-    # 兼容 scrapy settings.py
+    # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
@@ -46,7 +46,7 @@ async def advance_main_all(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler
     spider_path = str(get_run_py_dir() / "spiders") # must be a directory when mode is 'run_all_spiders', since all spider files will be loaded from it
     settings = create_settings(spider_path=spider_path)
 
-    # 兼容 scrapy settings.py
+    # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
@@ -54,7 +54,7 @@ async def advance_main_all(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler
     return crawler, engine_task
 
 if __name__ == "__main__":
-    # 高级用户，自行持有 loop，自行管理 task
+    # Advanced users, self owned loops, self managed tasks
     def setup_signal_handlers(shutdown_event: asyncio.Event):
         if sys.platform != "win32":
             import signal
@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
 
     # ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-    # 普通用户（内部自动 new loop）
+    # Ordinary user (internal automatic new loop)
     import threading
     t = threading.Thread(target=main)
     t.start()

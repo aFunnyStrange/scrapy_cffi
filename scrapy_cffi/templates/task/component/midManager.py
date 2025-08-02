@@ -1,4 +1,4 @@
-# 中控，子任务乱序处理，大任务统一汇总
+# Central control, handling sub tasks out of order, and consolidating major tasks in a unified manner
 import asyncio
 from export_interface import *
 from _action_core.reqBase import ReqBase
@@ -27,7 +27,7 @@ class MidManager(ReqBase): # use the same info from manager, so didn't extends B
             self.fetch_task(task_data) for task_data in self.task_list
         ])
         self.consumer_result_dict["result_list"] = self.consumer_result_list
-        self.consumer_result_list = [it for it in self.consumer_result_list if it is not None] # 采集独立返回，去除采集状态
+        self.consumer_result_list = [it for it in self.consumer_result_list if it is not None] # Collect independently and return, remove the collection status
         for result in self.consumer_result_list:
             if result and (not result.get("status")):
                 return self.consumer_result_dict # status = 0
@@ -40,7 +40,7 @@ class MidManager(ReqBase): # use the same info from manager, so didn't extends B
             try:
                 single_result = {
                     "status": 0, 
-                    "data": {"text": "任务调度存在未知分支", "response_data": ""}, 
+                    "data": {"text": "There is an unknown branch in task scheduling", "response_data": ""}, 
                     "cookie_dict": task_data.get("cookie_dict", {}),
                     "task_id": self.consumer_result_dict.get("task_id", 0),
                     "small_task_id": task_data.get("small_task_id", 0),
@@ -48,9 +48,9 @@ class MidManager(ReqBase): # use the same info from manager, so didn't extends B
                     "platform": self.consumer_result_dict.get("platform", 0)
                 }
                 if task_data.get("cookie_dict", {}) is None:
-                    single_result["data"]["text"] = "该账号 cookie 是 None"
+                    single_result["data"]["text"] = "The cookie for this account is None"
                 else:
-                    task_type = task_data.get("smail_task_type", self.consumer_result_dict.get("task_type", 0)) # 小任务类型
+                    task_type = task_data.get("smail_task_type", self.consumer_result_dict.get("task_type", 0)) # Small task type
                     update_dict = {
                         "task_id": self.consumer_result_dict.get("task_id", 0),
                         "small_task_id": task_data.get("small_task_id", 0),
@@ -78,9 +78,9 @@ class MidManager(ReqBase): # use the same info from manager, so didn't extends B
                         init_data["redis"] = self.redis_manager
                         single_result = await do_collect(init_data=init_data)
                     else:
-                        single_result["data"]["text"] = "无此任务类型"
+                        single_result["data"]["text"] = "There is no such task type available"
                     single_result.update(update_dict) 
                 return single_result
             except Exception as e:
-                single_result["data"]["text"] = f"子任务调度出错：{e}"
+                single_result["data"]["text"] = f"Subtask scheduling error: {e}"
                 return single_result

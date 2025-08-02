@@ -22,7 +22,7 @@ async def start_spider(settings, task_data):
     except Exception as e:
         print(f"task_spider_result error: {e}")
     finally:
-        return "爬虫执行完成"
+        return "Crawler execution completed"
 
 async def do_collect(init_data={}):
     Flow_obj = CollectFlow(**init_data)

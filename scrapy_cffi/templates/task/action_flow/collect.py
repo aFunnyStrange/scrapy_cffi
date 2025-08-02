@@ -18,7 +18,7 @@ class CollectFlow(CollectBase):
             return collect_base_interface_res
         collect_base_interface_data = collect_base_interface_res.get("data", {}).get("response_data", -1)
         await asyncio.sleep(3)
-        res = random.randint(0, 1) # 模拟成功/失败
+        res = random.randint(0, 1) # Simulation success/failure
         if res:
             task_data = {
                 "cookies_dict": self.cookies_dict,

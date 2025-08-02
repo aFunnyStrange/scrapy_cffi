@@ -29,7 +29,7 @@ class LogInfo(StrictValidatedModel):
 class SettingsInfo(BaseValidatedModel):
     # _encoding_fields: ClassVar[List[str]] = ["FEED_EXPORT_ENCODING"]
 
-    PROJECT_NAME: Optional[str] = "scrapy_cffi" # Used by subclasses that require distributed deduplication but are not based on RedisSpider
+    PROJECT_NAME: Optional[Union[str]] = "" # 如果有，run_all_spiders 模式下会共用此队列，需自行注意同一调度器的请求竞态问题
     ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
 
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()

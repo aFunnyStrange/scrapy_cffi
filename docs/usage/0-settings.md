@@ -53,16 +53,9 @@ For Linux/macOS platforms, where high-performance event loops like `uvloop` are 
 --- 
 
 ### 2.1.2 PROJECT_NAME
-- **Type**: Optional[str]
-- **Default**: "scrapy_cffi"
-- **Description**: Default Redis key for pending requests when using `RedisScheduler`.
-If the spider is not a subclass of `RedisSpider` and does not define `redis_key`, this key is used as the main request queue in Redis.
-
-> ⚠️ **Note:**
-> When using `run_all_spiders` mode, and your project includes both `Spiders` and `RedisSpider` subclasses **with** `RedisScheduler` **enabled**, be cautious:
-> If all spiders share the same `PROJECT_NAME` value from a common settings.py, they may compete for the same Redis request queue, leading to race conditions or unexpected behavior.
-
-To avoid this, make sure to **assign unique queue keys** (via `PROJECT_NAME` or `redis_key`) when mixing spider types, or configure isolated settings per spider as needed.
+- **Type**: Optional[Union[str]]
+- **Default**: ""
+- **Description**: The queue of requested objects shared by all spiders does not need to be configured in most cases. If configuration is required, all requested objects will share this queue in `run_all_stpiders` mode. Attention should be paid to the competition issue among multiple spiders in the same scheduler.
 
 ---
 
