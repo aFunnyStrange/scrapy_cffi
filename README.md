@@ -41,7 +41,7 @@ python runner.py
 ```
 
 ## 📖 Documentation
-Technical module-level documentation can be found in the [`docs/`](https://github.com/aFunnyStrange/scrapy_cffi/docs) directory on GitHub.
+Technical module-level documentation can be found in the [`docs/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory on GitHub.
 Each core component (engine, downloader, middleware, etc.) has its own `.md` file.
 
 ## 📄 License
