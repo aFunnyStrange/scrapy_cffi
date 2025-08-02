@@ -45,7 +45,7 @@ ValueError: too many file descriptors in select()
 
 To mitigate such issues, this setting introduces a **global concurrency lock**. The lock is shared across all internal components and is applied at all key task creation points using `async with global_lock():`, ensuring that only a limited number of tasks are active at any moment.
 
-This mechanism is especially critical for platform compatibility and stability, but it does **not replace** component-level concurrency controls. For example, the downloader may still enforce its own `DOWNLOADER_CONCURRENCY` limit to control HTTP pressure, while pipelines or Redis consumers can have their own batching logic. The global lock sits above all these, acting as the first layer of defense against resource exhaustion.
+This mechanism is especially critical for platform compatibility and stability, but it does **not replace** component-level concurrency controls. For example, the downloader may still enforce its own `MAX_CONCURRENT_REQ` limit to control HTTP pressure, while pipelines or Redis consumers can have their own batching logic. The global lock sits above all these, acting as the first layer of defense against resource exhaustion.
 
 For Linux/macOS platforms, where high-performance event loops like `uvloop` are typically used and `select()` limits are much higher or nonexistent, you can safely set this value to `None` to achieve maximum throughput.
 
@@ -55,14 +55,14 @@ For Linux/macOS platforms, where high-performance event loops like `uvloop` are 
 ### 2.1.2 PROJECT_NAME
 - **Type**: Optional[str]
 - **Default**: "scrapy_cffi"
-- **Description**: The default Redis queue name for pending requests when **the spider is not a subclass of `RedisSpider`**, the scheduler is `RedisScheduler`, and no `redis_key` is explicitly configured.
+- **Description**: Default Redis key for pending requests when using `RedisScheduler`.
+If the spider is not a subclass of `RedisSpider` and does not define `redis_key`, this key is used as the main request queue in Redis.
 
-**Design Rationale**
-Distributed crawling fundamentally relies on a shared task source—such as Redis—not on a specific spider subclass. The `RedisSpider` simply replaces hardcoded `start_urls` with task retrieval from a predefined Redis key. In contrast, any regular spider (not inheriting from `RedisSpider`) can still participate in distributed crawling as long as it uses `RedisScheduler` and defines a `redis_key`.
+> ⚠️ **Note:**
+> When using `run_all_spiders` mode, and your project includes both `Spiders` and `RedisSpider` subclasses **with** `RedisScheduler` **enabled**, be cautious:
+> If all spiders share the same `PROJECT_NAME` value from a common settings.py, they may compete for the same Redis request queue, leading to race conditions or unexpected behavior.
 
-To support such flexibility, this setting provides a default Redis key for regular spiders when no `redis_key` is specified. This allows **task-based spiders** (see `1-spiders.md`) to operate in a distributed fashion without requiring `RedisSpider`.
-
-Moreover, this design helps prevent queue conflicts in `run_all_spiders` mode, where both Redis-based and regular spiders might otherwise interfere with each other’s task queues. Defining `PROJECT_NAME` as a global default in `settings.py` also lays the groundwork for supporting more spider types in the future and simplifies centralized queue management.
+To avoid this, make sure to **assign unique queue keys** (via `PROJECT_NAME` or `redis_key`) when mixing spider types, or configure isolated settings per spider as needed.
 
 ---
 

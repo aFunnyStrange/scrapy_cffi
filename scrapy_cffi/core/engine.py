@@ -107,25 +107,26 @@ class Engine:
             else:
                 return
 
-        while not self.stop_event.is_set():
-            if self.scheduler.is_distributed:
-                request = await self.scheduler.get(spider=self.spider)
-                if isinstance(request, int) and not request: # 调度器空了
-                    self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
-                    return
-                elif isinstance(request, Request):
-                    await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+        if self.scheduler.is_distributed:
+            request = await self.scheduler.get(spider=self.spider)
+            if isinstance(request, int) and not request: # 调度器空了
+                self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
+                return
+            elif isinstance(request, Request):
+                await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+        else:
+            try:
+                request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
+                await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                raise
+            if self.scheduler.empty(spider=self.spider):
+                self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
+                return 
             else:
-                try:
-                    request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
-                    await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
-                except asyncio.TimeoutError:
-                    pass
-                except asyncio.CancelledError:
-                    raise
-                if self.scheduler.empty(spider=self.spider):
-                    self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
-                    return 
+                await self.taskManager.create(coro=self.process_scheduler())
 
     # Download middleware processing
     async def process_downloadInterceptor_chain(self, response: Union[Response, BaseException, None]=None, request: Request=None):
@@ -158,8 +159,8 @@ class Engine:
         if isinstance(request, HttpRequest):
             await self.downloader.fetch_http(request=request, callback=self.process_downloadInterceptor_chain)
         elif isinstance(request, WebSocketRequest):
-            await self.process_websocket_request(request=request)
-
+            await self.taskManager.create(coro=self.process_websocket_request(request=request))
+            
     # Callback to spider with the response
     async def process_response(self, response: Union[Response, BaseException], request: Request):
         if isinstance(response, BaseException):

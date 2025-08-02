@@ -1,6 +1,5 @@
-import asyncio, sys, random, json
+import asyncio, sys, random, random
 from utils import *
-from scrapy_cffi.internet import HttpRequest
 from action_base import CollectBase
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -33,6 +32,6 @@ class CollectFlow(CollectBase):
                 #     url="http://127.0.0.1:8002",
                 #     task_data=task_data
                 # )
-                await self.redis.lpush("customRedisSpider_test", "http://127.0.0.1:8002".encode("utf-8"))
+                await self.redis.lpush("customRedisSpider_test", f"http://127.0.0.1:8002/school/{random.randint(0, 5000)}".encode("utf-8"))
             return {"status": res, "data": {"text": "create_collect_task_flow sucess", "response_data": task_data}}
         return {"status": res, "data": {"text": "create_collect_task_flow fail", "response_data": base_interface_1_data}}

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scrapy_cffi-test"
 version = "0.1.0.dev1"
-description = "完全异步、支持会话功能的仿 scrapy 框架"
+description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = {text = "BSD-3-Clause"}
 readme = "README.md"

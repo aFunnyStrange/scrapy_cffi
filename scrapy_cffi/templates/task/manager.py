@@ -2,7 +2,7 @@
 import asyncio, sys, json
 from scrapy_cffi.utils import get_run_py_dir, load_settings_from_py
 from scrapy_cffi.utils import run_with_timeout
-from spiders.runner import main_all as spiders_main
+from spiders.runner import main as spiders_main
 from _action_core import BaseManager
 from component import *
 from typing import TYPE_CHECKING

@@ -25,18 +25,25 @@ To avoid such conflicts, `scrapy_cffi` uses explicit settings injection: configu
 
 🔧 **Utilities & API Helpers**
 `scrapy_cffi.utils` provides a set of utility functions to simplify common tasks, especially for users transitioning from Scrapy or integrating with legacy configurations:
-1.to_scrapy_settings_py(settings_obj)                       Converts a `SettingsInfo` object into a Scrapy-style `settings.py` string. (You must write it to a file manually.)
-2.load_settings_from_py(filepath: str, auto_upper=True)     Loads settings from a Scrapy-style `settings.py` file.
-3.convert_to_toml(py_path: str, toml_path: str)             Converts `settings.py` to `.toml` format.
-4.ScrapyRunner                                              Launches a Scrapy project via subprocess using a Python script. Useful for hybrid scheduling.
+**1.to_scrapy_settings_py(settings_obj)**
+Converts a `SettingsInfo` object into a Scrapy-style `settings.py` string. (You must write it to a file manually.)
+
+**2.load_settings_from_py(filepath: str, auto_upper=True)**
+Loads settings from a Scrapy-style `settings.py` file.
+
+**3.convert_to_toml(py_path: str, toml_path: str)**
+Converts `settings.py` to `.toml` format.
+
+**4.ScrapyRunner**
+Launches a Scrapy project via subprocess using a Python script. Useful for hybrid scheduling.
 
 ## 4.2 scrapy_cffi 设计思想
-The lifecycle of a single spider is consistent with Scrapy. For details, refer to `images/spider.png`.
+The lifecycle of a single spider is consistent with Scrapy. For details, refer to [spider](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/spider.jpg).
 
-Each spider is bound to its own **engine**, while all other components (middleware managers, downloader, signal hooks, etc.) are **shared** across spiders and coordinated by a top-level `Crawler` object, which manages the overall lifecycle. See `images/结构图.png` for a full architecture diagram.
+Each spider is bound to its own **engine**, while all other components (middleware managers, downloader, signal hooks, etc.) are **shared** across spiders and coordinated by a top-level `Crawler` object, which manages the overall lifecycle. See [structure](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/structure.jpg) for a full architecture diagram.
 
 When running `run_all_spiders`, all spiders execute within the **same thread and event loop**, allowing seamless integration with external asyncio-based systems or frameworks. This shared-loop design keeps things simple and efficient for standard use cases.
 
-However, if isolation is needed—such as giving each spider its own environment or event loop—you can switch to a multi-threaded or multi-process mode using `run_spider`. The framework's interface is designed with this flexibility in mind: it supports multiple spiders per loop, **while also enabling users to fully control execution at a higher level**. See `images/上层调度.png` for how to build custom orchestration logic.
+However, if isolation is needed—such as giving each spider its own environment or event loop—you can switch to a multi-threaded or multi-process mode using `run_spider`. The framework's interface is designed with this flexibility in mind: it supports multiple spiders per loop, **while also enabling users to fully control execution at a higher level**. See [scheduler](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/scheduler.jpg) for how to build custom orchestration logic.
 
 This design allows `scrapy_cffi` to adapt cleanly to both **monolithic** and **distributed** usage patterns.

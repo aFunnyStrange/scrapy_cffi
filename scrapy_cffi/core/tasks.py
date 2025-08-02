@@ -63,7 +63,7 @@ class TaskManager:
                     async with self.lock:
                         self.active_tasks -= 1
                         self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{coro}')
-                        if self.active_tasks == 0:
+                        if self.active_tasks <= 0:
                             self.tasks_done_event.set()
 
         loop = asyncio.get_running_loop() # Obtain the event loop here to ensure this is called within an async context
