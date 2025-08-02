@@ -3,8 +3,8 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scrapy_cffi-test"
-version = "0.1.0.dev6"
+name = "scrapy_cffi"
+version = "0.1.0"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = {text = "BSD-3-Clause"}
@@ -41,3 +41,9 @@ scrapy_cffi = "scrapy_cffi.commands.main:main"
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.package-data]
+"scrapy_cffi" = ["templates/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.py[cod]"]
