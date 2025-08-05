@@ -1,4 +1,13 @@
-import tempfile, os, magic
+import tempfile, os
+try:
+    import magic
+except ImportError as e:
+    raise ImportError(
+        "Missing magic dependencies. "
+        "Please install one of the following according to your platform:\n"
+        "  Windows: pip install scrapy_cffi[windows]\n"
+        "  Linux/macOS: pip install scrapy_cffi[unix]"
+    ) from e
 from PIL import Image
 from hachoir.parser import createParser
 from hachoir.metadata import extractMetadata

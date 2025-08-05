@@ -55,7 +55,7 @@ class RedisManager(redis.Redis):
     def from_crawler(cls, crawler: "Crawler"):
         return cls(
             stop_event=crawler.stop_event, 
-            redis_url=crawler.settings.REDIS_INFO.REDIS_URL
+            redis_url=crawler.settings.REDIS_INFO.resolved_url
         )
 
     async def _reconnect(self):

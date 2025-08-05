@@ -45,7 +45,7 @@ class BaseScheduler:
         )
     
     def get_queue_key(self, spider: "Spider") -> str:
-        return None
+        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
     
     async def put(self, request: Request, spider: "Spider", **kwargs):
         raise NotImplementedError
@@ -102,9 +102,6 @@ class Scheduler(BaseScheduler):
         self.filter_lock = asyncio.Lock()
         self.filter_new_seen_req_set = set() # Requests marked as seen but not yet sent
         self.filter_is_req_set = set() # Requests that have been seen and already sent
-
-    def get_queue_key(self, spider: "Spider") -> str:
-        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
 
     async def put(self, request: Request, spider: "Spider", **kwargs):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
@@ -186,9 +183,6 @@ class RedisScheduler(BaseScheduler):
             signalManager=crawler.signalManager,
             redisManager=crawler.redisManager
         )
-    
-    def get_queue_key(self, spider: "Spider") -> str:
-        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
 
     async def put(self, request: "Request", spider: "Spider", **kwargs):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated

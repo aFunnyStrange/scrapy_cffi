@@ -2,9 +2,15 @@ import os
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import multiprocessing
-from scrapy.utils.project import get_project_settings
-from scrapy.spiderloader import SpiderLoader
-from scrapy.cmdline import execute
+try:
+    from scrapy.utils.project import get_project_settings
+    from scrapy.spiderloader import SpiderLoader
+    from scrapy.cmdline import execute
+except ImportError as e:
+    raise ImportError(
+        "Missing scrapy dependencies. "
+        "Please install: pip install scrapy"
+    ) from e
 
 class ScrapyRunner:
     def __init__(self):

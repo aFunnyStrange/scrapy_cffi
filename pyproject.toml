@@ -24,6 +24,7 @@ dependencies = [
     "parsel",
     "Pillow",
     "hachoir",
+    "regex"
 ]
 [project.optional-dependencies]
 windows = ["python-magic-bin"]

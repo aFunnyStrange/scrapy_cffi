@@ -15,7 +15,7 @@ def create_settings(spider_path, user_redis=False, *args, **kwargs):
 
     if user_redis:
         settings.SCHEDULER = "scrapy_cffi.scheduler.RedisScheduler" # Starting the Redis scheduler requires configuring Redis information
-        settings.REDIS_INFO.REDIS_URL = "redis://127.0.0.1:6379"
+        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
     
     # settings.LOG_INFO.LOG_ENABLED = False
     return settings

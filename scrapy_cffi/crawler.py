@@ -71,7 +71,7 @@ class Crawler:
         self.robot = RobotsManager.from_crawler(self)
         
         # redis
-        if self.settings.REDIS_INFO.REDIS_URL:
+        if self.settings.REDIS_INFO.resolved_url:
             from .databases import RedisManager
             self.redisManager = RedisManager.from_crawler(self)
 
