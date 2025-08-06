@@ -102,11 +102,17 @@ class Downloader:
                 websocket_id = wrapper.set_websocket(url=request.url, websocket=websocket)
                 if request.send_message: # Sending requests is supported during the initial WebSocket handshake
                     # await run_with_timeout(websocket.send, request.send_message, stop_event=self.stop_event)
-                    await asyncio.to_thread(websocket.send, request.send_message)
+                    if asyncio.iscoroutinefunction(websocket.send):
+                        await websocket.send(request.send_message)
+                    else:
+                        await asyncio.to_thread(websocket.send, request.send_message)
 
                 while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
                     try:
-                        recv_task = asyncio.create_task(asyncio.to_thread(websocket.recv))
+                        if asyncio.iscoroutinefunction(websocket.recv):
+                            recv_task = asyncio.create_task(websocket.recv())
+                        else:
+                            recv_task = asyncio.create_task(asyncio.to_thread(websocket.recv))
                         wait_task = asyncio.create_task(websocket_event.wait())
                         stop_task = asyncio.create_task(self.stop_event.wait())
                         tasks = [recv_task, wait_task, stop_task]

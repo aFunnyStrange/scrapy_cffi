@@ -1,5 +1,5 @@
 from ..models import BaseValidatedModel, StrictValidatedModel
-from ..models.api import ComponentInfo, RedisInfo
+from ..models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
 
@@ -69,6 +69,8 @@ class SettingsInfo(BaseValidatedModel):
     SCHEDULER_PERSIST: Optional[bool] = False
 
     REDIS_INFO: Optional[RedisInfo] = RedisInfo()
+    MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
+    MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
 
     LOG_INFO: Optional[LogInfo] = LogInfo()
     

@@ -1,7 +1,13 @@
 # just a simple server for the demo project, without using the static dir.
-import uvicorn, random, time, string
-from fastapi import FastAPI, Request, HTTPException, Response
-from fastapi.responses import PlainTextResponse, JSONResponse
+try:
+    import uvicorn, random, time, string
+    from fastapi import FastAPI, Request, HTTPException, Response
+    from fastapi.responses import PlainTextResponse, JSONResponse
+except ImportError as e:
+    raise ImportError(
+        "Missing fastapi dependencies. "
+        "Please install: pip install fastapi uvicorn"
+    ) from e
 
 app = FastAPI()
 

@@ -219,7 +219,10 @@ class Engine:
                     # Send the message asynchronously in a thread to avoid blocking.
 
                     # await run_with_timeout(ws.send, request.send_message, stop_event=self.stop_event, timeout=3)
-                    await asyncio.to_thread(websocket_entry.websocket.send, request.send_message)
+                    if asyncio.iscoroutinefunction(websocket_entry.websocket.send):
+                        await websocket_entry.websocket.send(request.send_message)
+                    else:
+                        await asyncio.to_thread(websocket_entry.websocket.send, request.send_message)
                 websocket_entry.release()
                 self.sessions.release(request.session_id)
             return

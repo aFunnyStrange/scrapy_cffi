@@ -42,7 +42,7 @@ class MongoDBManager:
     def from_crawler(cls, crawler: "Crawler"):
         return cls(
             stop_event=crawler.stop_event,
-            mongo_uri=crawler.settings.MONBODB_INFO.MONGODB_URL,
+            mongo_uri=crawler.settings.MONBODB_INFO.resolved_url,
             db_name=crawler.settings.MONBODB_INFO.DB
         )
 
