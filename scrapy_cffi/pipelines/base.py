@@ -5,6 +5,8 @@ if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..spiders import Spider
     from ..databases import RedisManager
+    from ..databases.mysql import SQLAlchemyMySQLManager
+    from ..databases.mongodb import MongoDBManager
     from ..models.api import SettingsInfo
     from ..hooks.pipelines import PipelinesHooks
 
@@ -13,12 +15,16 @@ class Pipeline:
         self, 
         settings: "SettingsInfo"=None, 
         redisManager: "RedisManager"=None, 
+        mysqlManager: "SQLAlchemyMySQLManager"=None,
+        mongodbManager: "MongoDBManager"=None,
         hooks: "PipelinesHooks"=None
     ):
         self.settings = settings
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         self.redisManager = redisManager
+        self.mysqlManager = mysqlManager
+        self.mongodbManager = mongodbManager
         self.hooks = hooks
 
     @classmethod
@@ -26,6 +32,8 @@ class Pipeline:
         return cls(
             settings=crawler.settings,
             redisManager=crawler.redisManager,
+            mysqlManager=crawler.mysqlManager,
+            mongodbManager=crawler.mongodbManager,
             hooks=pipelines_hooks(crawler)
         )
 

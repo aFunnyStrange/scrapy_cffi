@@ -54,3 +54,7 @@ scrapy_cffi demo -t
 ```bash
 scrapy_cffi demo -t -r
 ```
+
+开发环境：
+curl_cffi 0.7.4 和 0.12.0（websocket api变更异步）
+websockets 13.1 和 15.0.1（部分 api 变更）

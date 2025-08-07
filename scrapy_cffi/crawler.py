@@ -30,6 +30,8 @@ class Crawler:
         self.sessions = None
         self.sessions_lock = None
         self.redisManager = None
+        self.mysqlManager = None
+        self.mongodbManager = None
         self.logger: "Logger" = None
         self.signalManager = None
         self.robot = None
@@ -74,6 +76,16 @@ class Crawler:
         if self.settings.REDIS_INFO.resolved_url:
             from .databases import RedisManager
             self.redisManager = RedisManager.from_crawler(self)
+
+        # mysql
+        if self.settings.MYSQL_INFO.resolved_url:
+            from .databases.mysql import SQLAlchemyMySQLManager
+            self.mysqlManager = SQLAlchemyMySQLManager.from_crawler(self)
+
+        # mongodb
+        if self.settings.MONBODB_INFO.resolved_url:
+            from .databases.mongodb import MongoDBManager
+            self.mongodbManager = MongoDBManager.from_crawler(self)
 
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)

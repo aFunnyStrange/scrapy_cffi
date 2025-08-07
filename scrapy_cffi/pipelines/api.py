@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from ..spiders import Spider
     from ..hooks.pipelines import _PipelinesHooks
     from ..databases import RedisManager
+    from ..databases.mysql import SQLAlchemyMySQLManager
+    from ..databases.mongodb import MongoDBManager
     from ..models.api import SettingsInfo
 
 class _InnerPipeline(Pipeline):
@@ -14,9 +16,16 @@ class _InnerPipeline(Pipeline):
         self, 
         settings: "SettingsInfo"=None, 
         redisManager: "RedisManager"=None, 
+        mysqlManager: "SQLAlchemyMySQLManager"=None,
+        mongodbManager: "MongoDBManager"=None,
         hooks: "_PipelinesHooks"=None
     ):
-        super().__init__(settings=settings, redisManager=redisManager)
+        super().__init__(
+            settings=settings, 
+            redisManager=redisManager,
+            mysqlManager=mysqlManager,
+            mongodbManager=mongodbManager,
+        )
         self.hooks = hooks
 
     @classmethod
@@ -24,6 +33,8 @@ class _InnerPipeline(Pipeline):
         return cls(
             settings=crawler.settings,
             redisManager=crawler.redisManager,
+            mysqlManager=crawler.mysqlManager,
+            mongodbManager=crawler.mongodbManager,
             hooks=_pipelines_hooks(crawler)
         )
 
