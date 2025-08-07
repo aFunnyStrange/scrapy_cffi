@@ -12,9 +12,7 @@ class BaseDBInfo(StrictValidatedModel):
 
     @property
     def resolved_url(self) -> str:
-        if self.URL:
-            return self.URL
-        raise NotImplementedError("Subclasses must provide a resolved_url or predefine URL.")
+        return self.URL if self.URL else None
 
 class RedisInfo(BaseDBInfo):
     @model_validator(mode="after")
