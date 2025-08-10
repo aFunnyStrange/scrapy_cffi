@@ -200,6 +200,63 @@ class HttpRequest(Request):
         return self
     
 @register_request_class
+class MediaRequest(HttpRequest):
+    def __init__(self, 
+        session_id="",
+        url="", 
+        params=None, 
+        method="GET", 
+        headers=None, 
+        data=None, 
+        json=None, 
+        cookies=None, 
+        proxies=None, 
+        single_part_size=2999999, # The byte size of a segment
+        media_size=0,
+        timeout=30,
+        allow_redirects=True,
+        max_redirects=30,
+        verify=None,
+        impersonate=None,
+        ja3=None,
+        akamai=None,
+        meta=None, 
+        dont_filter=None, 
+        callback=None, 
+        errback=None,
+        desc_text="",
+        no_proxy=False,
+        **kwargs
+    ):
+        super().__init__(
+            session_id=session_id,
+            url=url, 
+            params=params, 
+            method=method,
+            headers=headers, 
+            data=data,
+            json=json,
+            cookies=cookies, 
+            proxies=proxies, 
+            timeout=timeout,
+            allow_redirects=allow_redirects,
+            max_redirects=max_redirects,
+            verify=verify,
+            impersonate=impersonate,
+            ja3=ja3,
+            akamai=akamai,
+            meta=meta, 
+            dont_filter=dont_filter, 
+            callback=callback, 
+            errback=errback,
+            desc_text=desc_text,
+            no_proxy=no_proxy,
+            **kwargs
+        )
+        self.single_part_size = single_part_size
+        self.media_size = media_size
+    
+@register_request_class
 class WebSocketRequest(Request):
     ENCODE_FIELDS = {
         "headers", "send_message", "cookies", "proxies", "meta", "kwargs"
@@ -212,7 +269,7 @@ class WebSocketRequest(Request):
         url="", 
         params=None, 
         headers=None, 
-        send_message=b'',
+        send_message: Union[bytes, List[bytes]] = [b''],
         cookies=None, 
         proxies=None, 
         timeout=30,
@@ -254,15 +311,34 @@ class WebSocketRequest(Request):
         )
         self.websocket_id = websocket_id
         self.websocket_end = websocket_end
+        if not isinstance(send_message, list):
+            send_message = [send_message]
         self.send_message = send_message
 
-    def protobuf_encode(self, typedef: Dict):
-        self.data = ProtobufFactory.protobuf_encode(data=self.send_message, typedef=typedef)
+    def protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]]):
+        if isinstance(typedef_or_stream, list):
+            msgs = []
+            for msg, typedef in typedef_or_stream:
+                msgs.append(ProtobufFactory.protobuf_encode(data=msg, typedef=typedef))
+            self.send_message = msgs
+        else:
+            self.send_message = [ProtobufFactory.protobuf_encode(data=self.send_message[0], typedef=typedef_or_stream)]
         return self
     
     def grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False):
+        if isinstance(typedef_or_stream, list):
+            msgs = []
+            for msg, typedef in typedef_or_stream:
+                msgs.append(ProtobufFactory.grpc_encode(data=msg, typedef=typedef, is_gzip=is_gzip))
+            self.send_message = msgs
+        else:
+            self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message[0], typedef=typedef_or_stream, is_gzip=is_gzip)]
+        return self
+    
+    # 如果 stream_encode 也希望多条，需要自行拼接直接传递 send_message
+    def grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False):
         if isinstance(typedef_or_stream, dict):
-            self.data = ProtobufFactory.grpc_encode(data=self.send_message, typedef=typedef_or_stream, is_gzip=is_gzip)
+            self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message, typedef=typedef_or_stream, is_gzip=is_gzip)]
         elif isinstance(typedef_or_stream, list):
-            self.data = ProtobufFactory.grpc_stream_encode(data=typedef_or_stream, is_gzip=is_gzip)
+            self.send_message = [ProtobufFactory.grpc_stream_encode(data=typedef_or_stream, is_gzip=is_gzip)]
         return self

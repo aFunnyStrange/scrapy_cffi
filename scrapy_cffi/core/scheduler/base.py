@@ -70,7 +70,8 @@ class BaseScheduler:
             elif isinstance(request.data, dict):
                 fp.update(json.dumps(request.data, separators=(",", ":"), sort_keys=True).encode('latin-1'))
         elif isinstance(request, WebSocketRequest):
-            fp.update(request.send_message)
+            for msg in request.send_message:
+                fp.update(msg)
         return fp.hexdigest()
 
 class Scheduler(BaseScheduler):
