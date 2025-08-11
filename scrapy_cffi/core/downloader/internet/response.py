@@ -57,13 +57,18 @@ class HttpResponse(Response):
         ctype = self.raw_response.headers.get("Content-Type", "").lower()
         if "xml" in ctype:
             return "xml"
-        elif "json" in ctype:
+        if "json" in ctype:
             return "json"
-        return "html"
+        if "html" in ctype:
+            return "html"
+        return None
 
     @cached_property
     def selector(self):
-        return Selector(response=self.raw_response, type=self.get_selector_type())
+        stype = self.get_selector_type()
+        if not stype:
+            return None
+        return Selector(response=self.raw_response, type=stype)
 
     def xpath(self, query):
         return self.selector.xpath(query)

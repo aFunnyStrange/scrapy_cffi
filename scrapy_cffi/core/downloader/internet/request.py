@@ -97,6 +97,12 @@ class Request(object):
     def _encode_data(data):
         if isinstance(data, bytes):
             return {"__bytes__": True, "b64": base64.b64encode(data).decode()}
+        elif isinstance(data, list):
+            return [Request._encode_data(v) for v in data]
+        elif isinstance(data, dict):
+            return {k: Request._encode_data(v) for k, v in data.items()}
+        elif isinstance(data, tuple):
+            return tuple(Request._encode_data(v) for v in data)
         return data
 
     def to_bytes(self) -> bytes:
@@ -116,6 +122,12 @@ class Request(object):
     def _decode_data(data):
         if isinstance(data, dict) and data.get("__bytes__"):
             return base64.b64decode(data["b64"])
+        elif isinstance(data, list):
+            return [Request._decode_data(v) for v in data]
+        elif isinstance(data, dict):
+            return {k: Request._decode_data(v) for k, v in data.items()}
+        elif isinstance(data, tuple):
+            return tuple(Request._decode_data(v) for v in data)
         return data
 
     @classmethod

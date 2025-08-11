@@ -1,8 +1,9 @@
-from .downloader import Request, HttpRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse
+from .downloader import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse
 
 __all__ = [
     "Request",
     "HttpRequest",
+    "MediaRequest",
     "WebSocketRequest",
     "Response",
     "HttpResponse",

@@ -74,7 +74,7 @@ class Spider(BaseSpider):
                 timeout=self.settings.TIMEOUT,
                 dont_filter=self.settings.DONT_FILTER,
                 callback=self.parse, 
-                errback=self.errRet
+                errback=self.errRet,
             )
 
 class RedisSpider(BaseSpider):

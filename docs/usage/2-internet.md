@@ -46,25 +46,23 @@ Additional Framework-specific Parameters:
 Advanced options via `**kwargs` (passed directly to `curl_cffi`, no autocomplete):
 
 ```python
-proxy: Optional[str] = None
-proxy_auth: Optional[Tuple[str, str]] = None
-verify: Optional[bool] = None
-referer: Optional[str] = None
-accept_encoding: Optional[str] = "gzip, deflate, br, zstd"
-content_callback: Optional[Callable] = None
-extra_fp: Optional[Union[ExtraFingerprints, ExtraFpDict]] = None
-thread: Optional[ThreadType] = None
-default_headers: Optional[bool] = None
-default_encoding: Union[str, Callable[[bytes], str]] = "utf-8"
-quote: Union[str, Literal[False]] = ""
-curl_options: Optional[dict] = None
-http_version: Optional[CurlHttpVersion] = None
-debug: bool = False
-interface: Optional[str] = None
-cert: Optional[Union[str, Tuple[str, str]]] = None
-stream: bool = False
-max_recv_speed: int = 0
-multipart: Optional[CurlMime] = None
+files: Optional[Dict] = None,
+auth: Optional[Tuple[str, str]] = None,
+proxy: Optional[str] = None,
+proxy_auth: Optional[Tuple[str, str]] = None,
+referer: Optional[str] = None,
+accept_encoding: Optional[str] = "gzip, deflate, br",
+content_callback: Optional[Callable] = None,
+extra_fp: Optional[Union[ExtraFingerprints, ExtraFpDict]] = None,
+default_headers: Optional[bool] = None,
+default_encoding: Union[str, Callable[[bytes], str]] = "utf-8",
+quote: Union[str, Literal[False]] = "",
+http_version: Optional[CurlHttpVersion] = None,
+interface: Optional[str] = None,
+cert: Optional[Union[str, Tuple[str, str]]] = None,
+stream: bool = False,
+max_recv_speed: int = 0,
+multipart: Optional[CurlMime] = None,
 ```
 
 **Note**: Any unsupported keyword arguments will raise an error.

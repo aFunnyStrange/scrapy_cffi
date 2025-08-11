@@ -9,11 +9,13 @@ import asyncio, hashlib, random
 from curl_cffi import requests
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
+from .downloader.internet import MediaRequest
 from ..utils import create_uniqueId, run_with_timeout
 if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
     from ..models.api import SettingsInfo
+    from curl_cffi.requests import Response
     from .downloader.internet import HttpRequest, WebSocketRequest
 
 class WebSocketEntry:
@@ -162,7 +164,8 @@ class SessionWrapper:
     Wraps an asynchronous HTTP session (curl_cffi.requests.AsyncSession) and maintains a WebSocketPool for that session.
     Supports configuring session-level cookies, retry policy, performing HTTP and WebSocket requests with retries, and closing connections.
     """
-    def __init__(self, settings: "SettingsInfo"=None, cookies: Dict=None):
+    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo"=None, cookies: Dict=None):
+        self.stop_event = stop_event
         self.settings = settings
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
@@ -208,8 +211,38 @@ class SessionWrapper:
                     return await self.ws_connect_once(session, request)
                 else:
                     return await self.do_request_once(session, request)
+                
+    async def media_req(self, session: requests.AsyncSession, request: MediaRequest):
+        all_file_data = []
+        part_byte_start = 0
+        part_byte_end = request.single_part_size
+        single_part_response = None
+        while not self.stop_event.is_set():
+            if request.media_size < part_byte_end: # The size of the last segment = total file size - the starting index of the next segment to obtain the file bytes
+                part_byte_end = request.media_size - part_byte_start
+            else:
+                part_byte_end = part_byte_start + request.single_part_size
+            
+            range_key = request.find_header_key("Range")
+            range_key = range_key if range_key else "Range"
+            request.headers[range_key] = f"bytes={part_byte_start}-{part_byte_end}"
+            single_part_response: "Response" = await session.request(
+                method=request.method, 
+                **self._build_request_args(request)
+            )
+            single_part_data = single_part_response.content
+            all_file_data.append(single_part_data)
+            part_byte_start = part_byte_end + 1
+            if part_byte_start >= request.media_size:
+                media_data = b''.join(all_file_data)
+                single_part_response.content = media_data
+                break
+        return single_part_response
     
     async def do_request_once(self, session: requests.AsyncSession, request: "HttpRequest"):
+        if isinstance(request, MediaRequest):
+            return await self.media_req(session=session, request=request)
+        
         method: Literal["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "TRACE", "PATCH"] = request.method
         raw_response = await session.request(
             method=method,
@@ -319,7 +352,7 @@ class SessionManager:
         if wrapper:
             return wrapper
 
-        wrapper = SessionWrapper(settings=self.settings, cookies=cookies)
+        wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies)
         self._sessions[session_id] = wrapper
         return wrapper
     
