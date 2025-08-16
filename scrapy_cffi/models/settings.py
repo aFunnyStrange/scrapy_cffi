@@ -29,37 +29,24 @@ class LogInfo(StrictValidatedModel):
 class SettingsInfo(BaseValidatedModel):
     # _encoding_fields: ClassVar[List[str]] = ["FEED_EXPORT_ENCODING"]
 
-    PROJECT_NAME: Optional[Union[str]] = "" # 如果有，run_all_spiders 模式下会共用此队列，需自行注意同一调度器的请求竞态问题
-    ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
-
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()
-    MAX_CONCURRENT_REQ: Optional[int] = None # asyncio.Semaphore()
-    USE_STRICT_SEMAPHORE: Optional[bool] = False # asyncio.BoundedSemaphore()
-    
-    JS_PATH: Optional[Union[str, bool]] = None # Absolute/relative path to JS files or default to ./js_path under the running script directory
-    TIMEOUT: Optional[int] = 30 # Request timeout in seconds
-    MAX_REQ_TIMES: Optional[int] = 2 # Maximum number of retry attempts for a failed request
-    DELAY_REQ_TIME: Optional[int] = 3 # Delay in seconds before retrying a failed request
-
-    PROXY_URL: Optional[str] = None
-    PROXIES: Optional[Dict] = None
-    PROXIES_LIST: Optional[List[str]] = Field(default_factory=list)
-
-    WS_END_TAG: Optional[str] = "websocket end" # You can customize the TAG to avoid conflicts with the response content
-    RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
-    FILTER_KEY: Optional[str] = "cffiFilter"
-    _filter_new_seen_req_key: str = PrivateAttr()
-    _filter_is_req_key: str = PrivateAttr()
-    DONT_FILTER: Optional[bool] = False
-
+    PROJECT_NAME: Optional[Union[str]] = "" # # If set, this queue will be shared in run_all_spiders mode. Be aware of potential request race conditions when using the same scheduler.
+    ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
 
     USER_AGENT: Optional[str] = "scrapy_cffiBot"
     DEFAULT_HEADERS: Optional[Dict] = Field(default_factory=dict)
     DEFAULT_COOKIES: Optional[Dict] = Field(default_factory=dict)
-    INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
+    MAX_CONCURRENT_REQ: Optional[int] = None # asyncio.Semaphore()
+    USE_STRICT_SEMAPHORE: Optional[bool] = False # asyncio.BoundedSemaphore()
+    TIMEOUT: Optional[int] = 30 # Request timeout in seconds
+    MAX_REQ_TIMES: Optional[int] = 2 # Maximum number of retry attempts for a failed request
+    DELAY_REQ_TIME: Optional[int] = 3 # Delay in seconds before retrying a failed request
+    
+    PROXY_URL: Optional[str] = None
+    PROXIES: Optional[Dict] = None
+    PROXIES_LIST: Optional[List[str]] = Field(default_factory=list)
     
     SPIDERS_PATH: Optional[str] = None # If not set, defaults to the `spiders` directory under the current running script
-    
     SPIDER_INTERCEPTORS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
     DOWNLOAD_INTERCEPTORS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
     ITEM_PIPELINES_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
@@ -67,11 +54,19 @@ class SettingsInfo(BaseValidatedModel):
 
     SCHEDULER: Optional[str] = None
     SCHEDULER_PERSIST: Optional[bool] = False
+    INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
+    FILTER_KEY: Optional[str] = "cffiFilter"
+    DONT_FILTER: Optional[bool] = False
+    _filter_new_seen_req_key: str = PrivateAttr()
+    _filter_is_req_key: str = PrivateAttr()
 
+    WS_END_TAG: Optional[str] = "websocket end" # You can customize the TAG to avoid conflicts with the response content
+    RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
+    
+    JS_PATH: Optional[Union[str, bool]] = None # Absolute/relative path to JS files or default to ./js_path under the running script directory
     REDIS_INFO: Optional[RedisInfo] = RedisInfo()
     MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
     MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
-
     LOG_INFO: Optional[LogInfo] = LogInfo()
     
     @property

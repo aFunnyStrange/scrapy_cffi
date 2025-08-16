@@ -48,9 +48,7 @@ docs/_build/
 docs/*.html
 
 # Test files — keep folder, ignore contents
-/tests/*
-!/tests/readme.md
-!/tests/.gitkeep
+/tests/inner/
 
 # Optional: ignore temp files
 *.swp

@@ -211,7 +211,9 @@ If PROXIES is not set and this is provided, a random proxy from the list will be
 ### 2.5.5 DONT_FILTER
 - **Type**: Optional[bool]
 - **Default**: False
-- **Description**: Global deduplication flag. If set to True, all requests will skip deduplication, overriding individual request settings.
+- **Description**: Deduplication flag.
+    - When set in **global settings**, it defines the default behavior for all requests.
+    - However, an option set on an **individual request** takes higher priority and will override the global configuration.
 
 ---
 
@@ -259,7 +261,21 @@ If PROXIES is not set and this is provided, a random proxy from the list will be
 
 ---
 
-### 2.7.3 LOG_INFO
+### 2.7.3 MYSQL_INFO
+- **Type**: Optional[MysqlInfo]
+- **Default**: MysqlInfo()
+- **Description**: See "MysqlInfo" section.
+
+---
+
+### 2.7.4 MONBODB_INFO
+- **Type**: Optional[MongodbInfo]
+- **Default**: MongodbInfo()
+- **Description**: See "MongodbInfo" section.
+
+---
+
+### 2.7.5 LOG_INFO
 - **Type**: Optional[LogInfo]
 - **Default**: LogInfo()
 - **Description**: See "LogInfo" section.
@@ -388,7 +404,7 @@ If set, this takes precedence over LOG_SHORT_NAMES and default formatting behavi
 
 
 # 5.RedisInfo
-## 5.1 REDIS_URL
+## 5.1 URL
 - **Type**: Optional[str]
 - **Default**: None
 - **Description**: The primary configuration field. When set, the framework will automatically maintain a connection to the Redis database.
@@ -430,3 +446,14 @@ If set, this takes precedence over LOG_SHORT_NAMES and default formatting behavi
 
 ---
 > If you prefer detailed configuration instead of directly specifying REDIS_URL, at minimum you need to configure HOST and PORT. Optionally, you can also provide USERNAME and PASSWORD for authenticated Redis connections. The framework will then automatically assemble the complete REDIS_URL.
+
+# 6.MysqlInfo
+## 6.1 DRIVER
+- **Type**: str
+- **Default**: "mysql+asyncmy"
+- **Description**: The default driver prefix for integration with the `SQLAlchemyMySQLManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] aiomysql`). If you are using a custom MySQL manager, you may override this field to adapt the driver.
+
+> All other configuration fields are the same as in **RedisInfo**.
+
+# 7.MongodbInfo
+> All configuration fields are the same as in **RedisInfo**.

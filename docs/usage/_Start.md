@@ -2,15 +2,8 @@
 While the default structure is designed to be practical out of the box, you're encouraged to adapt it to suit your own development needs.
 
 ## 1.startproject
-
-#### 1.1 Normal
 ```bash
 scrapy_cffi startproject <project_name>
-```
-
-#### 1.2 with tasks manager
-```bash
-scrapy_cffi startproject -t <project_name>
 ```
 
 ---
@@ -43,18 +36,12 @@ scrapy_cffi demo
 ```bash
 scrapy_cffi demo -r
 ```
+## 4.extra
+In real-world development, spiders are usually integrated with backend systems. `scrapy_cffi` only provides the core crawling system, while additional components such as message queues (MQ) and task schedulers (e.g., Celery) should be configured by users according to their own requirements.
 
-#### 3.2 with tasks manager
-###### 3.2.1 Spider
-```bash
-scrapy_cffi demo -t
-```
+**⚠️ Important Note:**
+`Celery` runs as a standalone process started from the command line.
+If you try to directly start a `scrapy_cffi` spider inside `Celery` code, it may lead to incorrect import paths.
 
-###### 3.2.2 RedisSpider
-```bash
-scrapy_cffi demo -t -r
-```
-
-开发环境：
-curl_cffi 0.7.4 和 0.12.0（websocket api变更异步）
-websockets 13.1 和 15.0.1（部分 api 变更）
+**✅ Recommended Approach:**
+Let the `backend` push task messages → `Celery` distributes them to specific `Redis` keys → `scrapy_cffi’s` RedisSpider consumes those keys and runs the spider accordingly.

@@ -347,7 +347,6 @@ class WebSocketRequest(Request):
             self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message[0], typedef=typedef_or_stream, is_gzip=is_gzip)]
         return self
     
-    # 如果 stream_encode 也希望多条，需要自行拼接直接传递 send_message
     def grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False):
         if isinstance(typedef_or_stream, dict):
             self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message, typedef=typedef_or_stream, is_gzip=is_gzip)]

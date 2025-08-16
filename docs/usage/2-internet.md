@@ -89,7 +89,7 @@ yield HttpRequest(
 ).protobuf_encode({...})
 ```
 
-#### 2.2.2.2 grpc_encode(typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
+#### 2.2.2.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Encodes the request body (`data`) into a valid gRPC framed message and returns the updated request object for chaining.
 **Parameters**: 
     **typedef_or_stream**: **Union[Dict, List[Tuple[Dict, Dict]]]**
@@ -165,20 +165,66 @@ According to the gRPC wire protocol:
 | --------- | ----------- |
 | **websocket_id** | Identifier for an existing WebSocket session (for reuse). Not required for initial connection. |
 | **websocket_end** | Indicates that the WebSocket should be closed. |
-| **send_message** | Message to send over the WebSocket connection. |
+| **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. |
 
 ### 2.3.2 Methods
-#### 2.3.2.1 protobuf_encode(self, typedef: Dict)
-#### 2.3.2.2 grpc_encode(typedef: Dict, is_gzip: bool=False)
-same as in `HttpRequest`, but applies to msg.
+#### 2.3.2.1 protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]])
+Encodes the request’s `send_message` into Protobuf format and returns the updated request object (chainable).
+**Parameters**: 
+    **typedef_or_stream**: **Union[Dict, List[Tuple[Dict, Dict]]]**
+        - **Dict**: Encodes only the first message in `send_message`. The encoded content replaces `send_message`, and all other messages are discarded.
+        - **List[Tuple[Dict, Dict]]**: Treated as a sequence of Protobuf message segments. Each tuple is `(segment_data, typedef)`, and each segment is encoded separately.
+**Returns**: The updated `WebSocketRequest` object with its `send_message` field replaced.
 
-**WebSocket Communication Behavior**
+Example:
+Single message encoding:
+```python
+yield WebSocketRequest(
+    send_message=[...], # Define plain Protobuf data first
+).protobuf_encode(typedef_or_stream={...}) # Then encode it with a typedef
+```
+
+Multiple message streaming encoding:
+```python
+yield WebSocketRequest(
+    data=None, # Can be omitted or None; if provided, it will be overwritten.
+).protobuf_encode(
+    typedef_or_stream=[
+        (msg1, typedef1),
+        (msg2, typedef2),
+        (msg3, typedef3),
+        ...
+    ]
+)
+```
+
+#### 2.3.2.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
+Same as `protobuf_encode`, but with additional support for the `is_gzip` parameter to enable Gzip compression.
+
+#### 2.3.2.3 grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
+Similar to `HttpRequest.grpc_encode` in `List[Tuple[Dict, Dict]]` mode.
+However, due to the complexity of WebSocket streaming (which would require an extra nesting layer), the framework **only supports encoding into a single message**.
+If you need to send multiple gRPC stream messages within a single `WebSocketRequest`, you should **manually encode them and provide them directly to** `send_message`. This keeps message handling explicit and avoids framework-side ambiguity.
+
+
+
+### 2.3.3 WebSocket Communication Behavior
 WebSocket communication is based on a single persistent connection that allows multiple messages to be sent and received over time. In this framework, all WebSocket interactions—regardless of the number of messages—are uniformly represented using the WebSocketRequest class. There is no need to distinguish between initial or subsequent messages, as they all share the same request structure.
 
 However, in some cases, a website may expect a message to be sent immediately after the WebSocket connection is established. If no message is sent within a very short time, the server might close the connection prematurely. To handle such scenarios, the framework allows you to configure an initial message that is automatically sent as soon as the connection is established.
 
 > **Note:**
 > Currently, only one initial message can be sent during the connection phase. Support for sending multiple messages immediately after connection will be added in a future version.
+
+## 2.4 MediaRequest
+`MediaRequest` is a subclass of `HttpRequest` designed for segmented downloading of video files.
+In some cases, downloading the entire video in a single request may fail. By splitting the download into multiple segments, the process becomes more reliable.
+Essentially, `MediaRequest` wraps the use of the Range header in HTTP requests, so you don’t need to manually construct multiple `HttpRequest` objects for each segment in your spider code.
+### 2.4.1 Attributes
+| Attribute | Description |
+| --------- | ----------- |
+| **single_part_size** | The size (in **bytes**) of each video segment to download. |
+| **media_size** | The total size (in **bytes**) of the video file, required in order to determine the final segment to request. |
 
 # 3.Response Objects
 `scrapy_cffi` provides two types of response objects: `HttpResponse` and `WebSocketResponse`.
@@ -438,5 +484,4 @@ for data, typedef in results:
 ### 3.3.2 Methods
 #### 3.3.2.1 protobuf_decode
 #### 3.3.2.2 grpc_decode
-#### 3.3.2.3 grpc_stream_decode
 same as in `HttpResponse`, but applies to msg.

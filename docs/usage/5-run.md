@@ -34,7 +34,7 @@ Loads settings from a Scrapy-style `settings.py` file.
 **3.convert_to_toml(py_path: str, toml_path: str)**
 Converts `settings.py` to `.toml` format.
 
-**4.ScrapyRunner**
+**4.ScrapyRunner、InlineScrapyRunner**
 Launches a Scrapy project via subprocess using a Python script. Useful for hybrid scheduling.
 
 ## 4.2 scrapy_cffi design idea

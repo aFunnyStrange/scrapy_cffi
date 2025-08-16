@@ -74,7 +74,6 @@ class Engine:
             ):
                 await self.taskManager.create(coro=self.manager_spiderinterceptors_result(spiderinterceptors_result=item))
 
-    # 爬虫传递的 result，为了后续回调的复用，result其实是多个对象
     async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult):
         if spiderinterceptors_result.next == ChainNextEnum.RESCHEDULE:
             await self.taskManager.create(coro=self.process_scheduler(request=spiderinterceptors_result.request))
@@ -109,7 +108,7 @@ class Engine:
 
         if self.scheduler.is_distributed:
             request = await self.scheduler.get(spider=self.spider)
-            if isinstance(request, int) and not request: # 调度器空了
+            if isinstance(request, int) and not request: # scheduler empty
                 self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
                 return
             elif isinstance(request, Request):

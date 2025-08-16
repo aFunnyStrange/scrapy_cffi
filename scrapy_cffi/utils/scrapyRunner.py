@@ -1,11 +1,16 @@
 import os
 import logging
 from logging.handlers import TimedRotatingFileHandler
-import multiprocessing
+import multiprocessing, threading
 try:
     from scrapy.utils.project import get_project_settings
     from scrapy.spiderloader import SpiderLoader
     from scrapy.cmdline import execute
+    from twisted.internet import reactor
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.utils.project import get_project_settings
+    from scrapy.spiderloader import SpiderLoader
+    from scrapy.utils.log import configure_logging
 except ImportError as e:
     raise ImportError(
         "Missing scrapy dependencies. "
@@ -54,6 +59,26 @@ class ScrapyRunner:
             logger.removeHandler(h)
         logger.addHandler(handler)
         execute(["scrapy", "crawl", spider_name])
+
+class InlineScrapyRunner:
+    """Run Scrapy spiders in the current process in a non-blocking way using CrawlerRunner."""
+
+    def __init__(self, settings_module: str = "myproject.settings"):
+        os.environ.setdefault("SCRAPY_SETTINGS_MODULE", settings_module)
+        self.settings = get_project_settings()
+        configure_logging()
+        self.runner = CrawlerRunner(self.settings)
+
+    def get_all_spider_names(self):
+        spider_loader = SpiderLoader.from_settings(self.settings)
+        return spider_loader.list()
+
+    def run_all_spiders(self, spiders=None):
+        spiders = spiders or self.get_all_spider_names()
+        for spider_name in spiders:
+            self.runner.crawl(spider_name)
+        # Start reactor in a separate thread so it doesn't block
+        threading.Thread(target=reactor.run, kwargs={"installSignalHandlers": False}, daemon=True).start()
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))

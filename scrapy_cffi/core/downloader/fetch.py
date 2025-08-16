@@ -151,7 +151,7 @@ class Downloader:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            # self.logger.error(f"下载器出错：{e}")
+            # self.logger.error(f"DownloadError：{e}")
             result = DownloadError(exception=e, request=request)
             self.logger.error(str(result))
             try:
