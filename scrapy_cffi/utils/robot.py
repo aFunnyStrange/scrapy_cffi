@@ -83,6 +83,7 @@ class RobotsManager:
                 if domain not in self._rules_cache:
                     tasks.append(self._load_single(url, domain))
         await asyncio.gather(*tasks)
+        await self._session.close()
 
     async def _load_single(self, url, domain):
         rules = RobotsTxtRules([], fallback=True)

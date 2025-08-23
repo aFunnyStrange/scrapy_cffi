@@ -92,8 +92,6 @@ class Engine:
                 )
             else:
                 data = spiderinterceptors_result.model_dump().copy()
-                data.pop("next", None)
-                data.pop("is_across", None)
                 data["signal_time"] = time.time()
                 self.signalManager.send(signal=signals.spider_error, data=SingalInfo(**data))
 

@@ -172,7 +172,7 @@ class SessionWrapper:
 
         self.session = requests.AsyncSession()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
-        self.default_cookies = cookies or {}
+        self.default_cookies = cookies or self.settings.DEFAULT_COOKIES
         self.update_session_cookies(self.default_cookies)
         self._lock = asyncio.Lock()
 

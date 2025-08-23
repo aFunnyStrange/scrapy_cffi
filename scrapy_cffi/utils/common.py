@@ -1,6 +1,6 @@
 import math, secrets, importlib, importlib.util, sys, os, inspect, json, time, traceback, toml, blackboxprotobuf, gzip
-import asyncio, threading, multiprocessing
-from typing import Any, Callable, TYPE_CHECKING, Union, Dict, List, Optional, Awaitable, Tuple
+import asyncio
+from typing import Any, Callable, TYPE_CHECKING, Union, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from logging import Logger
 
@@ -277,7 +277,7 @@ class ProtobufFactory(object):
                 decoded_data, typedef = ProtobufFactory.protobuf_decode(message_data)
             results.append((decoded_data, typedef))
         return results[0] if len(results) == 1 else results
-
+    
 async def run_with_timeout(
     func: Callable[..., Any],
     *args,
@@ -314,159 +314,3 @@ async def run_with_timeout(
                 raise asyncio.CancelledError("Stopped by stop_event")
             raise
     raise asyncio.CancelledError("stop_event set during call")
-
-# Start a new event loop in an async environment to run async code (this will occupy its own thread pool)
-async def run_coroutine_in_new_loop(
-    target: Union[Awaitable, Callable[..., Awaitable]],
-    *args: Any,
-    **kwargs: Any
-) -> Any:
-    def _runner():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            if inspect.isawaitable(target):
-                coro = target
-            elif callable(target):
-                coro = target(*args, **kwargs)
-                if not inspect.isawaitable(coro):
-                    raise TypeError("Callable must return a coroutine")
-            else:
-                raise TypeError("target must be coroutine or coroutine-function")
-            task = loop.create_task(coro)
-            result = loop.run_until_complete(task)
-            return result
-        finally:
-            pending = asyncio.all_tasks(loop)
-            for t in pending:
-                t.cancel()
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.close()
-    return await asyncio.to_thread(_runner)
-
-# Start a new thread in an async environment to run async code
-def run_coroutine_in_thread(
-    target: Union[Awaitable, Callable[..., Awaitable]],
-    *args: Any,
-    **kwargs: Any
-) -> asyncio.Future:
-    loop = asyncio.get_running_loop()
-    future = loop.create_future()
-
-    def thread_worker():
-        try:
-            sub_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(sub_loop)
-            if inspect.isawaitable(target):
-                coro = target
-            elif callable(target):
-                coro = target(*args, **kwargs)
-                if not inspect.isawaitable(coro):
-                    raise TypeError("Callable must return a coroutine")
-            else:
-                raise TypeError("target must be coroutine or coroutine-function")
-            
-            result = sub_loop.run_until_complete(coro)
-            loop.call_soon_threadsafe(future.set_result, result)
-        except Exception as e:
-            loop.call_soon_threadsafe(future.set_exception, e)
-        finally:
-            pending = asyncio.all_tasks(sub_loop)
-            for task in pending:
-                task.cancel()
-            sub_loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            sub_loop.close()
-
-    threading.Thread(target=thread_worker, daemon=True).start()
-    return future
-
-# Start a new process in an async environment to run async code (suitable for Linux/macOS)
-# On Windows, due to process startup issues, Ctrl+C to interrupt will likely hang
-# To be compatible with Windows startup, process_entrypoint cannot be inside a class or closure
-def process_entrypoint(func: Callable, kwargs: Dict, queue: Optional[multiprocessing.Queue]):
-    def handle_exit(sig, frame):
-        print(f"[Child Process] Received signal {sig}, preparing to exit")
-        import sys
-        sys.exit(0)
-
-    import platform
-    if platform.system() != 'Windows':
-        import os, signal
-        try:
-            os.setpgrp()
-        except Exception as e:
-            print(f"[Child Process] Failed to set process group: {e}")
-        signal.signal(signal.SIGTERM, handle_exit)
-        signal.signal(signal.SIGINT, handle_exit)
-
-    try:
-        if asyncio.iscoroutinefunction(func):
-            result = asyncio.run(func(**kwargs))
-        else:
-            result = func(**kwargs)
-        if queue:
-            queue.put((True, result))
-    except Exception as e:
-        print("Error: -----------------------------------------------------------------------------------------")
-        if queue:
-            queue.put((False, str(e)))
-        else:
-            print(f"[Detached Child Process Exception]: {e}")
-
-class ProcessTaskManager:
-    def __init__(self):
-        import atexit
-        self._procs: List[multiprocessing.Process] = []
-        atexit.register(self.terminate_all)
-
-    async def run(self, func: Callable, return_result=True, **kwargs):
-        loop = asyncio.get_running_loop()
-        if return_result:
-            queue = multiprocessing.Queue()
-
-            def start_proc():
-                proc = multiprocessing.Process(
-                    target=process_entrypoint,
-                    args=(func, kwargs, queue)
-                )
-                proc.start()
-                self._procs.append(proc)
-                return proc, queue
-
-            proc, queue = await loop.run_in_executor(None, start_proc)
-
-            try:
-                result = await loop.run_in_executor(None, queue.get)
-                proc.join(timeout=3)
-                if proc.is_alive():
-                    proc.terminate()
-                    proc.join()
-                ok, val = result
-                if ok:
-                    return val
-                raise RuntimeError(val)
-            finally:
-                if proc.is_alive():
-                    proc.terminate()
-                    proc.join()
-        else:
-            def start_detached():
-                proc = multiprocessing.Process(
-                    target=process_entrypoint,
-                    args=(func, kwargs, None),
-                    daemon=True
-                )
-                proc.start()
-                self._procs.append(proc)
-
-            await loop.run_in_executor(None, start_detached)
-
-    def terminate_all(self):
-        for proc in self._procs:
-            if proc.is_alive():
-                try:
-                    proc.terminate()
-                    proc.join(timeout=1)
-                except Exception as e:
-                    print(f"[Main Process] Failed to terminate child process: {e}")
-        self._procs.clear()

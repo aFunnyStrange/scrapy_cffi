@@ -48,7 +48,7 @@ docs/_build/
 docs/*.html
 
 # Test files — keep folder, ignore contents
-/tests/inner/
+/tests/debug/
 
 # Optional: ignore temp files
 *.swp
