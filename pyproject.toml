@@ -22,8 +22,6 @@ dependencies = [
     "tenacity",
     "redis>=5.0.0",
     "parsel",
-    "Pillow",
-    "hachoir",
     "regex"
 ]
 [project.optional-dependencies]

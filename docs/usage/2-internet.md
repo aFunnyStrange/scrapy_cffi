@@ -78,11 +78,13 @@ multipart: Optional[CurlMime] = None,
 ### 2.2.2 Methods
 #### 2.2.2.1 protobuf_encode(self, typedef: Dict)
 Encodes the request body (`data`) into a binary Protobuf payload using the given type definition. The method modifies the request in-place and returns the updated `HttpRequest` object for chaining.
+
 **Parameters**: 
     **typedef**: **Dict** - Protobuf type definition using the `blackboxprotobuf` format.
+
 **Returns**: The updated `HttpRequest` object with its `data` field replaced by the Protobuf-encoded binary payload.
 
-Example:
+**Example:**
 ```python
 yield HttpRequest(
     data={...},
@@ -91,15 +93,20 @@ yield HttpRequest(
 
 #### 2.2.2.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Encodes the request body (`data`) into a valid gRPC framed message and returns the updated request object for chaining.
+
 **Parameters**: 
     **typedef_or_stream**: **Union[Dict, List[Tuple[Dict, Dict]]]**
-        - When a **Dict** is provided, encodes a single Protobuf message according to the given protobuf type definition in `blackboxprotobuf` format.
-        - When a **List[Tuple[Dict, Dict]]** is provided, treats it as a stream of multiple Protobuf message segments, where each tuple contains `(segment_data, typedef)`. The method will encode each segment separately and concatenate them into a single gRPC framed stream.
+- When a **Dict** is provided, encodes a single Protobuf message according to the given protobuf type definition in `blackboxprotobuf` format.
+
+- When a **List[Tuple[Dict, Dict]]** is provided, treats it as a stream of multiple Protobuf message segments, where each tuple contains `(segment_data, typedef)`. The method will encode each segment separately and concatenate them into a single gRPC framed stream.
+
     **is_gzip**: **bool=False** - Whether to compress the Protobuf payload using gzip.
+
 **Returns**: Returns the updated `HttpRequest` object with its `data` field replaced by a fully framed gRPC binary message or a concatenated gRPC framed binary stream.
 
-Example:
+**Example:**
 Single message encoding:
+
 ```python
 yield HttpRequest(
     data={...}, # Define plain Protobuf data first
@@ -107,6 +114,7 @@ yield HttpRequest(
 ```
 
 Multiple message streaming encoding:
+
 ```python
 yield HttpRequest(
     data=None, # Can be omitted or None; if provided, it will be overwritten in streaming mode.
@@ -135,9 +143,11 @@ yield HttpRequest(
 
 📦 **gRPC Frame Structure (used in this framework)**
 When using `grpc_encode()`, the request body is encoded into a gRPC-compatible binary format. The resulting byte stream follows the standard gRPC framing layout:
+
 - **Byte 1**: Compression flag (`0` = uncompressed, `1` = gzip compressed)
 - `Bytes 2–5`: 4-byte unsigned integer (big-endian), indicating the length of the following message body
 - `Bytes 6+`: Protobuf-encoded binary payload
+
 This format complies with the official gRPC-over-HTTP/2 wire protocol and is fully compatible with standard gRPC servers.
 
 ❓ **Message Size Limit**
@@ -148,7 +158,9 @@ The 4-byte length field enforces a maximum message size of approximately 4 GB (`
 Split the payload into multiple Protobuf messages and pass them as a list of `(data, typedef)` tuples to `grpc_encode()`.
 Each segment will be encoded as an individual gRPC frame, concatenated into a valid streaming-compatible binary sequence.
 This approach avoids size constraints and retains full protocol compatibility.
+
 - ⚠️ **Not recommended**: Manually crafting oversized HTTP/2 frames
+
 Attempting to bypass the gRPC framing limit (e.g., by hacking raw HTTP/2 transport) is non-standard and **strongly discouraged**. It may cause undefined behavior, decoder hangs, or outright rejection by compliant gRPC servers.
 
 > This is why the framework natively supports gRPC streaming format — **not just for spec compliance, but also for stability and correctness in large-scale data scenarios**.
@@ -170,13 +182,16 @@ According to the gRPC wire protocol:
 ### 2.3.2 Methods
 #### 2.3.2.1 protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]])
 Encodes the request’s `send_message` into Protobuf format and returns the updated request object (chainable).
+
 **Parameters**: 
     **typedef_or_stream**: **Union[Dict, List[Tuple[Dict, Dict]]]**
-        - **Dict**: Encodes only the first message in `send_message`. The encoded content replaces `send_message`, and all other messages are discarded.
-        - **List[Tuple[Dict, Dict]]**: Treated as a sequence of Protobuf message segments. Each tuple is `(segment_data, typedef)`, and each segment is encoded separately.
+- **Dict**: Encodes only the first message in `send_message`. The encoded content replaces `send_message`, and all other messages are discarded.
+
+- **List[Tuple[Dict, Dict]]**: Treated as a sequence of Protobuf message segments. Each tuple is `(segment_data, typedef)`, and each segment is encoded separately.
+
 **Returns**: The updated `WebSocketRequest` object with its `send_message` field replaced.
 
-Example:
+**Example:**
 Single message encoding:
 ```python
 yield WebSocketRequest(
@@ -198,12 +213,16 @@ yield WebSocketRequest(
 )
 ```
 
+
+
 #### 2.3.2.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Same as `protobuf_encode`, but with additional support for the `is_gzip` parameter to enable Gzip compression.
 
 #### 2.3.2.3 grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Similar to `HttpRequest.grpc_encode` in `List[Tuple[Dict, Dict]]` mode.
+
 However, due to the complexity of WebSocket streaming (which would require an extra nesting layer), the framework **only supports encoding into a single message**.
+
 If you need to send multiple gRPC stream messages within a single `WebSocketRequest`, you should **manually encode them and provide them directly to** `send_message`. This keeps message handling explicit and avoids framework-side ambiguity.
 
 
@@ -220,6 +239,7 @@ However, in some cases, a website may expect a message to be sent immediately af
 `MediaRequest` is a subclass of `HttpRequest` designed for segmented downloading of video files.
 In some cases, downloading the entire video in a single request may fail. By splitting the download into multiple segments, the process becomes more reliable.
 Essentially, `MediaRequest` wraps the use of the Range header in HTTP requests, so you don’t need to manually construct multiple `HttpRequest` objects for each segment in your spider code.
+
 ### 2.4.1 Attributes
 | Attribute | Description |
 | --------- | ----------- |
@@ -228,8 +248,10 @@ Essentially, `MediaRequest` wraps the use of the Range header in HTTP requests, 
 
 # 3.Response Objects
 `scrapy_cffi` provides two types of response objects: `HttpResponse` and `WebSocketResponse`.
+
 ## 3.1 Response
 A shared superclass for `HttpResponse` and `WebSocketResponse`, used as the unified response interface within the framework.
+
 ### 3.3.1 Attributes
 Common Attributes:
 | Attribute | Description |
@@ -304,9 +326,11 @@ Shortcut for `raw_response.json()`.
 
 #### 3.2.2.5 extract_json(key: str, re_rule: str="")
 Extracts standard JSON from text content (for cases where JSON is embedded in HTML or returned as text).
+
 **Parameters**: 
     **key**: **str** — key to search in parsed JSON objects
     **re_rule**: **str** — optional regex to extract JSON strings directly
+
 **Returns**: `List[Union[Dict, str]]` If no key is provided, all matched JSON blocks are returned. If only one match is found, a single object is returned instead of a list.
 
 Example:
@@ -342,18 +366,21 @@ async def parse(self, response: HttpResponse):
 
 #### 3.2.2.6 extract_json_strong(key: str, strict_level=2, re_rule="")
 Use this function when the response contains **non-standard** or malformed JSON. It performs recursive global scanning and is more tolerant of:
+
 - Extra or missing braces
 - JavaScript-style comments
 - Unquoted strings
 - Nested JSON strings
+
 This method is more powerful but slightly slower, especially when strict_level=0 (loose JSON5 mode).
 
-Parameters:
+**Parameters:**
     Same as `extract_json`
     **strict_level**: Literal[0, 1, 2]
-    - `2`, Use `orjson` (fastest, strictest)
-    - `1`, Use Python's built-in `json` module
-    - `0`, Use `json5` for maximum leniency (e.g., support for comments and missing quotes)
+- `2`, Use `orjson` (fastest, strictest)
+- `1`, Use Python's built-in `json` module
+- `0`, Use `json5` for maximum leniency (e.g., support for comments and missing quotes)
+
 **Returns**: Same structure as `extract_json`
 
 Example:
@@ -444,6 +471,7 @@ Should I always use `extract_json_strong` since it's more powerful?
 
 **Answer**: 
 The `extract_json` function is based on regular expression matching, while `extract_json_strong` uses global recursive string scanning. To handle complex scenarios, `extract_json_strong` applies many special heuristics, which makes it slightly slower in performance — especially when `strict_level=0` is enabled (which allows JSON5-like syntax).  
+
 Therefore, when the response text is standard JSON, you should prefer using `extract_json`. When `extract_json_strong` is necessary, it's recommended to first extract the top-level keys of the data and then access the desired values via dictionary traversal. This approach minimizes the use of `extract_json_strong` and yields better performance.
 
 #### 3.2.2.7 protobuf_decode
@@ -455,12 +483,14 @@ data, typedef = response.protobuf_decode()
 
 #### 3.2.2.8 grpc_decode
 Decodes one or more gRPC-framed messages from the HTTP response (`response.content`). This method parses the standard gRPC frame format — including the 1-byte compression flag, 4-byte big-endian length prefix, and Protobuf-encoded message — and returns the decoded content using `blackboxprotobuf`.
+
 **Returns**: `Union[Tuple[Dict, Dict], List[Tuple[Dict, Dict]]]`
-    - If the response contains **a single message**, returns a (data, typedef) tuple.
-    - If the response contains **multiple concatenated gRPC messages** (i.e., stream-style response), returns a `List[(data, typedef)]`.
+- If the response contains **a single message**, returns a (data, typedef) tuple.
+- If the response contains **multiple concatenated gRPC messages** (i.e., stream-style response), returns a `List[(data, typedef)]`.
+
     This behavior is automatically determined based on the binary content.
 
-Examples:
+**Examples:**
 Single message decoding:
 ```python
 data, typedef = response.grpc_decode()

@@ -198,7 +198,6 @@ class ProcessManager:
         """Register functions, objects, or classes"""
         for name, target in self._register_methods.items():
             if target is None:
-                # 客户端，只要占位
                 self._Manager.register(name)
             elif isinstance(target, type):
                 self._Manager.register(name, target)

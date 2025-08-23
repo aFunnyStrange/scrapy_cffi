@@ -1,5 +1,6 @@
 # 1.Introduction
 `scrapy_cffi` provides a set of signal mechanisms that allow users to register extensions and implement custom behaviors outside the framework core. The signal system works like a broadcast mechanism and encapsulates all signal data using a unified `SignalInfo` object.
+
 Even when no extensions are enabled, the framework will still emit signals internally. However, these signals will be immediately discarded. Only when extensions are registered and activated will the signal system take effect.
 
 **Note:**

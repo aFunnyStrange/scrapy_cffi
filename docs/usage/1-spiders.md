@@ -1,5 +1,5 @@
-## 1.Base Config
-#### 1.1 Attributes
+# 1.Base Config
+## 1.1 Attributes
 Each spider class includes several built-in attributes by default:
 | Attribute | Description |
 | --------- | ----------- |
@@ -11,21 +11,26 @@ Each spider class includes several built-in attributes by default:
 | session_id | Defaults to an empty string; used to assign a specific session ID per spider. |
 | ctx_dict | Stores all loaded JavaScript execution contexts (as specified by `js_path`). Keys are filenames, values are context objects. |
 | hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. "See "Hook Usage" section. |
+
 ---
-#### 1.2 Methods
+
+## 1.2 Methods
 Every spider will include the following instance methods by default:
-###### 1.2.1 use_execjs
+
+### 1.2.1 use_execjs
 Execute JavaScript via PyExecJS and return the result.
 - **Parameters**: 
     **ctx_key**: **str**, the name of the JS file (without suffix)
     **funcname**: **str**, the name of the function to call
     **params**: **tuple**, positional arguments; must pass a tuple even if no parameters
 - **Returns**: The result returned by executing the JS function
+
 Example: given a loaded file `demo.js`:
 ``` js 
 function count(a, b) {return a + b + 1;}
 function rand() {return Math.random();}
 ```
+
 Usage:
 ```python 
 # With arguments
@@ -33,33 +38,45 @@ self.use_execjs(ctx_key="demo", funcname="count", params=(1, 2)) # => 4
 # No arguments
 self.use_execjs(ctx_key="demo", funcname="rand", params=(,)) # => e.g. 0.04188...
 ```
-###### 1.2.2 parse
+
+### 1.2.2 parse
 The default callback for handling responses from start_urls. Must be implemented by user, otherwise raises:
 ```python 
 raise NotImplementedError("parse is not defined.")
 ```
 
-###### 1.2.3 errRet
+### 1.2.3 errRet
 The default error handler. If a request has an errback set, this method will be used by default.
 
 ---
 
 `scrapy_cffi` provides two spider base classes: `Spider` and `RedisSpider`, consistent with Scrapy's design — one class per spider.
-## 2.Spider Mode
-#### 2.1 Spider
-###### 2.1.1 start_urls
+
+
+
+
+
+# 2.Spider Mode
+## 2.1 Spider
+### 2.1.1 start_urls
 - **Type**: List[str]
 - **Description**: List of URLs used to construct and dispatch initial requests.
-#### 2.2 RedisSpider
-###### 2.2.1 redis_key
+
+## 2.2 RedisSpider
+### 2.2.1 redis_key
 - **Type**: str
 - **Description**: The name of the Redis queue from which tasks (URLs) are pulled and scheduled.
 
-## 3.Spider Output
+
+
+
+
+# 3.Spider Output
 `scrapy_cffi` llows spider methods to yield or return any of the following supported types.
-#### 3.1 When using `async def`
-###### 3.1.1 Basic Types
+## 3.1 When using `async def`
+### 3.1.1 Basic Types
 **Request, Item, Dict, BaseException、None**
+
 ```python
 async def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     yield HttpRequest(...)
@@ -68,19 +85,23 @@ async def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     yield {...}
     yield None
 ```
+
 Also supports direct `return` of one object (equivalent to one `yield`):
+
 ```python
 async def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     if ...:
         return HttpRequest(...)
 ```
-###### 3.1.2 Iterable Containers
+
+### 3.1.2 Iterable Containers
 **List, Tuple**
 ```python
 async def parse(self, response):
     return [HttpRequest(...), Item(...)]
 ```
-###### 3.1.3 Async Generator (recommended)
+
+### 3.1.3 Async Generator (recommended)
 **types.AsyncGeneratorType, AsyncIterable**
 ```python
 async def parse(self, response: Union[HttpResponse, WebsocketResponse]):
@@ -91,18 +112,21 @@ async def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     async for req in self.create_req():
         yield req
 ```
-#### 3.2 When using `def`
-###### 3.2.1 Basic Types
+
+## 3.2 When using `def`
+### 3.2.1 Basic Types
 ```python
 def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     return HttpRequest(...)
 ```
-###### 3.2.2 Iterable Containers
+
+### 3.2.2 Iterable Containers
 ```python
 def parse(self, response: Union[HttpResponse, WebsocketResponse]):
     return [Item(...), HttpRequest(...)]
 ```
-###### 3.2.3 Generator
+
+### 3.2.3 Generator
 **types.GeneratorType, Iterable**
 ```python
 def parse(self, response):
@@ -110,10 +134,14 @@ def parse(self, response):
         yield req
 ```
 
-## 4.Hook Usage
+
+
+
+
+# 4.Hook Usage
 Framework hooks allow you to interact with specific subsystems of the crawler (such as the session manager or scheduler) **without accessing their internal implementations directly**. These hooks are dynamically injected into each spider and are accessible via the `self.hooks` attribute.
 Hooks are designed to provide **controlled extensibility**, enabling plugin-style behavior while preserving encapsulation.
-#### 4.1 register_sessions
+## 4.1 register_sessions
 Registers multiple user sessions (typically cookie dicts) under a single logical group called a `session_id`. Once registered, any request using that `session_id` will **randomly rotate** among the associated sessions.
 
 **Purpose:**
@@ -155,11 +183,11 @@ yield HttpRequest(
 
 
 
-## 5.Advanced Usage
-#### 5.1 Override `start` method
+# 5.Advanced Usage
+## 5.1 Override `start` method
 All initial requests go through the `start` method. You may customize logic here.
 **Note**: `start` must be defined as an async generator function.
-###### 5.1.1 post requests
+### 5.1.1 post requests
 ```python
 async def start(self, *args, **kwargs):
     for url in self.start_urls:
@@ -177,7 +205,7 @@ async def start(self, *args, **kwargs):
             errback=self.errRet
         )
 ```
-###### 5.1.2 Task Spider
+### 5.1.2 Task Spider
 ```python
 async def start(self, task_data, *args, **kwargs):
     for task in task_data:
@@ -195,12 +223,13 @@ async def start(self, task_data, *args, **kwargs):
             errback=self.errRet
         )
 ```
+
 Then you can run with:
 ```python 
 scrapy_cffi.run_spider(settings, task_data=task_data)
 ```
 
-#### 5.2 Use Redis Task Data
+## 5.2 Use Redis Task Data
 Similar to `scrapy-redis`, override `make_request_from_data`.
 **Note**: Must be defined as an `async def.` If you want generator-style behavior, override `start` too.
 ```python 
@@ -221,7 +250,7 @@ async def make_request_from_data(self, data: bytes):
     )
 ```
 
-#### 5.3 Blocking Async Generator
+## 5.3 Blocking Async Generator
 In real-world asynchronous crawling scenarios, it's often necessary to dispatch a batch of requests and then collect their results in order to decide whether to proceed with the next step. To support this kind of **result-driven task control**, the framework provides a utility class called `ResultHolder`.
 
 The usage pattern is as follows:

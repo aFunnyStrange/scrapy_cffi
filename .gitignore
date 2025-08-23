@@ -40,15 +40,13 @@ venv/
 ENV/
 env/
 
-# Backup
-备份/
-
 # Docs output (optional, if you build static docs later)
 docs/_build/
 docs/*.html
 
 # Test files — keep folder, ignore contents
 /tests/debug/
+/tests/project/
 
 # Optional: ignore temp files
 *.swp
