@@ -6,7 +6,6 @@ from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterce
 from .pipelines.api import _InnerPipeline
 from .extensions import SignalManager
 from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory
-from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .models.api import SettingsInfo
