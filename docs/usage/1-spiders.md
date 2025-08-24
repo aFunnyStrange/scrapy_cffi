@@ -186,7 +186,7 @@ yield HttpRequest(
 # 5.Advanced Usage
 ## 5.1 Override `start` method
 All initial requests go through the `start` method. You may customize logic here.
-**Note**: `start` must be defined as an async generator function.
+
 ### 5.1.1 post requests
 ```python
 async def start(self, *args, **kwargs):
@@ -205,6 +205,7 @@ async def start(self, *args, **kwargs):
             errback=self.errRet
         )
 ```
+
 ### 5.1.2 Task Spider
 ```python
 async def start(self, task_data, *args, **kwargs):

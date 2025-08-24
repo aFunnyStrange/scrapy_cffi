@@ -76,7 +76,7 @@ from scrapy_cffi.extensions import signals, Extension
 
 2.Register signals in the `from_crawler` method
 ```python 
-crawler.signalManager.connect(signals.engine_started, your_callback_function)
+hooks.signals.connect(signals.engine_started, your_callback_function)
 ```
 
 3.Define your signal callback function

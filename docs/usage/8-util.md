@@ -50,7 +50,7 @@ Run asynchronous functions inside **synchronous process environments**, supporti
 
 ## 2.4 ProcessManager
 Implements a native Python **multiprocessing RPC** model: server registers, client calls.
-Usage examples: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/_processManager
+Usage examples: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/process_manager
 > ProcessManager can register functions, classes, or object instances for client calls, but cannot directly register constants or primitive types. To share constants, wrap them inside a function.
 > Communication is done over TCP sockets — by default it runs on localhost, but if you bind to `0.0.0.0` or a public IP, clients can connect from LAN or even the internet (use caution with security).
 

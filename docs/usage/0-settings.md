@@ -195,7 +195,7 @@ If PROXIES is not set and this is provided, a random proxy from the list will be
 ---
 
 ### 2.5.3 INCLUDE_HEADERS
-- **Type**: Optional[List]
+- **Type**: Optional[List[str]]
 - **Default**: []
 - **Description**: A list of header field names whose values will be included in the deduplication fingerprint. This affects how requests are considered unique, without modifying the actual request headers.
 

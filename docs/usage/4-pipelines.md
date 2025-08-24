@@ -18,6 +18,8 @@ This framework includes a lightweight, asyncio-compatible reimplementation of Sc
 | **settings** | The global configuration loaded from `settings.py`. |
 | **logger** | A logger instance provided by the framework. |
 | **redisManager** | A Redis client maintained by the framework if Redis is enabled; otherwise, this will be `None`. It includes built-in auto-retry and reconnection logic for improved reliability, and fully exposes the native Redis API—users can operate it just like a standard Redis client. |
+| **mysqlManager** | A MySQL client maintained by the framework if MySQL is enabled; otherwise `None`. Like `redisManager`, it includes built-in auto-retry and reconnection logic. It fully exposes the native SQLAlchemy API, allowing users to operate it as they would a standard SQLAlchemy session/engine. Configuration details can be found in **7-databases.md**. |
+| **mongodbManager** | A MongoDB client maintained by the framework if MongoDB is enabled; otherwise `None`. Like `redisManager`, it includes built-in auto-retry and reconnection logic. It fully exposes the native PyMongo API, so users can operate it just like a standard PyMongo client. Configuration details can be found in **7-databases.md**. |
 | **hooks** | A signal hook manager that allows users to send custom signals during the pipeline lifecycle. |
 
 ## 3.Methods

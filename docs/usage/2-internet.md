@@ -230,10 +230,9 @@ If you need to send multiple gRPC stream messages within a single `WebSocketRequ
 ### 2.3.3 WebSocket Communication Behavior
 WebSocket communication is based on a single persistent connection that allows multiple messages to be sent and received over time. In this framework, all WebSocket interactions—regardless of the number of messages—are uniformly represented using the WebSocketRequest class. There is no need to distinguish between initial or subsequent messages, as they all share the same request structure.
 
-However, in some cases, a website may expect a message to be sent immediately after the WebSocket connection is established. If no message is sent within a very short time, the server might close the connection prematurely. To handle such scenarios, the framework allows you to configure an initial message that is automatically sent as soon as the connection is established.
+However, in some cases, a website may expect a message to be sent immediately after the WebSocket connection is established. If no message is sent within a very short time, the server might close the connection prematurely. To handle such scenarios, the framework allows you to configure some initial messages that is automatically sent as soon as the connection is established.
 
-> **Note:**
-> Currently, only one initial message can be sent during the connection phase. Support for sending multiple messages immediately after connection will be added in a future version.
+
 
 ## 2.4 MediaRequest
 `MediaRequest` is a subclass of `HttpRequest` designed for segmented downloading of video files.

@@ -20,7 +20,6 @@ An async Redis client extending `redis.asyncio.Redis` with full API support.
 - Provides convenience methods with built-in retry for common queue and deduplication patterns.
 
 **Usage**
-
 `RedisManager` only needs two things to initialize:
 1. An `asyncio.Event` (`stop_event`) — used for graceful shutdown.
 2. A `redis_url` — connection string for Redis.
