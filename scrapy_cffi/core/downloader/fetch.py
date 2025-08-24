@@ -1,5 +1,5 @@
 import asyncio, time
-from contextlib import asynccontextmanager
+from ...utils import async_context_factory
 from typing import Tuple, TYPE_CHECKING, List, Callable
 # from ...utils import run_with_timeout
 from .internet import *
@@ -22,21 +22,10 @@ class Downloader:
         self.sessions_lock = sessions_lock
         self.signalManager = signalManager
         # Set the maximum concurrency limit for requests
-        if self.settings.MAX_CONCURRENT_REQ is None:
-            self.sem_ctx = self.dummy_async_context
-        else:
-            semaphore_cls = asyncio.BoundedSemaphore if self.settings.USE_STRICT_SEMAPHORE else asyncio.Semaphore
-            sem = semaphore_cls(self.settings.MAX_CONCURRENT_REQ)
-            @asynccontextmanager
-            async def sem_context():
-                async with sem:
-                    yield
-            self.sem_ctx = sem_context
-
-    @staticmethod
-    @asynccontextmanager
-    async def dummy_async_context():
-        yield
+        self.sem_ctx = async_context_factory(
+            max_tasks=self.settings.MAX_CONCURRENT_REQ,
+            semaphore_cls=asyncio.Semaphore if not self.settings.USE_STRICT_SEMAPHORE else None
+        )
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):

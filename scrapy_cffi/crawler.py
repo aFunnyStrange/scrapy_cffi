@@ -5,7 +5,7 @@ from .interceptors import ChainManager, InterruptibleChainManager
 from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterceptor
 from .pipelines.api import _InnerPipeline
 from .extensions import SignalManager
-from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir
+from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -40,11 +40,6 @@ class Crawler:
         self.spiders = None
         self.engines = None
 
-    @staticmethod
-    @asynccontextmanager
-    async def empty_global_context():
-        yield
-
     def init_output(self, class_list):
         return [get_class_name(it) for it in class_list] if isinstance(class_list, list) else [get_class_name(class_list)]
 
@@ -52,15 +47,10 @@ class Crawler:
         self.stop_event = asyncio.Event()
 
         self.settings: "SettingsInfo" = settings
-        if self.settings.MAX_GLOBAL_CONCURRENT_TASKS:
-            global_sem = asyncio.BoundedSemaphore(self.settings.MAX_GLOBAL_CONCURRENT_TASKS)
-            @asynccontextmanager
-            async def global_sem_context():
-                async with global_sem:
-                    yield
-            self.global_lock = global_sem_context
-        else:
-            self.global_lock = self.empty_global_context
+        self.global_lock = async_context_factory(
+            max_tasks=self.settings.MAX_GLOBAL_CONCURRENT_TASKS,
+            semaphore_cls=asyncio.BoundedSemaphore
+        )
 
         # if not logger: # To ensure log stability, it is no longer enabled
         from .utils import init_logger

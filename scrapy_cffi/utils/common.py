@@ -1,6 +1,7 @@
 import math, secrets, importlib, importlib.util, sys, os, inspect, json, time, traceback, toml, blackboxprotobuf, gzip
 import asyncio
-from typing import Any, Callable, TYPE_CHECKING, Union, Dict, List, Optional, Tuple
+from contextlib import asynccontextmanager
+from typing import Any, Callable, TYPE_CHECKING, Union, Dict, List, Optional, Tuple, Type
 if TYPE_CHECKING:
     from logging import Logger
 
@@ -22,7 +23,26 @@ def setup_uvloop_once():
         print("uvloop not installed")
     finally:
         setup_uvloop_once._done = True
-    
+
+def async_context_factory(
+    max_tasks: Optional[int] = None,
+    semaphore_cls: Union[Type[asyncio.Semaphore], None] = None
+):
+    if max_tasks is None:
+        @asynccontextmanager
+        async def empty_context():
+            yield
+        return empty_context
+    else:
+        sem_cls = semaphore_cls or asyncio.BoundedSemaphore
+        sem = sem_cls(max_tasks)
+
+        @asynccontextmanager
+        async def sem_context():
+            async with sem:
+                yield
+        return sem_context
+
 class ResultHolder:
     def __init__(self):
         self._future = asyncio.get_event_loop().create_future()
