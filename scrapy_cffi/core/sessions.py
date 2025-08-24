@@ -253,7 +253,7 @@ class SessionWrapper:
     async def ws_connect_once(self, session: requests.AsyncSession, request: "WebSocketRequest"):
         websocket: "requests.websockets.WebSocket" = await session.ws_connect(url=request.url, 
             headers=request.headers, 
-            cookies=request.cookies if request.cookies else session.cookies.get_dict(), 
+            cookies=session.cookies.get_dict(), 
             proxies=request.proxies, 
             timeout=request.timeout,
             allow_redirects=request.allow_redirects,
@@ -350,6 +350,8 @@ class SessionManager:
 
         wrapper = self._sessions.get(session_id)
         if wrapper:
+            if cookies:
+                wrapper.update_session_cookies(cookies)
             return wrapper
 
         wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies)
