@@ -1,9 +1,12 @@
 `scrapy_cffi` includes a user-friendly command-line interface (CLI) that allows you to quickly scaffold a new project or generate spiders.
 While the default structure is designed to be practical out of the box, you're encouraged to adapt it to suit your own development needs.
 
+**Notes:**
+> The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
+
 # 1.startproject
 ```bash
-scrapy_cffi startproject <project_name>
+scrapy-cffi startproject <project_name>
 ```
 
 ---
@@ -15,13 +18,13 @@ scrapy_cffi startproject <project_name>
 ## 2.1 Spider
 ```bash
 cd <project_name>
-scrapy_cffi genspider <spider_name> <domain>
+scrapy-cffi genspider <spider_name> <domain>
 ```
 
 ## 2.2 RedisSpider
 ```bash
 cd <project_name>
-scrapy_cffi genspider -r <spider_name> <domain>
+scrapy-cffi genspider -r <spider_name> <domain>
 ```
 
 ---
@@ -33,12 +36,12 @@ scrapy_cffi genspider -r <spider_name> <domain>
 ## 3.1 Normal
 ### 3.1.1 Spider
 ```bash
-scrapy_cffi demo
+scrapy-cffi demo
 ```
 
 ### 3.1.2 RedisSpider
 ```bash
-scrapy_cffi demo -r
+scrapy-cffi demo -r
 ```
 
 

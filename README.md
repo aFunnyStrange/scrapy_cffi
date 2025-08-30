@@ -34,11 +34,14 @@ pip install -e .
 
 ## 🚀 Quick Start
 ```bash
-scrapy_cffi startproject <project_name>
+scrapy-cffi startproject <project_name>
 cd <project_name>
-scrapy_cffi genspider <spider_name> <domain>
+scrapy-cffi genspider <spider_name> <domain>
 python runner.py
 ```
+
+**Notes:**
+> The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
 
 ## 📖 Documentation
 Technical module-level documentation can be found in the [`docs/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory on GitHub.

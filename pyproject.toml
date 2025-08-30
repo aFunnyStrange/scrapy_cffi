@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy_cffi"
-version = "0.1.4"
+version = "0.1.5"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = {text = "BSD-3-Clause"}
@@ -36,7 +36,7 @@ include = ["scrapy_cffi", "scrapy_cffi.*"]
 exclude = ["docs*", "tests*", "examples*"]
 
 [project.scripts]
-scrapy_cffi = "scrapy_cffi.commands.main:main"
+scrapy-cffi = "scrapy_cffi.commands.main:main"
 
 [tool.setuptools]
 include-package-data = true
