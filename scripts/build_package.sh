@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-# -----------------------------
-# 1. 安装依赖
-# -----------------------------
+# 升级 pip + 安装 build 和 twine
 python -m pip install --upgrade pip build twine
 
-# -----------------------------
-# 2. 清理缓存和旧构建
-# -----------------------------
+# 清理 Python 缓存
 find . -type d -name '__pycache__' -exec rm -rf {} +
 find . -type f -name '*.py[co]' -delete
+
+# 清理 dist 目录
 rm -rf dist/*
 
-# -----------------------------
-# 3. 构建 wheel + sdist
-# -----------------------------
+# 构建 wheel + sdist
 python -m build
 
-# -----------------------------
-# 4. 打包参数
-# -----------------------------
+# 打包参数
 project="scrapy_cffi"
-version="${GITHUB_REF_NAME#release-}"  # CI 下使用 tag
+version="${GITHUB_REF_NAME#release-}"
 temp_dir="package_temp"
 output_dir="package_out"
 
@@ -30,25 +24,19 @@ output_dir="package_out"
 rm -rf "$temp_dir" "$output_dir"
 mkdir -p "$temp_dir" "$output_dir"
 
-# -----------------------------
-# 5. 复制源码和资源文件到临时目录
-# -----------------------------
+# 复制项目文件到临时目录
 cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 
-# -----------------------------
-# 6. 压缩包输出路径（确保在临时目录外）
-# -----------------------------
+# 生成压缩包
 ZIP_FILE="$output_dir/${project}-${version}.zip"
 TAR_FILE="$output_dir/${project}-${version}.tar.gz"
 
-# -----------------------------
-# 7. 压缩打包
-# -----------------------------
-# zip 打包
-zip -r -q "$ZIP_FILE" "$temp_dir"/* \
-    -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
+# zip 压缩
+pushd "$temp_dir"
+zip -r -q "$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
+popd
 
-# tar 打包
+# tar 压缩（输出到临时目录外，避免 file changed 错误）
 tar -C "$temp_dir" \
     --exclude-vcs \
     --exclude="__pycache__" \
@@ -56,9 +44,7 @@ tar -C "$temp_dir" \
     --exclude="dist" \
     -czf "$TAR_FILE" .
 
-# -----------------------------
-# 8. 清理临时目录
-# -----------------------------
+# 清理临时目录
 rm -rf "$temp_dir"
 
-echo "✅ Package build complete: $ZIP_FILE and $TAR_FILE"
+echo "Package build complete: $ZIP_FILE and $TAR_FILE"
