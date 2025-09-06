@@ -17,7 +17,10 @@ jobs:
       - name: Verify CHANGELOG.md contains current version
         shell: bash
         run: |
+          set -euo pipefail
+
           version="${GITHUB_REF_NAME#release-}"
+
           if [[ "$GITHUB_REF_NAME" == release* ]]; then
             echo "Checking CHANGELOG.md for version $version"
             if ! grep -q "## \[$version\]" CHANGELOG.md; then
