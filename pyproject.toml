@@ -8,6 +8,7 @@ version = "0.1.5"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = {text = "BSD-3-Clause"}
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
@@ -37,7 +38,6 @@ exclude = ["docs*", "tests*", "examples*"]
 
 [project.scripts]
 scrapy-cffi = "scrapy_cffi.commands.main:main"
-scrapy_cffi = "scrapy_cffi.commands.main:main"
 
 [tool.setuptools]
 include-package-data = true
