@@ -44,8 +44,7 @@ tar -C "$temp_dir" \
     --exclude-vcs \
     --exclude="__pycache__" \
     --exclude="*.egg-info" \
-    --exclude="dist" \
-    -czf "$TAR_FILE" .
+    -czf "$TAR_FILE" scrapy_cffi docs LICENSE README.md
 
 # 清理临时目录
 rm -rf "$temp_dir"
