@@ -40,25 +40,19 @@ jobs:
           python-version: '3.11'
 
       - name: Install build tools
-        shell: bash
         run: |
           python -m pip install --upgrade pip build twine
 
-      - name: Clean __pycache__, *.pyc and dist
-        shell: bash
+      - name: Clean __pycache__ and *.pyc files
         run: |
           find . -type d -name '__pycache__' -exec rm -rf {} +
           find . -type f -name '*.py[co]' -delete
-          rm -rf dist
 
       - name: Build the package (wheel + sdist)
-        shell: bash
-        run: |
-          python -m build
+        run: python -m build
 
       - name: Create source archive (zip + tar.gz)
         if: startsWith(github.ref_name, 'release')
-        shell: bash
         run: |
           version="${GITHUB_REF_NAME#release-}"
           project="scrapy_cffi"
@@ -67,10 +61,9 @@ jobs:
 
       - name: Extract release notes from CHANGELOG.md
         id: release_notes
-        shell: bash
         run: |
           version="${GITHUB_REF_NAME#release-}"
-          notes=""
+          echo "Extracting notes for version $version"
           if [ -f CHANGELOG.md ]; then
             notes=$(awk "/## \\[$version\\]/ {flag=1; next} /^## \\[/ && flag {flag=0} flag" CHANGELOG.md)
           fi
@@ -82,7 +75,6 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Conditional Publish to PyPI / TestPyPI
-        shell: bash
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD_TEST: ${{ secrets.SCRAPY_CFFI_TEST }}
@@ -102,10 +94,9 @@ jobs:
 
       - name: Generate SHA256 checksums
         if: startsWith(github.ref_name, 'release')
-        shell: bash
         run: |
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz README.md LICENSE docs/**/*; do
-            [ -f "$file" ] && sha256sum "$file" > "$file.sha256"
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+            sha256sum "$file" > "$file.sha256"
           done
 
       - name: Create GitHub Release
@@ -121,12 +112,9 @@ jobs:
 
       - name: Upload Release Assets
         if: startsWith(github.ref_name, 'release')
-        shell: bash
+        run: |
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+            echo "Uploading $file ..."
+            gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 上传 dist 构建产物 + zip/tar + README/LICENSE/docs
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz README.md LICENSE $(find docs -type f); do
-            echo "Uploading $file ..."
-            gh release upload "${GITHUB_REF_NAME}" "$file" --clobber
-          done
