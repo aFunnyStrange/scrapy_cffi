@@ -16,7 +16,7 @@ python -m build
 project="scrapy_cffi"
 version="${GITHUB_REF_NAME#release-}"
 temp_dir="package_temp"
-output_dir="package_out"  # <- 增加输出目录，确保压缩包在源目录外
+output_dir="package_out"
 
 # 清理临时目录和输出目录
 rm -rf "$temp_dir" "$output_dir"
@@ -28,18 +28,16 @@ cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 # 进入临时目录
 pushd "$temp_dir"
 
-# 检测系统类型
-OS_TYPE="$(uname | tr '[:upper:]' '[:lower:]')"
+# 压缩包输出路径
 ZIP_FILE="../$output_dir/${project}-${version}.zip"
 TAR_FILE="../$output_dir/${project}-${version}.tar.gz"
 
-# zip 命令（跨平台）
+# zip 打包
 zip -r -q "$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
 
-# tar 命令（跨平台）
-tar -czf "$TAR_FILE" --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" .
+# tar 打包，-C . 表示切换到当前目录，只打包临时目录内容
+tar -czf "$TAR_FILE" -C . . --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist"
 
-# 返回上级目录
 popd
 
 # 清理临时目录
