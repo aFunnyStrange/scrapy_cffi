@@ -11,50 +11,19 @@ jobs:
   check-changelog:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Verify CHANGELOG.md contains current version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${GITHUB_REF_NAME#release-}"
-
-          if [[ "$GITHUB_REF_NAME" == release* ]]; then
-            echo "Checking CHANGELOG.md for version $version"
-            if ! grep -q "## \[$version\]" CHANGELOG.md; then
-              echo "❌ ERROR: CHANGELOG.md does not contain entry for $version"
-              exit 1
-            fi
-          else
-            echo "Skipping changelog check (not a release tag)"
+      - uses: actions/checkout@v3
+      - shell: bash
+        run: bash ./scripts/check_changelog.sh
 
   build-and-publish:
     runs-on: ubuntu-latest
     needs: check-changelog
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+      - shell: bash
+        run: bash ./scripts/build_package.sh
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip build twine
-
-      - name: Clean __pycache__ and *.pyc files
-        run: |
-          find . -type d -name '__pycache__' -exec rm -rf {} +
-          find . -type f -name '*.py[co]' -delete
-
-      - name: Build the package (wheel + sdist)
-        run: python -m build
-
-      - name: Create source archive (zip + tar.gz)
+      - shell: bash
         if: startsWith(github.ref_name, 'release')
         run: |
           version="${GITHUB_REF_NAME#release-}"
@@ -62,50 +31,23 @@ jobs:
           zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*"
           tar --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" -czf "${project}-${version}.tar.gz" .
 
-      - name: Extract release notes from CHANGELOG.md
-        id: release_notes
-        run: |
-          version="${GITHUB_REF_NAME#release-}"
-          echo "Extracting notes for version $version"
-          if [ -f CHANGELOG.md ]; then
-            notes=$(awk "/## \\[$version\\]/ {flag=1; next} /^## \\[/ && flag {flag=0} flag" CHANGELOG.md)
-          fi
-          if [ -z "$notes" ]; then
-            notes="- No changelog entry found for $version"
-          fi
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          echo "$notes" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      - id: release_notes
+        shell: bash
+        run: bash ./scripts/extract_release_notes.sh
 
-      - name: Conditional Publish to PyPI / TestPyPI
+      - shell: bash
         env:
-          TWINE_USERNAME: __token__
           TWINE_PASSWORD_TEST: ${{ secrets.SCRAPY_CFFI_TEST }}
           TWINE_PASSWORD_RELEASE: ${{ secrets.SCRAPY_CFFI }}
-        run: |
-          echo "Git tag: $GITHUB_REF_NAME"
-          if [[ "$GITHUB_REF_NAME" == test* ]]; then
-            echo "Publishing to TestPyPI..."
-            export TWINE_PASSWORD=$TWINE_PASSWORD_TEST
-            twine upload --repository-url https://test.pypi.org/legacy/ dist/*
-          elif [[ "$GITHUB_REF_NAME" == release* ]]; then
-            echo "Publishing to PyPI..."
-            export TWINE_PASSWORD=$TWINE_PASSWORD_RELEASE
-            twine upload dist/*
-          else
-            echo "Tag does not match test* or release*, skipping PyPI upload."
+        run: bash ./scripts/publish_pypi.sh
 
-      - name: Generate SHA256 checksums
-        if: startsWith(github.ref_name, 'release')
-        run: |
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
-            sha256sum "$file" > "$file.sha256"
-          done
+      - if: startsWith(github.ref_name, 'release')
+        shell: bash
+        run: bash ./scripts/generate_checksums.sh
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref_name, 'release')
-        id: create_release
+      - if: startsWith(github.ref_name, 'release')
         uses: actions/create-release@v1
+        id: create_release
         with:
           tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
@@ -113,11 +55,11 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload Release Assets
-        if: startsWith(github.ref_name, 'release')
-        run: |
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
-            echo "Uploading $file ..."
-            gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
+      - if: startsWith(github.ref_name, 'release')
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+              gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
+          done
