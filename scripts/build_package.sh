@@ -36,7 +36,7 @@ TAR_FILE="../$output_dir/${project}-${version}.tar.gz"
 zip -r -q "$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
 
 # tar 打包，-C . 表示切换到当前目录，只打包临时目录内容
-tar -czf "$TAR_FILE" -C . . --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist"
+tar -czf "$TAR_FILE" --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" -C . .
 
 popd
 
