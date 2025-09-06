@@ -29,12 +29,12 @@ cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 ZIP_FILE="$output_dir/${project}-${version}.zip"
 TAR_FILE="$output_dir/${project}-${version}.tar.gz"
 
-# zip 打包（跨平台可用）
+# zip 打包
 pushd "$temp_dir"
 zip -r -q "../$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
 popd
 
-# tar 打包（跨平台，避免 BSD/macOS tar 报错）
+# tar 打包（注意选项顺序）
 tar -C "$temp_dir" \
     --exclude-vcs \
     --exclude="__pycache__" \
