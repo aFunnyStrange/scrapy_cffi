@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-# 升级 pip + 安装 build 和 twine
+# -----------------------------
+# 1. 安装依赖
+# -----------------------------
 python -m pip install --upgrade pip build twine
 
-# 清理缓存
+# -----------------------------
+# 2. 清理缓存和旧构建
+# -----------------------------
 find . -type d -name '__pycache__' -exec rm -rf {} +
 find . -type f -name '*.py[co]' -delete
 rm -rf dist/*
 
-# 构建 wheel + sdist
+# -----------------------------
+# 3. 构建 wheel + sdist
+# -----------------------------
 python -m build
 
-# 打包参数
+# -----------------------------
+# 4. 打包参数
+# -----------------------------
 project="scrapy_cffi"
-version="${GITHUB_REF_NAME#release-}"
+version="${GITHUB_REF_NAME#release-}"  # CI 下使用 tag
 temp_dir="package_temp"
 output_dir="package_out"
 
@@ -22,19 +30,25 @@ output_dir="package_out"
 rm -rf "$temp_dir" "$output_dir"
 mkdir -p "$temp_dir" "$output_dir"
 
-# 复制需要打包的文件到临时目录
+# -----------------------------
+# 5. 复制源码和资源文件到临时目录
+# -----------------------------
 cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 
-# 压缩包输出路径
+# -----------------------------
+# 6. 压缩包输出路径（确保在临时目录外）
+# -----------------------------
 ZIP_FILE="$output_dir/${project}-${version}.zip"
 TAR_FILE="$output_dir/${project}-${version}.tar.gz"
 
+# -----------------------------
+# 7. 压缩打包
+# -----------------------------
 # zip 打包
-pushd "$temp_dir"
-zip -r -q "../$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
-popd
+zip -r -q "$ZIP_FILE" "$temp_dir"/* \
+    -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
 
-# tar 打包（注意选项顺序）
+# tar 打包
 tar -C "$temp_dir" \
     --exclude-vcs \
     --exclude="__pycache__" \
@@ -42,7 +56,9 @@ tar -C "$temp_dir" \
     --exclude="dist" \
     -czf "$TAR_FILE" .
 
-# 清理临时目录
+# -----------------------------
+# 8. 清理临时目录
+# -----------------------------
 rm -rf "$temp_dir"
 
-echo "Package build complete: $ZIP_FILE and $TAR_FILE"
+echo "✅ Package build complete: $ZIP_FILE and $TAR_FILE"
