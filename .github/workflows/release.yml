@@ -5,7 +5,7 @@ on:
     tags:
       - 'test*'
       - 'release*'
-      - '*'  # 其他 tag 只跑 build
+      - '*'   # 普通 tag 只做 build
 
 jobs:
   check-changelog:
@@ -54,32 +54,25 @@ jobs:
         if: startsWith(github.ref_name, 'release')
         run: |
           version="${GITHUB_REF_NAME#release-}"
-          version="${version#v}"  # 去掉可选 v 前缀
           project="scrapy_cffi"
-
-          # zip 打包，排除 git, pycache, dist, *.egg-info
-          zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*" "${project}-${version}.zip" "${project}-${version}.tar.gz"
-
-          # tar.gz 打包，排除 git, pycache, dist, zip/tar.gz 自身
-          tar --exclude-vcs \
-              --exclude="__pycache__" \
-              --exclude="*.egg-info" \
-              --exclude="dist" \
-              --exclude="${project}-${version}.zip" \
-              --exclude="${project}-${version}.tar.gz" \
-              -czf "${project}-${version}.tar.gz" .
+          zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*"
+          tar --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" -czf "${project}-${version}.tar.gz" .
 
       - name: Extract release notes from CHANGELOG.md
         id: release_notes
         run: |
           version="${GITHUB_REF_NAME#release-}"
           echo "Extracting notes for version $version"
+
+          notes="- No changelog entry found for $version"
           if [ -f CHANGELOG.md ]; then
-            notes=$(awk "/## \\[$version\\]/ {flag=1; next} /^## \\[/ && flag {flag=0} flag" CHANGELOG.md)
+            extracted=$(awk "/## \\[$version\\]/ {flag=1; next} /^## \\[/ && flag {flag=0} flag" CHANGELOG.md)
+            if [ -n "$extracted" ]; then
+              notes="$extracted"
+            fi
           fi
-          if [ -z "$notes" ]; then
-            notes="- No changelog entry found for $version"
-          fi
+
+          # 输出到 $GITHUB_OUTPUT
           echo "content<<EOF" >> $GITHUB_OUTPUT
           echo "$notes" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -105,10 +98,8 @@ jobs:
       - name: Generate SHA256 checksums
         if: startsWith(github.ref_name, 'release')
         run: |
-          for file in dist/* "${project}-${version}.zip" "${project}-${version}.tar.gz"; do
-            if [ -f "$file" ]; then
-              sha256sum "$file" > "$file.sha256"
-            fi
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+            sha256sum "$file" > "$file.sha256"
           done
 
       - name: Create GitHub Release
@@ -125,11 +116,9 @@ jobs:
       - name: Upload Release Assets
         if: startsWith(github.ref_name, 'release')
         run: |
-          for file in dist/* "${project}-${version}.zip" "${project}-${version}.tar.gz"; do
-            if [ -f "$file" ]; then
-              echo "Uploading $file ..."
-              gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
-            fi
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+            echo "Uploading $file ..."
+            gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
