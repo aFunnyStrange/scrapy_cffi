@@ -27,9 +27,12 @@ mkdir -p "$temp_dir" "$output_dir"
 # 复制项目文件到临时目录
 cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 
-# 生成压缩包
-ZIP_FILE="$output_dir/${project}-${version}.zip"
-TAR_FILE="$output_dir/${project}-${version}.tar.gz"
+# 当前工作目录
+BASE_DIR="$(pwd)"
+
+# 生成压缩包绝对路径
+ZIP_FILE="$BASE_DIR/$output_dir/${project}-${version}.zip"
+TAR_FILE="$BASE_DIR/$output_dir/${project}-${version}.tar.gz"
 
 # zip 压缩
 pushd "$temp_dir"
