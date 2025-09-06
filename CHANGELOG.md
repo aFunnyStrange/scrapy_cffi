@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.5] - 2025-09-06
 ### Added
 - Initial PyPI release
-- CLI entrypoints support both `scrapy-cffi` and `scrapy_cffi`
-- GitHub Actions workflow for publishing
+- CLI change `scrapy-cffi`
+- Have a try GitHub Actions workflow for publishing
 - Enhance JSON parsing
 - Optimize some project structures
 
