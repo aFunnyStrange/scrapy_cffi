@@ -1,0 +1,65 @@
+name: Publish to PyPI / TestPyPI and GitHub Release
+
+on:
+  push:
+    tags:
+      - 'test*'
+      - 'release*'
+      - '*'
+
+jobs:
+  check-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - shell: bash
+        run: bash ./scripts/check_changelog.sh
+
+  build-and-publish:
+    runs-on: ubuntu-latest
+    needs: check-changelog
+    steps:
+      - uses: actions/checkout@v3
+      - shell: bash
+        run: bash ./scripts/build_package.sh
+
+      - shell: bash
+        if: startsWith(github.ref_name, 'release')
+        run: |
+          version="${GITHUB_REF_NAME#release-}"
+          project="scrapy_cffi"
+          zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*"
+          tar --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" -czf "${project}-${version}.tar.gz" .
+
+      - id: release_notes
+        shell: bash
+        run: bash ./scripts/extract_release_notes.sh
+
+      - shell: bash
+        env:
+          TWINE_PASSWORD_TEST: ${{ secrets.SCRAPY_CFFI_TEST }}
+          TWINE_PASSWORD_RELEASE: ${{ secrets.SCRAPY_CFFI }}
+        run: bash ./scripts/publish_pypi.sh
+
+      - if: startsWith(github.ref_name, 'release')
+        shell: bash
+        run: bash ./scripts/generate_checksums.sh
+
+      - if: startsWith(github.ref_name, 'release')
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.content }}
+          draft: false
+          prerelease: false
+
+      - if: startsWith(github.ref_name, 'release')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
+              gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
+          done
