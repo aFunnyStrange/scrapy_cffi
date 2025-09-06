@@ -5,7 +5,7 @@ on:
     tags:
       - 'test*'
       - 'release*'
-      - '*'
+      - '*'  # 其他 tag 只跑 build
 
 jobs:
   check-changelog:
@@ -25,7 +25,6 @@ jobs:
             fi
           else
             echo "Skipping changelog check (not a release tag)"
-          fi
 
   build-and-publish:
     runs-on: ubuntu-latest
@@ -55,9 +54,20 @@ jobs:
         if: startsWith(github.ref_name, 'release')
         run: |
           version="${GITHUB_REF_NAME#release-}"
+          version="${version#v}"  # 去掉可选 v 前缀
           project="scrapy_cffi"
-          zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*"
-          tar --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" -czf "${project}-${version}.tar.gz" .
+
+          # zip 打包，排除 git, pycache, dist, *.egg-info
+          zip -r "${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.egg-info*" "*.pytest_cache*" "dist/*" "${project}-${version}.zip" "${project}-${version}.tar.gz"
+
+          # tar.gz 打包，排除 git, pycache, dist, zip/tar.gz 自身
+          tar --exclude-vcs \
+              --exclude="__pycache__" \
+              --exclude="*.egg-info" \
+              --exclude="dist" \
+              --exclude="${project}-${version}.zip" \
+              --exclude="${project}-${version}.tar.gz" \
+              -czf "${project}-${version}.tar.gz" .
 
       - name: Extract release notes from CHANGELOG.md
         id: release_notes
@@ -95,8 +105,10 @@ jobs:
       - name: Generate SHA256 checksums
         if: startsWith(github.ref_name, 'release')
         run: |
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
-            sha256sum "$file" > "$file.sha256"
+          for file in dist/* "${project}-${version}.zip" "${project}-${version}.tar.gz"; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" > "$file.sha256"
+            fi
           done
 
       - name: Create GitHub Release
@@ -113,9 +125,11 @@ jobs:
       - name: Upload Release Assets
         if: startsWith(github.ref_name, 'release')
         run: |
-          for file in dist/* scrapy_cffi-*.zip scrapy_cffi-*.tar.gz; do
-            echo "Uploading $file ..."
-            gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
+          for file in dist/* "${project}-${version}.zip" "${project}-${version}.tar.gz"; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file ..."
+              gh release upload "${GITHUB_REF_NAME}" "$file" "$file.sha256" --clobber
+            fi
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
