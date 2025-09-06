@@ -32,22 +32,63 @@ to_scrapy_settings_py(settings)
 ### 2.1.1 MAX_GLOBAL_CONCURRENT_TASKS
 - **Type**: Optional[Union[int, None]]
 - **Default**: 300
-- **Description**: Defines the maximum number of concurrent asynchronous tasks allowed globally **within a single crawler engine instance**. When set to an integer, a global `BoundedSemaphore` is enabled to throttle overall task concurrency—including HTTP requests, WebSocket listeners, scheduler operations, and pipeline processing. When set to `None`, **no global concurrency restriction is enforced**, allowing the engine to freely schedule all tasks.
+- **Description**: Defines the maximum number of concurrent asynchronous tasks allowed globally within a single crawler engine instance. When set to an integer, a global `BoundedSemaphore` is enabled to throttle overall task concurrency—including HTTP requests, WebSocket listeners, scheduler operations, and pipeline processing. When set to `None`, no global concurrency restriction is enforced, allowing the engine to freely schedule all tasks.
 
 **Design Rationale**
-Each running spider in this framework is managed by its own dedicated engine instance. Within each engine, task scheduling is fully asynchronous: requests from the scheduler, middleware processing, downloading, and spider callbacks are all submitted as non-blocking asyncio tasks. This design maximizes performance and responsiveness.
+Each running spider in this framework is managed by its own dedicated engine instance. Within each engine, task scheduling is fully asynchronous: requests from the scheduler, middleware processing, downloading, and spider callbacks are all submitted as non-blocking `asyncio` tasks. This design maximizes performance and responsiveness.
 
-However, on certain platforms—especially Windows—the underlying `asyncio` event loop has a limited capacity for open file descriptors and concurrent coroutines. Without global throttling, mass task creation may result in errors such as:
+However, on certain platforms—especially **Windows**—the underlying asyncio event loop has a limited capacity for open file descriptors and concurrent coroutines. Without global throttling, mass task creation may result in runtime errors such as:
 
 ```python
 ValueError: too many file descriptors in select()
 ```
 
-To mitigate such issues, this setting introduces a **global concurrency lock**. The lock is shared across all internal components and is applied at all key task creation points using `async with global_lock():`, ensuring that only a limited number of tasks are active at any moment.
+**Platform-Specific FD Limits:**
+- **Windows**: Each process has a default C runtime (CRT) file descriptor limit, typically **512**. Newer CRT versions may allow this limit to be increased up to **8192** using `_setmaxstdio()`, but this adjustment:
+    - Only affects the current process
+    - Is not guaranteed to be available in all Python distributions
 
-This mechanism is especially critical for platform compatibility and stability, but it does **not replace** component-level concurrency controls. For example, the downloader may still enforce its own `MAX_CONCURRENT_REQ` limit to control HTTP pressure, while pipelines or Redis consumers can have their own batching logic. The global lock sits above all these, acting as the first layer of defense against resource exhaustion.
+- **Linux/macOS**: Each process’s file descriptor limit is controlled by the operating system via `ulimit` or `resource.RLIMIT_NOFILE`. Soft limits can be temporarily increased within the hard limit, but system-imposed hard limits still apply. High-performance event loops like `uvloop` reduce select/poll limitations, but FD exhaustion is still possible at extremely high concurrency.
 
-For Linux/macOS platforms, where high-performance event loops like `uvloop` are typically used and `select()` limits are much higher or nonexistent, you can safely set this value to `None` to achieve maximum throughput.
+**FD Monitoring Utility:**
+A cross-platform utility class, FDUtil, is provided to help developers monitor file descriptor usage:
+- `FDUtil.get_max_fd()` – returns the maximum number of file descriptors / handles available to the current process
+- `FDUtil.get_used_fd()` – returns the number of file descriptors / handles currently in use
+
+Example usage:
+```python
+from scrapy_cffi.utils import FDUtil
+
+max_fd = FDUtil.get_max_fd()
+used_fd = FDUtil.get_used_fd()
+print(f"Max FD: {max_fd}, Used FD: {used_fd}")
+
+FDUtil.print_fd_info()
+```
+
+**Important Notes:**
+1. `FDUtil` **only provides read-only information**. It does not provide any method to increase system or CRT limits.
+
+2. **Python-level modification of system FD limits is generally not feasible:**
+- Windows: `_setmaxstdio()` may increase the CRT limit, but availability is not guaranteed
+- Linux/macOS: Python can only adjust soft limits within the system hard limit
+
+3. `FDUtil` is intended as a **monitoring and guidance tool**, allowing developers to configure the crawler engine’s global concurrency semaphore safely.
+
+**Practical Recommendation:**
+Even on Linux/macOS, where `MAX_GLOBAL_CONCURRENT_TASKS = None` theoretically allows unlimited task scheduling, it is **strongly recommended to set a reasonable global concurrency limit based on empirical observations:**
+- Prevents resource exhaustion (FDs, sockets, memory)
+
+- Ensures stable and predictable performance across environments
+
+- Acts as the **first layer of defense**, complementing component-level concurrency controls like downloader limits, pipeline batching, or scheduler throttling
+
+**Mechanism:**
+This global lock is shared across all internal components and applied at key task creation points using `async with global_lock()`:, ensuring that only a limited number of tasks are active at any moment.
+
+
+
+
 
 
 --- 
