@@ -16,10 +16,11 @@ python -m build
 project="scrapy_cffi"
 version="${GITHUB_REF_NAME#release-}"
 temp_dir="package_temp"
+output_dir="package_out"  # <- 增加输出目录，确保压缩包在源目录外
 
-# 清理临时目录
-rm -rf "$temp_dir"
-mkdir -p "$temp_dir"
+# 清理临时目录和输出目录
+rm -rf "$temp_dir" "$output_dir"
+mkdir -p "$temp_dir" "$output_dir"
 
 # 复制需要打包的文件到临时目录
 cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
@@ -29,19 +30,14 @@ pushd "$temp_dir"
 
 # 检测系统类型
 OS_TYPE="$(uname | tr '[:upper:]' '[:lower:]')"
-if [[ "$OS_TYPE" == msys* ]] || [[ "$OS_TYPE" == mingw* ]]; then
-    # Windows Git Bash / MSYS
-    ZIP_CMD="zip -r -q"
-    TAR_CMD="tar -czf"
-else
-    # Linux / macOS
-    ZIP_CMD="zip -r -q"
-    TAR_CMD="tar -czf"
-fi
+ZIP_FILE="../$output_dir/${project}-${version}.zip"
+TAR_FILE="../$output_dir/${project}-${version}.tar.gz"
 
-# 压缩包输出到临时目录外，避免被打包进去
-$ZIP_CMD "../${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
-$TAR_CMD "../${project}-${version}.tar.gz" --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" .
+# zip 命令（跨平台）
+zip -r -q "$ZIP_FILE" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
+
+# tar 命令（跨平台）
+tar -czf "$TAR_FILE" --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" .
 
 # 返回上级目录
 popd
@@ -49,4 +45,4 @@ popd
 # 清理临时目录
 rm -rf "$temp_dir"
 
-echo "Package build complete: ${project}-${version}.zip and ${project}-${version}.tar.gz"
+echo "Package build complete: $ZIP_FILE and $TAR_FILE"
