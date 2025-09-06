@@ -193,31 +193,18 @@ def cleanup_loop(loop: asyncio.AbstractEventLoop):
     loop.close()
 
 # One spider corresponds to one engine
-# Run a single spider, where one set of components corresponds to one spider
-async def run_spider(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
+async def run_base(start_type, settings: "SettingsInfo", new_loop=False, *args, **kwargs):
     if new_loop: # Suitable for running in an independent thread or synchronous start, use with caution to avoid cross event loop operations
         now_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(now_loop)
     else: # Suitable for calling within an existing asynchronous environment (default)
         now_loop = asyncio.get_running_loop()
     crawler = Crawler()
-    robot_task = await crawler.do_initialization(settings=settings, start_type=1)
+    robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
     engine_task = now_loop.create_task(crawler.start_engines(robot_task=robot_task, *args, **kwargs))
     return crawler, engine_task
 
-# Run all spiders, where one set of components corresponds to multiple spiders
-async def run_all_spiders(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
-    if new_loop:
-        now_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(now_loop)
-    else:
-        now_loop = asyncio.get_running_loop()
-    crawler = Crawler()
-    robot_task = await crawler.do_initialization(settings=settings, start_type=0)
-    engine_task = now_loop.create_task(crawler.start_engines(robot_task=robot_task, *args, **kwargs))
-    return crawler, engine_task
-
-def run_spider_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
+def run_sync_base(start_type, settings: "SettingsInfo", new_loop=True, *args, **kwargs):
     if new_loop:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -228,7 +215,7 @@ def run_spider_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
     async def main():
         nonlocal crawler
         crawler = Crawler()
-        robot_task = await crawler.do_initialization(settings=settings, start_type=1)
+        robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
         await crawler.start_engines(robot_task, *args, **kwargs)
         crawler.stop_event.set()
         # await asyncio.Event().wait()
@@ -255,38 +242,25 @@ def run_spider_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
     finally:
         cleanup_loop(loop=loop)
 
+# Run a single spider, where one set of components corresponds to one spider
+async def run_spider(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
+    return await run_base(start_type=1, settings=settings, new_loop=new_loop, *args, **kwargs)
+
+# Run all spiders, where one set of components corresponds to multiple spiders
+async def run_all_spiders(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
+    return await run_base(start_type=0, settings=settings, new_loop=new_loop, *args, **kwargs)
+
+def run_spider_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
+    return run_sync_base(start_type=1, settings=settings, new_loop=new_loop, *args, **kwargs)
+
 def run_all_spiders_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
-    if new_loop:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.get_running_loop()
-    crawler: Crawler = None
+    return run_sync_base(start_type=0, settings=settings, new_loop=new_loop, *args, **kwargs)
 
-    async def main():
-        nonlocal crawler
-        crawler = Crawler()
-        robot_task = await crawler.do_initialization(settings=settings, start_type=0)
-        await crawler.start_engines(robot_task, *args, **kwargs)
-        crawler.stop_event.set()
-        # await asyncio.Event().wait()
-        await crawler.shutdown()
-
-    if sys.platform != "win32":
-        import signal
-        def handler():
-            loop.stop()
-        try:
-            loop.add_signal_handler(signal.SIGINT, handler)
-            loop.add_signal_handler(signal.SIGTERM, handler)
-        except NotImplementedError:
-            pass
-
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt detected, shutting down...")
-        if crawler:
-            loop.run_until_complete(crawler.shutdown())
-    finally:
-        cleanup_loop(loop=loop)
+__all__ = [
+    "Crawler",
+    "cleanup_loop",
+    "run_spider",
+    "run_all_spiders",
+    "run_spider_sync",
+    "run_all_spiders_sync",
+]

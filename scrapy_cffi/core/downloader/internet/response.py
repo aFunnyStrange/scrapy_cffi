@@ -57,18 +57,13 @@ class HttpResponse(Response):
         ctype = self.raw_response.headers.get("Content-Type", "").lower()
         if "xml" in ctype:
             return "xml"
-        if "json" in ctype:
-            return "json"
-        if "html" in ctype:
+        elif "html" in ctype:
             return "html"
-        return None
+        return "other"
 
     @cached_property
     def selector(self):
-        stype = self.get_selector_type()
-        if not stype:
-            return None
-        return Selector(response=self.raw_response, type=stype)
+        return Selector(response=self.raw_response, type=self.get_selector_type())
 
     def xpath(self, query):
         return self.selector.xpath(query)
@@ -80,19 +75,19 @@ class HttpResponse(Response):
         return self.selector.re(pattern)
     
     def json(self):
-        return self.raw_response.json()
+        return self.selector.json()
     
-    def extract_json(self, key: str="", re_rule: str=""):
+    def extract_json(self, key: str="", re_rule: str="") -> Union[List[Union[Dict, str]], Dict, str]:
         return self.selector.extract_json(key, re_rule=re_rule)
 
-    def extract_json_strong(self, key: str="", strict_level=2, re_rule=""):
+    def extract_json_strong(self, key: str="", strict_level=2, re_rule="") -> Union[List[Union[Dict, str]], Dict, str]:
         return self.selector.extract_json_strong(key, strict_level=strict_level, re_rule=re_rule)
     
     def protobuf_decode(self) -> Tuple[Dict, Dict]:
-        return ProtobufFactory.protobuf_decode(self.content)
+        return self.selector.protobuf_decode()
     
     def grpc_decode(self) -> Union[Tuple[Dict, Dict], List[Tuple[Dict, Dict]]]:
-        return ProtobufFactory.grpc_decode(self.content)
+        return self.selector.grpc_decode()
     
 class WebSocketResponse(Response):
     def __init__(self, 

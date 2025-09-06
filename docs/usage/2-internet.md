@@ -330,7 +330,7 @@ Extracts standard JSON from text content (for cases where JSON is embedded in HT
     **key**: **str** — key to search in parsed JSON objects
     **re_rule**: **str** — optional regex to extract JSON strings directly
 
-**Returns**: `List[Union[Dict, str]]` If no key is provided, all matched JSON blocks are returned. If only one match is found, a single object is returned instead of a list.
+**Returns**: `Union[List[Union[Dict, str]], Dict, str]` If no key is provided, all matched JSON blocks are returned. If only one match is found, a single object is returned instead of a list.
 
 Example:
 ```python

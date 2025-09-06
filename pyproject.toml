@@ -37,6 +37,7 @@ exclude = ["docs*", "tests*", "examples*"]
 
 [project.scripts]
 scrapy-cffi = "scrapy_cffi.commands.main:main"
+scrapy_cffi = "scrapy_cffi.commands.main:main"
 
 [tool.setuptools]
 include-package-data = true
