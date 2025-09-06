@@ -19,8 +19,9 @@ mkdir -p "$temp_dir"
 cp -r scrapy_cffi docs LICENSE README.md "$temp_dir/"
 
 pushd "$temp_dir"
-zip -r "../${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
 tar -czf "../${project}-${version}.tar.gz" --exclude-vcs --exclude="__pycache__" --exclude="*.egg-info" --exclude="dist" .
+zip -r "../${project}-${version}.zip" . -x "*.git*" "*__pycache__*" "*.pytest_cache*" "*.egg-info*" "dist/*"
+
 popd
 
 rm -rf "$temp_dir"
