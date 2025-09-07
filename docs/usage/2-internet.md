@@ -202,7 +202,7 @@ yield WebSocketRequest(
 Multiple message streaming encoding:
 ```python
 yield WebSocketRequest(
-    data=None, # Can be omitted or None; if provided, it will be overwritten.
+    send_message=None, # Can be omitted or None; if provided, it will be overwritten.
 ).protobuf_encode(
     typedef_or_stream=[
         (msg1, typedef1),

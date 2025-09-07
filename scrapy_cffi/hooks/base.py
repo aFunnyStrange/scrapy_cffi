@@ -15,6 +15,7 @@ def spiders_hooks(crawler: "Crawler") -> "SpidersHooks":
     hooks_obj = Hooks(
         session=Hooks(
             register_sessions=crawler.sessions.register_sessions_batch,
+            get_session_cookies=crawler.sessions.get_session_cookies,
         )
     )
     return cast(Hooks, hooks_obj)
@@ -23,7 +24,7 @@ def _pipelines_hooks(crawler: "Crawler") -> "_PipelinesHooks":
     hooks_obj = Hooks(
         session=Hooks(
             mark_end=crawler.sessions.mark_end,
-            session_end_cookies=crawler.sessions.session_end_cookies,
+            get_session_cookies=crawler.sessions.get_session_cookies,
         ),
     )
     return cast(Hooks, hooks_obj)

@@ -142,7 +142,13 @@ def parse(self, response):
 Framework hooks allow you to interact with specific subsystems of the crawler (such as the session manager or scheduler) **without accessing their internal implementations directly**. These hooks are dynamically injected into each spider and are accessible via the `self.hooks` attribute.
 Hooks are designed to provide **controlled extensibility**, enabling plugin-style behavior while preserving encapsulation.
 ## 4.1 register_sessions
-Registers multiple user sessions (typically cookie dicts) under a single logical group called a `session_id`. Once registered, any request using that `session_id` will **randomly rotate** among the associated sessions.
+Registers multiple user sessions (typically cookie dicts) under a single logical group called a `session_id`. Once registered, any request using that `session_id` will **randomly rotate** among the associated sessions. 
+
+**Note**
+This is only applicable to scenarios that require random sessions. If it involves `websocket` communication, it may lead to strange consequences because using group IDs, each request may use a different session for `websocket` communication.
+
+## 4.2 get_session_cookies
+Allow immediate retrieval of corresponding cookie information through `session_id`, without relying on only `session_end` for retrieval.
 
 **Purpose:**
 - Simulate multiple user identities.

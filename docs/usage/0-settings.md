@@ -86,11 +86,6 @@ Even on Linux/macOS, where `MAX_GLOBAL_CONCURRENT_TASKS = None` theoretically al
 **Mechanism:**
 This global lock is shared across all internal components and applied at key task creation points using `async with global_lock()`:, ensuring that only a limited number of tasks are active at any moment.
 
-
-
-
-
-
 --- 
 
 ### 2.1.2 PROJECT_NAME

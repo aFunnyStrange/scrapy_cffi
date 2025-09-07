@@ -45,7 +45,7 @@ class _InnerPipeline(Pipeline):
         if self.settings.RET_COOKIES:
             if item.get("session_end"):
                 self.hooks.session.mark_end(item.get("session_id"))
-            ret_cookies = await self.hooks.session.session_end_cookies(session_id=item.get("session_id"))
+            ret_cookies = self.hooks.session.get_session_cookies(session_id=item.get("session_id"))
             item[self.settings.RET_COOKIES] = ret_cookies
         self.logger.debug(f"[PIPELINE] Processing item: {item}")
         return item

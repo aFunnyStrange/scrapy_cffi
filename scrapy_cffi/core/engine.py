@@ -136,6 +136,10 @@ class Engine:
     async def manager_downloadinterceptors_result(self, downloadinterceptors_result: ChainResult):
         if downloadinterceptors_result.next == ChainNextEnum.RESCHEDULE:
             await self.taskManager.create(coro=self.process_scheduler(request=downloadinterceptors_result.request))
+        elif downloadinterceptors_result.next == ChainNextEnum.DOWNLOADER:
+            await self.taskManager.create(coro=self.process_downloader(request=downloadinterceptors_result.request))
+        elif downloadinterceptors_result.next == ChainNextEnum.RESPONSE:
+            await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=downloadinterceptors_result.response, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.SPIDER:
             await self.spiderInterceptor_chain.process_spider_input_chain(
                 response=downloadinterceptors_result.response, 
@@ -143,8 +147,6 @@ class Engine:
                 spider=self.spider, 
                 callback=self.manager_spiderinterceptors_result
             )
-        elif downloadinterceptors_result.next == ChainNextEnum.DOWNLOADER:
-            await self.taskManager.create(coro=self.process_downloader(request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.EXCEPTION:
             if not downloadinterceptors_result.is_across:
                 await self.downloadInterceptor_chain.exception_intercept_chain(request=downloadinterceptors_result.request, exception=downloadinterceptors_result.exception, spider=downloadinterceptors_result.spider, callback=self.manager_downloadinterceptors_result, is_across=1)

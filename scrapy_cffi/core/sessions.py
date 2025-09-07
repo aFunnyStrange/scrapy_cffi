@@ -457,11 +457,19 @@ class SessionManager:
             await wrapper.websocket_pool.close_all()
             await wrapper.session_close()
 
-    async def session_end_cookies(self, session_id: str) -> Union[Dict, None]:
-        wrapper = self._sessions.get(session_id)
-        if wrapper:
-            ret_cookies = {session_id: wrapper.session.cookies.get_dict()}
-            return ret_cookies
+    def get_session_cookies(self, session_id: str) -> Union[Dict, None]:
+        ret_cookies = {}
+        if session_id in self._group_sessions:
+            session_ids = self._group_sessions[session_id]
+            for it in session_ids:
+                wrapper = self._sessions.get(it)
+                if wrapper:
+                    ret_cookies[it] = wrapper.session.cookies.get_dict()
+        else:
+            wrapper = self._sessions.get(session_id)
+            if wrapper:
+                ret_cookies = {session_id: wrapper.session.cookies.get_dict()}
+        return ret_cookies
 
     async def close_all(self) -> None:
         await asyncio.gather(*[self._safe_close(session_id) for session_id in list(self._sessions.keys())])

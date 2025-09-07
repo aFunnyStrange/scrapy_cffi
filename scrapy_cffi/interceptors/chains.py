@@ -217,7 +217,7 @@ class InterruptibleChainManager(ChainManager):
             elif isinstance(result, Request):
                 return await callback(ChainResult(next=ChainNextEnum.RESCHEDULE, request=result, spider=spider, is_across=is_across))
             elif isinstance(result, Response):
-                return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider, is_across=is_across))
+                return await callback(ChainResult(next=ChainNextEnum.RESPONSE, response=result, request=request, spider=spider))
             raise ValueError("exception_intercept_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider, is_across=is_across))
     
@@ -242,7 +242,7 @@ class InterruptibleChainManager(ChainManager):
                 node = node.next
                 continue
             elif isinstance(result, BaseException):
-                return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider)) # Pass to spider errback)
+                return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider)) # Pass to spider errback
             raise ValueError("process_spider_input_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=response, request=request, spider=spider)) # Pass to spider callback
     
