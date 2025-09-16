@@ -12,6 +12,10 @@ Although items behave similarly to Python dictionaries, the `Item` class provide
 
 This framework includes a lightweight, asyncio-compatible reimplementation of Scrapy’s original `Item` logic. While raw dictionaries are still supported in pipelines and callbacks, using `Item` classes is recommended for better structure and robustness in medium to large-scale scraping projects.
 
+
+---
+
+
 ## 2.Attributes
 | Attribute | Description |
 | --------- | ----------- |
@@ -20,7 +24,11 @@ This framework includes a lightweight, asyncio-compatible reimplementation of Sc
 | **redisManager** | A Redis client maintained by the framework if Redis is enabled; otherwise, this will be `None`. It includes built-in auto-retry and reconnection logic for improved reliability, and fully exposes the native Redis API—users can operate it just like a standard Redis client. |
 | **mysqlManager** | A MySQL client maintained by the framework if MySQL is enabled; otherwise `None`. Like `redisManager`, it includes built-in auto-retry and reconnection logic. It fully exposes the native SQLAlchemy API, allowing users to operate it as they would a standard SQLAlchemy session/engine. Configuration details can be found in **7-databases.md**. |
 | **mongodbManager** | A MongoDB client maintained by the framework if MongoDB is enabled; otherwise `None`. Like `redisManager`, it includes built-in auto-retry and reconnection logic. It fully exposes the native PyMongo API, so users can operate it just like a standard PyMongo client. Configuration details can be found in **7-databases.md**. |
-| **hooks** | A signal hook manager that allows users to send custom signals during the pipeline lifecycle. |
+| **hooks** | A signal hook manager that allows users to send custom signals during the pipeline lifecycle. For more in "9-hook.md" |
+
+
+---
+
 
 ## 3.Methods
 #### 3.1 open_spider(self, spider: "Spider")

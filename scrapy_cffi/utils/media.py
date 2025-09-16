@@ -36,7 +36,7 @@ def guess_content_type(byte_data: bytes) -> str:
         mime_type = mime.from_buffer(byte_data[:max_byte_index])
         return mime_type
     except Exception as e:
-        return ""
+        return f"Failed to guess: {e}"
     
 def get_image_info_from_bytes(image_bytes: bytes) -> Union[dict, str]:
     try:
@@ -91,7 +91,7 @@ def get_video_info_from_bytes(video_bytes: bytes) -> Union[dict, str]:
     except Exception as e:
         return f"Failed to read video: {e}"
     
-def get_image_info_from_tempfile(image_bytes: bytes) -> dict:
+def get_image_info_from_tempfile(image_bytes: bytes) -> Union[dict, str]:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
         temp.write(image_bytes)
         temp_path = temp.name
@@ -113,7 +113,7 @@ def get_image_info_from_tempfile(image_bytes: bytes) -> dict:
         except Exception as e:
             print(f"Failed to delete temporary file: {e}")
 
-def get_video_info_from_tempfile(video_bytes: bytes) -> dict:
+def get_video_info_from_tempfile(video_bytes: bytes) -> Union[dict, str]:
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp:
         temp.write(video_bytes)
         temp_path = temp.name

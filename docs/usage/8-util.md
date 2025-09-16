@@ -1,5 +1,9 @@
 # 1.Introduction
-`scrapy_cffi.utils` provides a set of commonly used utility functions covering multiple areas, mainly focusing on **Concurrency**, **Logging**, and **Media** processing.
+`scrapy_cffi.utils` provides a set of commonly used utility functions covering multiple areas, mainly focusing on **Concurrency**, **Logging**, **Media**, **JsonLoad**, **Protobuf** and **ScrapyRunner** processing.
+
+
+---
+
 
 # 2.Concurrency
 ## 2.1 run_coroutine_in_new_loop
@@ -69,6 +73,9 @@ Comparison Table:
 
 > Combination of **ProcessManager + ProcessTaskManager**: Best for small to mid-sized projects, fast development, single-machine or LAN.
 > **MQ/Redis**: For large-scale distributed systems, heavy workloads, or frequent cross-machine calls.
+
+
+---
 
 
 # 3.Log
@@ -147,22 +154,44 @@ logger.info("Child process logger ready")
 - `formatter` supports custom formats
 - `extra_handlers` for custom log processing
 
+
+---
+
+
 # 4.Media
 Import from `scrapy_cffi.utils.media`
-## 4.1 guess_content_type(byte_data: bytes) -> str
-Detect MIME type from byte content.
-- Requires `python-magic` (Unix) or `python-magic-bin` (Windows)
+All functions operate directly on byte streams provided as input.
 
-**Example:**
+## 4.1 guess_content_type
+**Purpose**: Detect the MIME type from raw byte content.
+
+**Requirements**:
+- `python-magic` (Unix)
+- `python-magic-bin` (Windows)
+
+**Parameters**:
+- `byte_data: bytes` – raw byte content.
+
+**Returns**:
+- `str` – detected MIME type. With error message if failed.
+
+**Example Usage**:
 ```python
 mime_type = guess_content_type(file_bytes)
-print(mime_type)  # e.g. "image/png" 或 "video/mp4"
+print(mime_type)  # e.g., "image/png" or "video/mp4"
 ```
 
-## 4.2 get_image_info_from_bytes(image_bytes: bytes) -> Union[dict, str]
-Extract image metadata directly from byte stream (no temp files).
+## 4.2 get_image_info_from_bytes
+**Purpose**: Extract image metadata directly from a byte stream (no temporary files).
 
-**Return Example:**
+**Parameters**:
+- `image_bytes: bytes` – image data in bytes.
+
+**Returns**:
+- `dict` if successful, containing image info.
+- `str` with error message if failed.
+
+**Return Example**:
 ```python
 {
     "format": "PNG",
@@ -172,7 +201,7 @@ Extract image metadata directly from byte stream (no temp files).
 }
 ```
 
-**Example:**
+**Example Usage**:
 ```python
 info = get_image_info_from_bytes(image_bytes)
 if isinstance(info, dict):
@@ -181,11 +210,20 @@ else:
     print("Failed:", info)
 ```
 
-## 4.3 get_video_info_from_bytes(image_bytes: bytes) -> Union[dict, str]
-Extract video metadata directly from byte stream (no temp files).
-- Requires system-installed `ffprobe` (FFmpeg)
+## 4.3 get_video_info_from_bytes
+**Purpose**: Extract video metadata directly from a byte stream (no temporary files).
 
-**Return Example:**
+**Requirements**:
+- System-installed `ffprobe` (part of FFmpeg).
+
+**Parameters**:
+- `video_bytes: bytes` – video data in bytes.
+
+**Returns**:
+- `dict` if successful, containing video info (`width`, `height`, `duration`).
+- `str` with error message if failed.
+
+**Return Example**:
 ```python
 {
     "width": 1920,
@@ -194,7 +232,7 @@ Extract video metadata directly from byte stream (no temp files).
 }
 ```
 
-**Example:**
+**Example Usage**:
 ```python
 info = get_video_info_from_bytes(video_bytes)
 if isinstance(info, dict):
@@ -203,24 +241,41 @@ else:
     print("Failed:", info)
 ```
 
-## 4.4 get_image_info_from_tempfile(image_bytes: bytes) -> dict
-Extract image metadata via **temporary file**.
-Stable for cross-platform packaging or restricted environments.
+## 4.4 get_image_info_from_tempfile
+**Purpose**: Extract image metadata using a temporary file.
+Useful for cross-platform packaging or restricted environments.
 
-**Example:**
+**Parameters**:
+- `image_bytes: bytes` – image data.
+
+**Returns**:
+- `dict` if successful.
+- `str` with error message if failed.
+
+**Notes**:
+- Creates and automatically deletes a temporary file.
+
+**Example Usage**:
 ```python
 info = get_image_info_from_tempfile(image_bytes)
 print(info["format"], info["width"], info["height"])
 ```
 
-Notes:
-- Creates and auto-deletes temporary file
-- Returns error string if extraction fails
+## 4.5 get_video_info_from_tempfile
+**Purpose**: Extract video metadata using a temporary file and the pure Python `hachoir` library.
 
-## 4.4 get_video_info_from_tempfile(video_bytes: bytes) -> dict
-Extract video metadata via **temporary file**, using `hachoir` pure Python library.
+**Parameters**:
+- `video_bytes: bytes` – video data.
 
-**Return Example:**
+**Returns**:
+- `dict` if successful (`width`, `height`, `duration`).
+- `str` with error message if failed.
+
+**Notes**:
+- More portable; suitable for standalone applications.
+- Automatically cleans up temporary files.
+
+**Return Example**:
 ```python
 {
     "width": 1280,
@@ -229,13 +284,255 @@ Extract video metadata via **temporary file**, using `hachoir` pure Python libra
 }
 ```
 
-**Example:**
+**Example Usage**:
 ```python
 info = get_video_info_from_tempfile(video_bytes)
 print(info["width"], info["height"], info["duration"])
 ```
 
-Notes:
-- More portable, suitable for standalone apps
-- Auto-cleans temporary files
-- Returns error string on failure
+**Dependencies & Installation**:
+```text
+# Python magic library for MIME detection:
+Windows: pip install scrapy_cffi[windows]
+Linux/macOS: pip install scrapy_cffi[unix]
+
+# Pillow for image processing:
+pip install Pillow
+
+# Hachoir for video metadata extraction:
+pip install hachoir
+
+# FFmpeg (ffprobe) for video byte stream parsing:
+Linux: sudo apt install ffmpeg
+macOS: brew install ffmpeg
+Windows: Download from https://ffmpeg.org/download.html and add to PATH
+```
+
+
+---
+
+
+# 5.JsonLoad
+This module provides a powerful JSON extraction utility, serving as the underlying implementation for `response.extract_json` and `response.extract_json_strong` methods in your scraper.
+The main difference is that `response` methods automatically pass `text=response.text` as input.
+## 5.1 extract_nested_objects
+**Purpose**: Extract JSON objects from text using regex.
+
+**Parameters**:
+- `text: str` – the text content to search.
+- `key: str` (optional) – extract only values associated with this key. If not provided, all JSON blocks are returned.
+- `re_rule: str` (optional) – custom regex for matching; no need to import `re` or `regex`.
+
+**Returns**:
+- Single match → returns the JSON object directly.
+- Multiple matches → returns a list of JSON objects.
+- If no key is provided → returns all JSON blocks.
+
+**Note**: Cannot verify JSON validity; purely regex-based extraction.
+
+## 5.2 JSONScanner
+**Purpose**: Advanced string scanning JSON extractor built on top of `JSONExtractor`. Handles nested JSONs that may fail in lower-level parsing.
+
+**Usage**:
+```python
+json_scanner = JSONScanner(strict_level=0)
+results = json_scanner.scan_text(text, key="target_key")
+```
+
+**Parameters**:
+- `strict_level` – strictness level for JSON parsing (default 2):
+    - 2 → uses orjson (fastest, strictest)
+    - 1 → uses Python built-in json
+    - 0 → uses json5 (most lenient, supports comments and missing quotes)
+
+- `text: str` – text to extract JSON from.
+- `key: str` (optional) – specific key to extract.
+- `re_rule: str` (optional) – custom regex for direct matching.
+
+**Returns**:
+- Single match → JSON object (`dict` or `list`).
+- Multiple matches → list of JSON objects.
+
+**Behavior**:
+- Can recursively extract nested JSON within string values.
+- Automatically avoids duplicate extractions.
+- Handles malformed JSON (comments, missing quotes) according to `strict_level`.
+
+**Example**:
+```python
+scanner = JSONScanner(strict_level=0)
+data = scanner.scan_text(text, key="user")
+print(data)
+```
+
+## 5.3 JSONExtractor (Internal)
+**Purpose**: Base class for `JSONScanner`, provides lower-level extraction methods:
+- `remove_json_comments(text: str) -> str` – remove JavaScript-style comments.
+- `try_parse_json_recursive(json_str: str, max_depth: int = 5)` – recursive parsing of JSON strings.
+- `find_key_recursively(obj: Any, target_key: str)` – search for key recursively in dict/list.
+- `find_brace_pairs_safe(text: str)` – safe extraction of top-level JSON objects by brace matching.
+- `extract(text: str, key: str = "", re_rule: str = "")` – unified extraction interface used by `JSONScanner`.
+
+**Key Notes**:
+- `JSONScanner.scan_text` is effectively a robust high-level parser capable of handling:
+    - Single JSON objects
+    - Nested JSONs
+    - Multiple concatenated JSON objects
+
+- It automatically chooses parsing strategy based on `strict_level`.
+- Deduplicates results and supports parsing of JSON stored as strings inside JSON.
+
+
+---
+
+
+# 6.Protobuf
+`ProtobufFactory` is a utility class that provides unified methods for encoding and decoding Protobuf and gRPC messages.
+All methods are **static**, and it relies on the third-party library **blackboxprotobuf** (install via `pip install bbpb`; note that `pip install blackprotobuf` is an old fork).
+## 6.1 protobuf_encode
+**Purpose**: Encode a Python dictionary into a Protobuf byte stream.
+
+**Implementation**: Directly calls `blackboxprotobuf.encode_message`.
+
+**Signature**:
+```python
+@staticmethod
+def protobuf_encode(data: Dict, typedef: Dict) -> bytes
+```
+
+## 6.1 protobuf_decode
+**Purpose**: Decode a Protobuf byte stream into a Python dictionary.
+
+**Implementation**: Directly calls `blackboxprotobuf.decode_message`.
+
+**Signature**:
+```python
+@staticmethod
+def protobuf_decode(data: bytes) -> Tuple[Dict, Dict]
+```
+- Returns a tuple `(decoded_data, typedef)`.
+
+## 6.1 grpc_encode
+**Purpose**: Encode a Python dictionary into a gRPC-compliant message.
+
+**Behavior**:
+- Uses `blackboxprotobuf.encode_message` for the payload.
+- Prepends a gRPC message header:
+    - 1 byte: compression flag (0 = no compression, 1 = gzip compression)
+    - 4 bytes: message length (big-endian)
+- Optionally compresses the message body with gzip if `is_gzip=True`.
+
+**Signature**:
+```python
+@staticmethod
+def grpc_encode(data: Dict, typedef: Dict, is_gzip: bool=False) -> bytes
+```
+- Returns the full gRPC-encoded byte sequence.
+
+## 6.1 grpc_stream_encode
+**Purpose**: Encode multiple gRPC messages into a single concatenated byte stream.
+
+**Behavior**:
+- Accepts data: `List[Tuple[Dict, Dict]]`, where each tuple contains a message and its typedef.
+- Encodes each message individually using `grpc_encode`.
+- Concatenates all encoded messages into a single byte stream.
+
+**Signature**:
+```python
+@staticmethod
+def grpc_stream_encode(data: List[Tuple[Dict, Dict]], is_gzip=False) -> bytes
+```
+- Returns the concatenated byte stream of all messages.
+
+## 6.1 grpc_decode
+**Purpose**: Decode gRPC messages from a byte stream.
+
+**Behavior**:
+- Automatically parses the gRPC message header (compression flag + length).
+- Supports both single messages and concatenated multi-message streams.
+- Automatically decompresses gzip-compressed messages if needed.
+
+**Signature**:
+```python
+@staticmethod
+def grpc_decode(data: bytes) -> Union[Tuple[Dict, Dict], List[Tuple[Dict, Dict]]]
+```
+- Returns:
+    - A single tuple `(decoded_data, typedef)` for one message,
+    - Or a list of tuples `[(decoded_data1, typedef1), (decoded_data2, typedef2), ...]` for multiple messages.
+- **Note**: There is no separate grpc_stream_decode because grpc_decode already handles multi-message streams.
+
+This design allows consistent encoding/decoding of both **single Protobuf messages** and **streamed gRPC messages** in a unified interface.
+
+
+---
+
+
+# 7.ScrapyRunner
+This module provides **two ways to start Scrapy spiders**:
+1. **ScrapyRunner**: Launches spiders via subprocess mode, using the Scrapy CLI.
+2. **InlineScrapyRunner**: Launches spiders via the Scrapy API (`CrawlerRunner`), with options for process- or thread-based execution.
+
+## 7.1 ScrapyRunner Class
+This class uses **subprocess mode** to start Scrapy spiders.
+It is the simplest way to run spiders, with each spider running in an independent child process, isolated from others. Suitable for batch execution and cross-platform usage.
+
+### 7.1.1 get_all_spider_names
+**Purpose**: Retrieve all spider names recognized by the Scrapy project.
+**Returns**: `List[str]`
+
+Example:
+```python
+runner = ScrapyRunner()
+spiders = runner.get_all_spider_names()
+print(spiders)
+```
+
+### 7.1.1 run_all_spiders
+**Purpose**: Start multiple spiders in batch.
+
+**Parameters**:
+- spiders: `Union[List[str], None]` — List of spider names to run. If `None`, all spiders in the project will be started.
+
+**Behavior**:
+- Each spider runs in its own `multiprocessing.Process`.
+- The child process executes the Scrapy CLI (`execute(["scrapy", "crawl", spider_name])`), initializing the reactor and logging system automatically.
+
+### 7.1.1 run_spider
+**Purpose**: Start a single spider.
+
+**Parameters**:
+- spider_name: str — The name of the spider to start.
+
+**Behavior**:
+- Runs the spider in a separate child process.
+- The child process inherits the parent’s stdout/stderr, so logs are displayed in the terminal by default.
+- You can configure Scrapy settings (`LOG_FILE`) to redirect logs to files if needed.
+
+## 7.2 InlineScrapyRunner Class
+This class uses **Scrapy API mode** (`CrawlerRunner`) to launch spiders.
+Methods and parameters are similar to `ScrapyRunner`, with an additional `use_process` parameter to choose execution mode.
+
+**Features**
+- **Process mode (default `use_process=True`)**
+    - Each spider runs in an independent child process.
+    - Equivalent in behavior to `ScrapyRunner`: isolated reactor, logging controlled by Scrapy settings.
+
+- **Thread mode (`use_process=False`)**
+    - All spiders run in the same process using a single `CrawlerRunner` and reactor.
+    - Non-blocking to the main thread, allowing other tasks to continue.
+    - **Note**: In thread mode, all spiders should be submitted at once to avoid `ReactorNotRestartable` errors.
+
+**Methods**
+- **get_all_spider_names()**
+    - Retrieves all spider names (same as `ScrapyRunner`).
+
+- **run_all_spiders(spiders: List[str]=None, use_process: bool=True)**
+    - Starts multiple spiders, with optional process or thread mode.
+
+- **run_spider(spider_name: str, use_process: bool=True)**
+    - Starts a single spider, with optional process or thread mode.
+
+**✅ Summary**
+- **ScrapyRunner**: Simplest execution method, each spider runs in an independent child process, similar to running the CLI, cross-platform and stable.
+- **InlineScrapyRunner**: Flexible execution, suitable for embedding spiders in Python programs, supports non-blocking threads or independent processes, allowing centralized management.

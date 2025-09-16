@@ -7,7 +7,7 @@
 - Allows detailed TLS fingerprint customization, enabling strong `TLS/JA3` fingerprint emulation.
 
 
-
+---
 
 
 # 2.Request Objects
@@ -244,6 +244,10 @@ Essentially, `MediaRequest` wraps the use of the Range header in HTTP requests, 
 | --------- | ----------- |
 | **single_part_size** | The size (in **bytes**) of each video segment to download. |
 | **media_size** | The total size (in **bytes**) of the video file, required in order to determine the final segment to request. |
+
+
+---
+
 
 # 3.Response Objects
 `scrapy_cffi` provides two types of response objects: `HttpResponse` and `WebSocketResponse`.

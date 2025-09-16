@@ -5,6 +5,11 @@ pip install sqlalchemy[asyncio] aiomysql
 pip install motor>=3.7.1
 ```
 
+
+---
+
+
+
 # 2.Usage
 `RedisManager` and `MongoDBManager` support seamless use of their native APIs. `SQLAlchemyMySQLManager` requires the use of the instance attributes `engine` and `session_factory`.
 

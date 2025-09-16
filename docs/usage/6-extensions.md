@@ -7,6 +7,10 @@ Even when no extensions are enabled, the framework will still emit signals inter
 - 1.Since `scrapy_cffi` is based on a **fully asynchronous scheduling model**, signal delivery may not be immediate. Therefore, signals are intended for **extension and observation**, not for strict timing or control logic. If you require precise event timing, `scrapy_cffi` may not be suitable. However, each `SignalInfo` instance includes a `signal_time` timestamp, which can be used for downstream processing or analysis.
 - 2.When using `RedisSpider`, due to its **persistent listening behavior**, the spider process only exits when manually interrupted (e.g., via Ctrl+C). In such cases, it is possible that some signals remain unprocessed before the crawler's shutdown logic is triggered. These signals may be dropped, but this is considered an **acceptable trade-off** as long as the process exits cleanly.
 
+
+---
+
+
 # 2.SignalInfo Overview
 # 2.1 Core Component Signals
 ```python
@@ -66,6 +70,10 @@ SignalInfo(signal_time=time.time(), item=item, exception=exception)
 ```
 **Note:**
 The signals `item_dropped` and `item_error` are **not emitted by the framework itself**. They are **reserved for user-defined extensions or middleware**. If you want to monitor item drops or handle item-related exceptions via signals, you must manually trigger them in your pipeline logic using the hooks.
+
+
+---
+
 
 # 3.Registering Extensions
 To use custom signal handlers, follow these steps:

@@ -177,17 +177,16 @@ class JSONExtractor:
             all_matches.extend(self.find_key_recursively(obj, key))
         return all_matches[0] if len(all_matches) == 1 else all_matches
 
-class JSONScanner:
+class JSONScanner(JSONExtractor):
     def __init__(self, strict_level: int = 2):
-        self.strict_level = strict_level
-        self.extractor = JSONExtractor(strict_level=self.strict_level)
+        super().__init__(strict_level=strict_level)
 
     def scan_text(self, text: str, key: str = "", re_rule: str = "") -> Union[List[Union[Dict, str]], Dict, str]:
-        results = self.extractor.extract(text=text, key=key, re_rule=re_rule)
+        results = self.extract(text=text, key=key, re_rule=re_rule)
         if results:
             return results
 
-        top_obj = self.extractor.extract(text=text)
+        top_obj = self.extract(text=text)
         if not top_obj:
             return []
 
@@ -199,7 +198,7 @@ class JSONScanner:
                     if isinstance(v, (dict, list)):
                         stack.append(v)
                     elif isinstance(v, str):
-                        inner_res = self.extractor.extract(text=v, key=key)
+                        inner_res = self.extract(text=v, key=key)
                         if inner_res is not None:
                             if isinstance(inner_res, list):
                                 results.extend(inner_res)
@@ -210,7 +209,7 @@ class JSONScanner:
                     if isinstance(item, (dict, list)):
                         stack.append(item)
                     elif isinstance(item, str):
-                        inner_res = self.extractor.extract(text=item, key=key)
+                        inner_res = self.extract(text=item, key=key)
                         if inner_res is not None:
                             if isinstance(inner_res, list):
                                 results.extend(inner_res)

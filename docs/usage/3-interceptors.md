@@ -1,6 +1,8 @@
 # 1.Introduction
 In modern network communication, various middleware are often referred to as **Interceptors**. To align with this modern terminology, `scrapy_cffi` adopts the term **Interceptor** to define its middleware, which functionally correspond to the middlewares in `scrapy`.
 
+---
+
 # 2.BaseInterceptor
 A common base class for `DownloadInterceptor` and `SpiderInterceptor`, serving as the unified interceptor interface within the framework.
 

@@ -1,10 +1,11 @@
+# 1.Introduction
 `scrapy_cffi` includes a user-friendly command-line interface (CLI) that allows you to quickly scaffold a new project or generate spiders.
 While the default structure is designed to be practical out of the box, you're encouraged to adapt it to suit your own development needs.
 
 **Notes:**
 > The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
 
-# 1.startproject
+# 2.startproject
 ```bash
 scrapy-cffi startproject <project_name>
 ```
@@ -13,15 +14,15 @@ scrapy-cffi startproject <project_name>
 
 
 
-# 2.genspider
+# 3.genspider
 > After startproject <project_name>
-## 2.1 Spider
+## 3.1 Spider
 ```bash
 cd <project_name>
 scrapy-cffi genspider <spider_name> <domain>
 ```
 
-## 2.2 RedisSpider
+## 3.2 RedisSpider
 ```bash
 cd <project_name>
 scrapy-cffi genspider -r <spider_name> <domain>
@@ -31,22 +32,22 @@ scrapy-cffi genspider -r <spider_name> <domain>
 
 
 
-# 3.demo
+# 4.demo
 > If you need to refer to the demo project.
-## 3.1 Normal
-### 3.1.1 Spider
+## 4.1 Normal
+### 4.1.1 Spider
 ```bash
 scrapy-cffi demo
 ```
 
-### 3.1.2 RedisSpider
+### 4.1.2 RedisSpider
 ```bash
 scrapy-cffi demo -r
 ```
 
 
 
-# 4.extra
+# 5.extra
 In real-world development, spiders are usually integrated with backend systems. `scrapy_cffi` only provides the core crawling system, while additional components such as message queues (MQ) and task schedulers (e.g., Celery) should be configured by users according to their own requirements.
 
 **⚠️ Important Note:**

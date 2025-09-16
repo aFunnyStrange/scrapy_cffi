@@ -10,7 +10,7 @@ Each spider class includes several built-in attributes by default:
 | run_py_dir | A `Path` object representing the directory path of the executing `.py` script. |
 | session_id | Defaults to an empty string; used to assign a specific session ID per spider. |
 | ctx_dict | Stores all loaded JavaScript execution contexts (as specified by `js_path`). Keys are filenames, values are context objects. |
-| hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. "See "Hook Usage" section. |
+| hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. For more in "9-hook.md" |
 
 ---
 
@@ -138,62 +138,11 @@ def parse(self, response):
 
 
 
-# 4.Hook Usage
-Framework hooks allow you to interact with specific subsystems of the crawler (such as the session manager or scheduler) **without accessing their internal implementations directly**. These hooks are dynamically injected into each spider and are accessible via the `self.hooks` attribute.
-Hooks are designed to provide **controlled extensibility**, enabling plugin-style behavior while preserving encapsulation.
-## 4.1 register_sessions
-Registers multiple user sessions (typically cookie dicts) under a single logical group called a `session_id`. Once registered, any request using that `session_id` will **randomly rotate** among the associated sessions. 
-
-**Note**
-This is only applicable to scenarios that require random sessions. If it involves `websocket` communication, it may lead to strange consequences because using group IDs, each request may use a different session for `websocket` communication.
-
-## 4.2 get_session_cookies
-Allow immediate retrieval of corresponding cookie information through `session_id`, without relying on only `session_end` for retrieval.
-
-**Purpose:**
-- Simulate multiple user identities.
-- Rotate between different cookie pools for login-required pages.
-- Avoid frequent login requests.
-
-**Usage:**
-```python 
-# Register multiple cookie sessions
-session_id = self.hooks.session.register_sessions({
-    "user1": "cookies_dict1",
-    "user2": "cookies_dict2",
-    "user3": "cookies_dict3",
-    "user4": "cookies_dict4"
-})
-# Use that session_id in requests
-yield HttpRequest(
-    session_id=session_id,
-    ...
-)
-```
-
-**Behind the scenes:**
-- `session.register_sessions()` passes a mapping of `session_key -> cookies_dict` to the framework’s internal session manager.
-- It returns a unique `session_id` representing this logical group.
-- When a request is sent using this `session_id`, a random session from the group is selected.
-- Multiple session groups can coexist and be used independently within the same spider.
-
-**Notes on Hook Design**
-- Hooks are grouped by **component responsibility**, such as `self.hooks.session`, etc.
-- Each hook exposes only **selected callable features**, not direct access to core internals.
-- This design ensures:
-    - Clean separation of concerns.
-    - Safe and controlled interaction with internal components.
-    - Easier extensibility through external plugins.
-
-
-
-
-
-# 5.Advanced Usage
-## 5.1 Override `start` method
+# 4.Advanced Usage
+## 4.1 Override `start` method
 All initial requests go through the `start` method. You may customize logic here.
 
-### 5.1.1 post requests
+### 4.1.1 post requests
 ```python
 async def start(self, *args, **kwargs):
     for url in self.start_urls:
@@ -212,7 +161,7 @@ async def start(self, *args, **kwargs):
         )
 ```
 
-### 5.1.2 Task Spider
+### 4.1.2 Task Spider
 ```python
 async def start(self, task_data, *args, **kwargs):
     for task in task_data:
@@ -236,7 +185,7 @@ Then you can run with:
 scrapy_cffi.run_spider(settings, task_data=task_data)
 ```
 
-## 5.2 Use Redis Task Data
+## 4.2 Use Redis Task Data
 Similar to `scrapy-redis`, override `make_request_from_data`.
 **Note**: Must be defined as an `async def.` If you want generator-style behavior, override `start` too.
 ```python 
@@ -257,7 +206,7 @@ async def make_request_from_data(self, data: bytes):
     )
 ```
 
-## 5.3 Blocking Async Generator
+## 4.3 Blocking Async Generator
 In real-world asynchronous crawling scenarios, it's often necessary to dispatch a batch of requests and then collect their results in order to decide whether to proceed with the next step. To support this kind of **result-driven task control**, the framework provides a utility class called `ResultHolder`.
 
 The usage pattern is as follows:

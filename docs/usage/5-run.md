@@ -3,8 +3,16 @@
 
 Because the framework is built on top of Python's `asyncio`, it follows a centralized event loop principle. This means certain exceptions (like keyboard interrupts) can only be handled at the top-level loop. To accommodate different usage scenarios, the framework provides two modes: **Standard User Mode** and **Advanced User Mode**.
 
+
+---
+
+
 # 2.Standard User Mode
 In most use cases, you can simply use the synchronous interfaces run_spider_sync or run_all_spiders_sync. These are plug-and-play APIs that automatically create and run the event loop internally, allowing you to start spiders without dealing with asynchronous logic.
+
+
+---
+
 
 # 3.Advanced User Mode
 If you need fine-grained control (e.g., integrating with an existing multithreaded, multiprocess, or asynchronous system), you can use the asynchronous versions `run_spider` and `run_all_spiders` directly.
@@ -18,6 +26,10 @@ When working with custom event loops (`new_loop`), be aware of potential risks r
 ```python 
 from scrapy_cffi.utils import start_multiprocess_log_listener, init_logger_multiprocessing
 ```
+
+
+---
+
 
 # 4.Additional Information
 ## 4.1 ❓ **Why is there no global `settings.py`?**
