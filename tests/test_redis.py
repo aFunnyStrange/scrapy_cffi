@@ -16,11 +16,13 @@ async def test_redis_single():
 
     await redis_manager.delete(key_new_seen, key_is_req, queue_key)
 
-    res = await redis_manager.push_if_not_seen(fp, req_bytes, key_new_seen, key_is_req, queue_key)
-    print("push_if_not_seen:", res)
+    res = await redis_manager.do_filter(fp, key_new_seen, key_is_req)
+    if res:
+        print("do_filter:", res)
+        await redis_manager.lpush(queue_key, req_bytes)
 
-    req = await redis_manager.dequeue_request(queue_key, decode_responses=True)
-    print("dequeue_request:", req)
+        req = await redis_manager.dequeue_request(queue_key, decode_responses=True)
+        print("dequeue_request:", req)
 
     await redis_manager.delete(key_new_seen, key_is_req, queue_key)
     print("SINGLE test done.\n")
@@ -47,8 +49,8 @@ async def test_redis_sentinel():
 
     await redis_manager.delete(key_new_seen, key_is_req, queue_key)
 
-    res = await redis_manager.push_if_not_seen(fp, req_bytes, key_new_seen, key_is_req, queue_key)
-    print("push_if_not_seen:", res)
+    res = await redis_manager.do_filter(fp, req_bytes, key_new_seen, key_is_req, queue_key)
+    print("do_filter:", res)
 
     req = await redis_manager.dequeue_request(queue_key, decode_responses=True)
     print("dequeue_request:", req)
@@ -80,8 +82,8 @@ async def test_redis_cluster():
 
     await redis_manager.delete(key_new_seen, key_is_req, queue_key)
 
-    res = await redis_manager.push_if_not_seen(fp, req_bytes, key_new_seen, key_is_req, queue_key)
-    print("push_if_not_seen:", res)
+    res = await redis_manager.do_filter(fp, req_bytes, key_new_seen, key_is_req, queue_key)
+    print("do_filter:", res)
 
     req = await redis_manager.dequeue_request(queue_key, decode_responses=True)
     print("dequeue_request:", req)

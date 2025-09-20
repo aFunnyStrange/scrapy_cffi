@@ -236,3 +236,46 @@ class ProcessManager:
         if self._manager and hasattr(self._manager, item):
             return getattr(self._manager, item)
         raise AttributeError(item)
+    
+class ThreadFuture:
+    def __init__(self, func: Callable, *args, **kwargs):
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+        self._result: Optional[Any] = None
+        self._exception: Optional[Exception] = None
+        self._done_event = threading.Event()
+        self._callbacks: List[Callable[['ThreadFuture'], None]] = []
+
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        try:
+            self._result = self._func(*self._args, **self._kwargs)
+        except Exception as e:
+            self._exception = e
+        finally:
+            self._done_event.set()
+            for callback in self._callbacks:
+                try:
+                    callback(self)
+                except Exception:
+                    pass
+
+    def done(self) -> bool:
+        return self._done_event.is_set()
+
+    def result(self, timeout: float = None) -> Any:
+        finished = self._done_event.wait(timeout)
+        if not finished:
+            raise TimeoutError("Task not finished yet")
+        if self._exception:
+            raise self._exception
+        return self._result
+
+    def add_done_callback(self, fn: Callable[['ThreadFuture'], None]):
+        if self.done():
+            fn(self)
+        else:
+            self._callbacks.append(fn)

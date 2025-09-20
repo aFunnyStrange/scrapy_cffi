@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 1.新增 redis 爬虫支持 redis 哨兵，集群模式 (70%)
 2.抽离调度器与去重器 (100%)
 3.扩展，爬虫的 hooks 支持所有数据库/mq (0%)
-4.新增 mq 管理，rabbitmq 实现队列通信 (0%)
-5.日志管理支持专门的 mq，同时兼容原来的 logger.xx()形式 (0%)
+4.新增 mq 管理，rabbitmq 实现队列通信 (50%)
+5.日志管理队列 kafka，同时兼容原来的 logger.xx()形式 (30%)
 6.session_end 应当抽离一个对象，而不应该污染数据，需要兼容 websocket 模式 (0%)
 
 ---

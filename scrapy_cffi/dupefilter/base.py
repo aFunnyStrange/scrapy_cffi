@@ -5,11 +5,10 @@ if TYPE_CHECKING:
     from ..spiders import Spider
     from ..models.api import SettingsInfo
 
-class DupeFilter(object):
+class BaseDupeFilter(object):
     def __init__(self, settings: "SettingsInfo"=None, **kwargs):
         self.new_seen: set[str] = set() # Requests marked as seen but not yet sent
         self.sent_seen: set[str] = set() # Requests that have been seen and already sent
-        self.lock = asyncio.Lock()
 
         self.settings = settings
         self.include_headers = self.settings.INCLUDE_HEADERS
@@ -35,6 +34,22 @@ class DupeFilter(object):
             for msg in request.send_message:
                 fp.update(msg)
         return fp.hexdigest()
+    
+    def request_seen(self, new_seen: Set=None, request: "Request"=None, **kwargs):
+        raise NotImplementedError("DupeFilter missing request_seen()")
+    
+    async def mark_sent(self, request: "Request", spider: "Spider", **kwargs):
+        raise NotImplementedError("DupeFilter missing mark_sent()")
+    
+class DupeFilter(BaseDupeFilter):
+    def __init__(self, settings: "SettingsInfo"=None, **kwargs):
+        self.new_seen: set[str] = set() # Requests marked as seen but not yet sent
+        self.sent_seen: set[str] = set() # Requests that have been seen and already sent
+        self.lock = asyncio.Lock()
+
+        self.settings = settings
+        self.include_headers = self.settings.INCLUDE_HEADERS
+        self.kwargs = kwargs
 
     def request_seen(self, new_seen: Set=None, request: "Request"=None, **kwargs):
         if not new_seen:

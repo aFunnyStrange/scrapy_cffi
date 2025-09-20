@@ -1,5 +1,5 @@
-from .base import DupeFilter
+from .base import BaseDupeFilter
 
 __all__ = [
-    "DupeFilter"
+    "BaseDupeFilter"
 ]

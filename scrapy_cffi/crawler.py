@@ -105,19 +105,12 @@ class Crawler:
             spiders_name = get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
 
         scheduler_path = self.settings.SCHEDULER
-        dupefilter_path = self.settings.DUPEFILTER
-        if dupefilter_path:
-            dupefilter_cls = load_object(path=dupefilter_path)
-        else:
-            from .dupefilter import DupeFilter
-            dupefilter_cls = DupeFilter
-
         if scheduler_path:
             scheduler_cls = load_object(path=scheduler_path)
         else:
             from .core.scheduler import Scheduler
             scheduler_cls = Scheduler
-        self.scheduler = scheduler_cls.from_crawler(self, dupefilter_cls, spiders_name)
+        self.scheduler = scheduler_cls.from_crawler(self, spiders_name)
 
         for spider_cls in self.spiders:
             has_redis_key = getattr(spider_cls, "redis_key", None)

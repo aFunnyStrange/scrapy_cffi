@@ -1,5 +1,4 @@
 import asyncio, time
-from ...dupefilter import DupeFilter
 from ..downloader.internet import Request, WebSocketRequest
 from typing import TYPE_CHECKING, List, Dict
 # from ...utils import run_with_timeout
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 class BaseScheduler:
     def __init__(
         self, 
-        dupefilter_cls,
         spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
@@ -32,12 +30,10 @@ class BaseScheduler:
         self.signalManager = signalManager
         self.kwargs = kwargs
         self.is_distributed = False
-        self.dupefilter: DupeFilter = dupefilter_cls(settings=self.settings)
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", dupefilter_cls, spiders_name: List):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
         return cls(
-            dupefilter_cls=dupefilter_cls,
             spiders_name=spiders_name, 
             stop_event=crawler.stop_event,
             settings=crawler.settings,
@@ -58,7 +54,6 @@ class BaseScheduler:
 class Scheduler(BaseScheduler):
     def __init__(
         self, 
-        dupefilter_cls,
         spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
@@ -68,7 +63,6 @@ class Scheduler(BaseScheduler):
         **kwargs
     ):
         super().__init__(
-            dupefilter_cls=dupefilter_cls,
             spiders_name=spiders_name, 
             stop_event=stop_event, 
             settings=settings, 
@@ -77,6 +71,8 @@ class Scheduler(BaseScheduler):
             signalManager=signalManager, 
             **kwargs
         )
+        from ...dupefilter.api import DupeFilter
+        self.dupefilter = DupeFilter(settings=self.settings, **kwargs)
         self._queue_map: Dict[str, asyncio.Queue] = {}
         if self.settings.PROJECT_NAME:
             self._queue_map[self.settings.PROJECT_NAME] = asyncio.Queue()

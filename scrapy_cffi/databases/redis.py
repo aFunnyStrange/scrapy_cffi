@@ -60,20 +60,17 @@ class RedisManager(redis.Redis):
 
         if redis_mode == "single":
             tmp_instance: "Redis" = redis.from_url(redis_url, **kwargs)
-
         elif redis_mode == "sentinel":
             if not isinstance(redis_url, list):
                 raise ValueError("Sentinel mode requires a list of (host, port)")
             from redis.sentinel import Sentinel
             self._sentinel = Sentinel(redis_url, **kwargs)
             tmp_instance = self._sentinel.master_for(master_name, **kwargs)
-
         elif redis_mode == "cluster":
             if not isinstance(redis_url, list):
                 raise ValueError("Cluster mode requires a list of dict [{'host':..., 'port':...}]")
             from redis.cluster import RedisCluster
             tmp_instance = RedisCluster(startup_nodes=redis_url, **kwargs)
-
         else:
             raise ValueError(f"Unsupported redis_mode: {redis_mode}")
 
@@ -145,15 +142,13 @@ class RedisManager(redis.Redis):
 
         return method_cache[name]
 
-
     @auto_retry
-    async def push_if_not_seen(self, fp: str, req_bytes: bytes, key_new_seen: str, key_is_req: str, queue_key: str):
+    async def do_filter(self, fingerprint: str, key_new_seen: str, key_is_req: str):
         script = """
-        local fp = ARGV[1]
-        if redis.call("SADD", KEYS[1], fp) == 1 then
-            if redis.call("SADD", KEYS[2], fp) == 1 then
-                redis.call("SREM", KEYS[2], fp)
-                redis.call("RPUSH", KEYS[3], ARGV[2])
+        local fingerprint = ARGV[1]
+        if redis.call("SADD", KEYS[1], fingerprint) == 1 then
+            if redis.call("SADD", KEYS[2], fingerprint) == 1 then
+                redis.call("SREM", KEYS[2], fingerprint)
                 return 1
             end
         end
@@ -161,12 +156,10 @@ class RedisManager(redis.Redis):
         """
         return await self.eval(
             script,
-            3,
+            2,
             key_new_seen,
             key_is_req,
-            queue_key,
-            fp,
-            req_bytes
+            fingerprint
         )
 
     @auto_retry

@@ -1,6 +1,7 @@
 import asyncio, time
 from . import BaseScheduler
-from ..downloader.internet import Request, WebSocketRequest
+from ...dupefilter.api import BloomDupeFilter
+from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List
 # from ...utils import run_with_timeout
 from ...extensions import signals
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
 class RedisScheduler(BaseScheduler):
     def __init__(
         self, 
-        dupefilter_cls,
         spiders_name: List=None,
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
@@ -27,7 +27,6 @@ class RedisScheduler(BaseScheduler):
         **kwargs
     ):
         super().__init__(
-            dupefilter_cls=dupefilter_cls,
             spiders_name=spiders_name, 
             stop_event=stop_event, 
             settings=settings, 
@@ -37,21 +36,15 @@ class RedisScheduler(BaseScheduler):
             **kwargs
         )
         self.redisManager = redisManager
-        if self.redisManager.redis_mode == "cluster":
-            self.cluster_nodes = [f"{n['host']}:{n['port']}" for n in self.redisManager._redis_url]
-        else:
-            self.cluster_nodes = ["None"]
-
-        self.new_seen = self.settings._NEW_SEEN
-        self.sent_seen = self.settings._SENT_SEEN
         if not self.redisManager:
             raise ValueError("used RedisScheduler must config settings.REDIS_INFO")
+        self.dupefilter = BloomDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
+
         self.is_distributed = True
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", dupefilter_cls, spiders_name: List):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
         return cls(
-            dupefilter_cls=dupefilter_cls,
             spiders_name=spiders_name, 
             stop_event=crawler.stop_event,
             settings=crawler.settings,
@@ -62,8 +55,13 @@ class RedisScheduler(BaseScheduler):
         )
     
     async def put(self, request: "Request", spider: "Spider", **kwargs):
-        # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
-        if request.dont_filter or (isinstance(request, WebSocketRequest) and request.websocket_end):
+        is_seen = await self.dupefilter.request_seen(request=request, spider=spider)
+        if is_seen:
+            async with self.sessions_lock:
+                self.sessions.release(session_id=request.session_id)
+            self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
+            return False
+        else:
             res = await self.redisManager.rpush(self.get_queue_key(spider=spider), request.to_bytes())
             if res:
                 self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
@@ -73,46 +71,9 @@ class RedisScheduler(BaseScheduler):
                     self.sessions.release(session_id=request.session_id)
                 self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"insert redis error: {request.url}"))
                 return False
-        else:
-            fingerprint = self.dupefilter.get_fingerprint(request=request)
-
-            if self.redisManager.redis_mode == "cluster":
-                # cluster
-                from ...utils import get_node
-
-                node = get_node(self.cluster_nodes, fingerprint)
-
-                key_new_seen_node = f"{self.new_seen}:{node}"
-                key_is_req_node = f"{self.sent_seen}:{node}"
-
-                res = await self.redisManager.push_if_not_seen(
-                    fp=fingerprint,
-                    req_bytes=request.to_bytes(),
-                    key_new_seen=key_new_seen_node,
-                    key_is_req=key_is_req_node,
-                    queue_key=self.get_queue_key(spider=spider)
-                )
-            else:
-                # single / sentinel
-                res = await self.redisManager.push_if_not_seen(
-                    fp=fingerprint,
-                    req_bytes=request.to_bytes(),
-                    key_new_seen=self.new_seen,
-                    key_is_req=self.sent_seen,
-                    queue_key=self.get_queue_key(spider=spider)
-                )
-            if res:
-                self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
-                return True
-            else:
-                async with self.sessions_lock:
-                    self.sessions.release(session_id=request.session_id)
-                self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
-                return False
 
     async def put_is_req(self, request: "Request", spider: "Spider", **kwargs):
-        if not request.dont_filter:
-            await self.redisManager.sadd(self.sent_seen, self.dupefilter.get_fingerprint(request=request))
+        return await self.dupefilter.mark_sent(request=request, spider=spider, **kwargs)
 
     async def get(self, spider: "Spider"=None, **kwargs):
         request_bytes = await self.redisManager.dequeue_request(queue_key=self.get_queue_key(spider=spider))
