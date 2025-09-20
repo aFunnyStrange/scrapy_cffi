@@ -1,7 +1,6 @@
-from .base import Spider, RedisSpider, BaseSpider
+from .base import Spider, BaseSpider
 
 __all__ = [
     "BaseSpider",
     "Spider",
-    "RedisSpider"
 ]

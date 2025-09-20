@@ -25,4 +25,4 @@ def run(project_name, is_demo=False):
     if not is_demo:
         print(f"Project '{project_name}' created.")
         print(f"\tcd {project_name}")
-        print(f"\tscrapy_cffi genspider <spider_name> <domain>")
+        print(f"\tscrapy-cffi genspider <spider_name> <domain>")

@@ -1,6 +1,6 @@
-from .base import Scheduler, RedisScheduler
+from .base import BaseScheduler, Scheduler
 
 __all__ = [
+    "BaseScheduler",
     "Scheduler",
-    "RedisScheduler"
 ]

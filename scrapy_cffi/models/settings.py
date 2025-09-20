@@ -1,5 +1,5 @@
 from ..models import BaseValidatedModel, StrictValidatedModel
-from ..models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo
+from ..models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo, RabbitMQInfo, KafkaInfo
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
 
@@ -53,29 +53,35 @@ class SettingsInfo(BaseValidatedModel):
     EXTENSIONS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
 
     SCHEDULER: Optional[str] = None
+    DUPEFILTER: Optional[str] = None
     SCHEDULER_PERSIST: Optional[bool] = False
     INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
     FILTER_KEY: Optional[str] = "cffiFilter"
     DONT_FILTER: Optional[bool] = False
-    _filter_new_seen_req_key: str = PrivateAttr()
-    _filter_is_req_key: str = PrivateAttr()
+    _new_seen: str = PrivateAttr()
+    _sent_seeen: str = PrivateAttr()
 
     WS_END_TAG: Optional[str] = "websocket end" # You can customize the TAG to avoid conflicts with the response content
     RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
     
     JS_PATH: Optional[Union[str, bool]] = None # Absolute/relative path to JS files or default to ./js_path under the running script directory
+    
+    LOG_INFO: Optional[LogInfo] = LogInfo()
+
     REDIS_INFO: Optional[RedisInfo] = RedisInfo()
     MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
     MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
-    LOG_INFO: Optional[LogInfo] = LogInfo()
+
+    RABBITMQ_INFO: Optional[RabbitMQInfo] = RabbitMQInfo()
+    KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
     
     @property
-    def _FILTER_NEW_SEEN_REQ_KEY(self):
-        return self._filter_new_seen_req_key
+    def _NEW_SEEN(self):
+        return self._new_seen
     
     @property
-    def _FILTER_IS_REQ_KEY(self):
-        return self._filter_is_req_key
+    def _SENT_SEEN(self):
+        return self._sent_seeen
 
     # Used to warn users about custom fields not recognized by the framework; these should be maintained by the user
     def __init__(self, **data: Any):
@@ -108,8 +114,8 @@ class SettingsInfo(BaseValidatedModel):
         if self.PROXY_URL:
             self.PROXIES = {"http": self.PROXY_URL, "https": self.PROXY_URL}
 
-        self._filter_new_seen_req_key  = f'{self.FILTER_KEY}_new_seen_req_key'
-        self._filter_is_req_key = f'{self.FILTER_KEY}_is_req_key'
+        self._new_seen  = f'{self.FILTER_KEY}_new_seen'
+        self._sent_seeen = f'{self.FILTER_KEY}_sent_seen'
         return self
     
 __all__ = [

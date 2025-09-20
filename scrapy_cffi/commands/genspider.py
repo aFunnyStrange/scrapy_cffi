@@ -25,8 +25,8 @@ def run(spider_name: str, allow_domain: str, use_redis: bool, is_demo=False):
     check_use_redis(project_path, use_redis)
 
     class_name = snake_to_camel(spider_name)
+    import_path = "from scrapy_cffi.spiders.redis import RedisSpider" if use_redis else "from scrapy_cffi.spiders import Spider"
     base_class = "RedisSpider" if use_redis else "Spider"
-    base_import = "scrapy_cffi.spiders"
     start_urls = f'redis_key = ""' if use_redis else f'start_urls = ["https://{allow_domain}"]'
 
     base = Path(__file__).parent.parent # scrapy_cffi
@@ -38,8 +38,8 @@ def run(spider_name: str, allow_domain: str, use_redis: bool, is_demo=False):
         class_name=class_name,
         spider_name=spider_name,
         domain=allow_domain,
+        import_path=import_path,
         base_class=base_class,
-        base_import=base_import,
         start_urls=start_urls
     )
     target_file = project_path / "spiders" / f"{spider_name}.py" # use abspath

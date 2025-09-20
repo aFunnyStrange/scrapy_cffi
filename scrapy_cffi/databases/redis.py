@@ -16,9 +16,11 @@ from redis.exceptions import ConnectionError, TimeoutError
 from tenacity import retry, wait_fixed, retry_if_exception_type
 from functools import wraps
 import inspect, asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union, Tuple, List, Dict
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from redis.asyncio.client import Redis
+    from redis.asyncio.connection import ConnectionPool
 
 def auto_retry(func):
     @wraps(func)
@@ -41,11 +43,40 @@ def auto_retry(func):
 
 
 class RedisManager(redis.Redis):
-    def __init__(self, stop_event: asyncio.Event, redis_url: str, **kwargs):
+    def __init__(
+        self,
+        stop_event: asyncio.Event,
+        redis_url: Union[str, List[Tuple[str, int]], List[Dict]],
+        redis_mode: str = "single",
+        master_name: str = None,
+        **kwargs
+    ):
         self.stop_event = stop_event
-        tmp_instance = redis.from_url(redis_url, **kwargs)
+        self.redis_mode = redis_mode
         self._redis_url = redis_url
+        self._master_name = master_name
         self._method_cache = {}
+        self._sentinel = None
+
+        if redis_mode == "single":
+            tmp_instance: "Redis" = redis.from_url(redis_url, **kwargs)
+
+        elif redis_mode == "sentinel":
+            if not isinstance(redis_url, list):
+                raise ValueError("Sentinel mode requires a list of (host, port)")
+            from redis.sentinel import Sentinel
+            self._sentinel = Sentinel(redis_url, **kwargs)
+            tmp_instance = self._sentinel.master_for(master_name, **kwargs)
+
+        elif redis_mode == "cluster":
+            if not isinstance(redis_url, list):
+                raise ValueError("Cluster mode requires a list of dict [{'host':..., 'port':...}]")
+            from redis.cluster import RedisCluster
+            tmp_instance = RedisCluster(startup_nodes=redis_url, **kwargs)
+
+        else:
+            raise ValueError(f"Unsupported redis_mode: {redis_mode}")
+
         super().__init__(
             connection_pool=tmp_instance.connection_pool,
             **{k: v for k, v in kwargs.items() if k in redis.Redis.__init__.__code__.co_varnames}
@@ -54,18 +85,30 @@ class RedisManager(redis.Redis):
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
         return cls(
-            stop_event=crawler.stop_event, 
-            redis_url=crawler.settings.REDIS_INFO.resolved_url
+            stop_event=crawler.stop_event,
+            redis_mode=crawler.settings.REDIS_INFO.MODE,
+            redis_url=crawler.settings.REDIS_INFO.resolved_url,
+            master_name=crawler.settings.REDIS_INFO.MASTER_NAME
         )
 
     async def _reconnect(self):
         if self.stop_event.is_set():
             return
         await self.close()
-        new_instance = redis.from_url(self._redis_url)
-        self.connection_pool = new_instance.connection_pool
+        if self.redis_mode == "single":
+            new_instance: "Redis" = redis.from_url(self._redis_url)
+            self.connection_pool: "ConnectionPool" = new_instance.connection_pool
 
-    def __getattribute__(self, name):
+        elif self.redis_mode == "sentinel":
+            master = self._sentinel.master_for(self._master_name)
+            self.connection_pool: "ConnectionPool"  = master.connection_pool
+
+        elif self.redis_mode == "cluster":
+            from redis.cluster import RedisCluster
+            new_instance: RedisCluster  = RedisCluster(startup_nodes=self._redis_url)
+            self.connection_pool: "ConnectionPool"  = new_instance.connection_pool
+
+    def __getattribute__(self, name: str):
         if name.startswith("_") or name in ("_method_cache", "_reconnect"):
             return super().__getattribute__(name)
 
@@ -82,7 +125,9 @@ class RedisManager(redis.Redis):
                 allowed_during_shutdown = {"execute_command", "initialize", "parse_response"}
 
                 if self.stop_event.is_set():
-                    if (name not in allowed_during_shutdown) or (name == "execute_command" and args[0] != "DEL") or (name == "parse_response" and args[1] != "DEL"):
+                    if (name not in allowed_during_shutdown) or \
+                        (name == "execute_command" and args[0] != "DEL") or \
+                        (name == "parse_response" and args[1] != "DEL"):
                         raise asyncio.CancelledError(f"Stop event set, abort Redis operation: {name}")
 
                 try:

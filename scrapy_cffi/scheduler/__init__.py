@@ -1,4 +1,5 @@
-from ..core.scheduler import Scheduler, RedisScheduler
+from ..core.scheduler import Scheduler
+from ..core.scheduler.api import RedisScheduler
 
 __all__ = [
     "Scheduler",

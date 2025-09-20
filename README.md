@@ -26,6 +26,7 @@ pip install scrapy_cffi
 ```
 
 #### From source
+unstable on github
 ```bash
 git clone https://github.com/aFunnyStrange/scrapy_cffi.git
 cd curl_cffi

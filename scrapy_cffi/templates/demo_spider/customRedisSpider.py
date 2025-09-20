@@ -1,4 +1,4 @@
-from scrapy_cffi.spiders import RedisSpider
+from scrapy_cffi.spiders.redis import RedisSpider
 from scrapy_cffi.exceptions import Failure
 from scrapy_cffi.internet import *
 

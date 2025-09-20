@@ -105,12 +105,19 @@ class Crawler:
             spiders_name = get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
 
         scheduler_path = self.settings.SCHEDULER
+        dupefilter_path = self.settings.DUPEFILTER
+        if dupefilter_path:
+            dupefilter_cls = load_object(path=dupefilter_path)
+        else:
+            from .dupefilter import DupeFilter
+            dupefilter_cls = DupeFilter
+
         if scheduler_path:
             scheduler_cls = load_object(path=scheduler_path)
         else:
             from .core.scheduler import Scheduler
             scheduler_cls = Scheduler
-        self.scheduler = scheduler_cls.from_crawler(self, spiders_name)
+        self.scheduler = scheduler_cls.from_crawler(self, dupefilter_cls, spiders_name)
 
         for spider_cls in self.spiders:
             has_redis_key = getattr(spider_cls, "redis_key", None)
@@ -173,8 +180,8 @@ class Crawler:
                 if getattr(spider, "redis_key", None):
                     await self.redisManager.delete(spider.redis_key)
             await self.redisManager.delete(self.settings.PROJECT_NAME)
-            await self.redisManager.delete(self.settings._FILTER_NEW_SEEN_REQ_KEY)
-            await self.redisManager.delete(self.settings._FILTER_IS_REQ_KEY)
+            await self.redisManager.delete(self.settings._NEW_SEEN)
+            await self.redisManager.delete(self.settings._SENT_SEEN)
 
         # await asyncio.sleep(1)
         for engine in self.engines:
