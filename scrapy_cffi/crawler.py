@@ -28,9 +28,13 @@ class Crawler:
         self.pipelines_chain = None
         self.sessions = None
         self.sessions_lock = None
+
         self.redisManager = None
         self.mysqlManager = None
         self.mongodbManager = None
+        self.rabbitmqManager = None
+        self.kafkaManager = None
+
         self.logger: "Logger" = None
         self.signalManager = None
         self.robot = None
@@ -76,6 +80,18 @@ class Crawler:
             from .databases.mongodb import MongoDBManager
             self.mongodbManager = MongoDBManager.from_crawler(self)
 
+        # rabbitmq
+        if self.settings.RABBITMQ_INFO.resolved_url:
+            from .mq.rabbitmq import RabbitMQManager
+            self.rabbitmqManager = RabbitMQManager.from_crawler(self)
+            if not self.settings.SCHEDULER:
+                self.settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
+
+        # kafka
+        if self.settings.KAFKA_INFO.resolved_url:
+            from .mq.kafka import KafkaManager
+            self.kafkaManager = KafkaManager.from_crawler(self)
+
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
 
@@ -87,7 +103,14 @@ class Crawler:
 
         from .hooks import signals_hooks
         for ext_cls in self.settings.EXTENSIONS_PATH.value:
-            self.extensions_list.append(ext_cls.from_crawler(signals_hooks(self)))
+            self.extensions_list.append(ext_cls.from_crawler(
+                hooks=signals_hooks(self), 
+                redisManager=self.redisManager,
+                mysqlManager=self.mysqlManager,
+                mongodbManager=self.mongodbManager,
+                rabbitmqManager=self.rabbitmqManager,
+                kafkaManager=self.kafkaManager,
+        ))
 
         self.downloader = Downloader.from_crawler(self)
 
@@ -175,6 +198,12 @@ class Crawler:
             await self.redisManager.delete(self.settings.PROJECT_NAME)
             await self.redisManager.delete(self.settings._NEW_SEEN)
             await self.redisManager.delete(self.settings._SENT_SEEN)
+        
+        if self.rabbitmqManager:
+            await self.rabbitmqManager.close()
+
+        if self.kafkaManager:
+            await self.kafkaManager.close()
 
         # await asyncio.sleep(1)
         for engine in self.engines:

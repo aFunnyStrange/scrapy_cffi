@@ -1,5 +1,5 @@
 import asyncio
-from scrapy_cffi.mq.kafka import KafkaManager  # 替换成实际导入路径
+from scrapy_cffi.mq.kafka import KafkaManager
 
 async def main():
     # 1️⃣ 创建 stop_event

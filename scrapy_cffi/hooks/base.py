@@ -16,6 +16,9 @@ def spiders_hooks(crawler: "Crawler") -> "SpidersHooks":
         session=Hooks(
             register_sessions=crawler.sessions.register_sessions_batch,
             get_session_cookies=crawler.sessions.get_session_cookies,
+        ),
+        scheduler=Hooks(
+            get_start_req=getattr(crawler.scheduler, "get_start_req", lambda *a, **k: None)
         )
     )
     return cast(Hooks, hooks_obj)

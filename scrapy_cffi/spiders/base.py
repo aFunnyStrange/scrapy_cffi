@@ -4,7 +4,6 @@ from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..core.scheduler.api import RedisScheduler
     from ..core.downloader.internet.response import HttpResponse
     from ..exceptions import Failure
     from ..crawler import Crawler

@@ -49,7 +49,7 @@ class RabbitMqScheduler(RedisScheduler):
             sessions_lock=crawler.sessions_lock,
             signalManager=crawler.signalManager,
             redisManager=crawler.redisManager,
-            rabbitmqManager=None
+            rabbitmqManager=crawler.rabbitmqManager
         )
     
     async def put(self, request: "Request", spider: "Spider", **kwargs):
@@ -71,14 +71,14 @@ class RabbitMqScheduler(RedisScheduler):
                 return False
 
     async def get(self, spider: "Spider"=None, **kwargs):
-        request_bytes = await self.rabbitmqManager.dequeue_request(queue_key=self.get_queue_key(spider=spider))
+        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=self.get_queue_key(spider=spider))
         if request_bytes is None:
             queue_size = await self.rabbitmqManager.llen(self.get_queue_key(spider=spider))
             return queue_size
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        request_bytes = await self.rabbitmqManager.dequeue_request(queue_key=getattr(spider, "rabbitmq_queue", self.settings.PROJECT_NAME))
+        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=getattr(spider, "rabbitmq_queue", self.settings.PROJECT_NAME))
         if request_bytes is None:
             return None
         return request_bytes

@@ -71,8 +71,13 @@ class Scheduler(BaseScheduler):
             signalManager=signalManager, 
             **kwargs
         )
-        from ...dupefilter.api import DupeFilter
-        self.dupefilter = DupeFilter(settings=self.settings, **kwargs)
+        if self.settings.DUPEFILTER:
+            from ...utils import load_object
+            dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
+            self.dupefilter = dupefilter_cls(settings=self.settings, **kwargs)
+        else:
+            from ...dupefilter.api import DupeFilter
+            self.dupefilter = DupeFilter(settings=self.settings, **kwargs)
         self._queue_map: Dict[str, asyncio.Queue] = {}
         if self.settings.PROJECT_NAME:
             self._queue_map[self.settings.PROJECT_NAME] = asyncio.Queue()

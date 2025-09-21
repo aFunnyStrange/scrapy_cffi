@@ -19,7 +19,6 @@ class BaseMQInfo(StrictValidatedModel):
 
     @model_validator(mode="after")
     def assemble_url(self) -> "BaseMQInfo":
-        """自动组装 URL，如果 URL 未指定，则根据 HOST、PORT、USERNAME、PASSWORD 构建"""
         if not self.URL and self.HOST and self.PORT:
             auth_part = ""
             if self.USERNAME and self.PASSWORD:
@@ -42,6 +41,7 @@ class RabbitMQInfo(BaseMQInfo):
     EXCHANGE_NAME: str = "scrapy_cffi"
     EXCHANGE_TYPE: str = "direct"  # direct / fanout / topic / headers
     PREFETCH_COUNT: int = 10
+    DONT_FILTER: bool = False
 
     @model_validator(mode="after")
     def assemble_url(self) -> "RabbitMQInfo":
@@ -54,6 +54,7 @@ class RabbitMQInfo(BaseMQInfo):
 
 class KafkaInfo(BaseMQInfo):
     CONSUMER_GROUP: Optional[str] = "scrapy_cffi"
+    PERSISTENT_TIME: Optional[int] = 24*60*60*7000
 
 __all__ = [
     "RabbitMQInfo",

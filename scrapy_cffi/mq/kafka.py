@@ -18,7 +18,6 @@ from tenacity import retry, wait_fixed, retry_if_exception_type
 
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from aiokafka.structs import ConsumerRecord
 
 def auto_retry(func):
     @wraps(func)
@@ -46,10 +45,12 @@ class KafkaManager:
         kafka_url: Union[str, List[str]] = None,
         loop: asyncio.AbstractEventLoop = None,
         consumer_group: str = "scrapy_cffi",
+        persistent_time: int = 24*60*60*7000
     ):
         self.stop_event = stop_event or asyncio.Event()
         self.loop = loop or asyncio.get_event_loop()
         self.consumer_group = consumer_group
+        self.persistent_time = persistent_time
 
         if isinstance(kafka_url, str):
             self.mq_mode = "single"
@@ -72,7 +73,8 @@ class KafkaManager:
         return cls(
             stop_event=crawler.stop_event,
             kafka_urls=crawler.settings.KAFKA_INFO.resolved_url,
-            consumer_group=crawler.settings.KAFKA_INFO.CONSUMER_GROUP
+            consumer_group=crawler.settings.KAFKA_INFO.CONSUMER_GROUP,
+            persistent_time=crawler.settings.KAFKA_INFO.PERSISTENT_TIME,
         )
 
     @auto_retry
@@ -119,7 +121,11 @@ class KafkaManager:
                 new_topic = NewTopic(
                     name=topic,
                     num_partitions=num_partitions,
-                    replication_factor=replication_factor
+                    replication_factor=replication_factor,
+                    topic_configs={
+                        "retention.ms": str(self.persistent_time),
+                        "cleanup.policy": "delete"
+                    }
                 )
                 await admin.create_topics([new_topic])
         finally:
@@ -155,18 +161,18 @@ class KafkaManager:
                 loop=self.loop,
                 bootstrap_servers=self._bootstrap_servers,
                 group_id=self.consumer_group,
-                enable_auto_commit=True
+                enable_auto_commit=True,
+                auto_offset_reset="earliest",
             )
             await consumer.start()
             self._consumers[topic] = consumer
+            await asyncio.sleep(1)  # 等 coordinator 就绪
 
         consumer = self._consumers[topic]
 
         try:
-            msg = await consumer.getone(timeout_ms=timeout_ms / 1000)
-            if msg:
-                msg: "ConsumerRecord"
-                return msg.value
+            msg = await asyncio.wait_for(consumer.getone(), timeout=timeout_ms / 1000)
+            return msg.value
         except asyncio.TimeoutError:
             return None
 

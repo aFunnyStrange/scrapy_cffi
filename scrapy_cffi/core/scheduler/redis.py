@@ -1,6 +1,5 @@
 import asyncio, time
 from . import BaseScheduler
-from ...dupefilter.api import BloomDupeFilter
 from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List
 # from ...utils import run_with_timeout
@@ -36,9 +35,16 @@ class RedisScheduler(BaseScheduler):
             **kwargs
         )
         self.redisManager = redisManager
-        if not self.redisManager:
+        if not self.settings.RABBITMQ_INFO.DONT_FILTER and not self.redisManager:
             raise ValueError("used RedisScheduler must config settings.REDIS_INFO")
-        self.dupefilter = BloomDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
+        
+        if self.settings.DUPEFILTER:
+            from ...utils import load_object
+            dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
+            self.dupefilter = dupefilter_cls(settings=self.settings, redisManager=self.redisManager, **kwargs)
+        else:
+            from ...dupefilter.api import BloomDupeFilter
+            self.dupefilter = BloomDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
 
         self.is_distributed = True
 

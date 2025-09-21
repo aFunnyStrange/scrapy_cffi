@@ -4,31 +4,11 @@ from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..core.scheduler.api import RedisScheduler
     from ..crawler import Crawler
 
 class RedisSpider(BaseSpider):
     name = "redisSpider"
     redis_key = "redis_key"
-
-    def __init__(self, 
-        settings=None, 
-        run_py_dir=None, 
-        stop_event=None, 
-        session_id="", 
-        hooks=None,
-        redisScheduler=None, 
-        *args, **kwargs
-    ):
-        super().__init__(
-            settings=settings, 
-            run_py_dir=run_py_dir, 
-            stop_event=stop_event, 
-            session_id=session_id,
-            hooks=hooks,
-            *args, **kwargs
-        )
-        self.redisScheduler: "RedisScheduler" = redisScheduler
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -38,12 +18,11 @@ class RedisSpider(BaseSpider):
             stop_event=crawler.stop_event,
             session_id="",
             hooks=spiders_hooks(crawler),
-            redisScheduler=crawler.scheduler
         )
 
     async def start(self, *args, **kwargs):
         while not self.stop_event.is_set():
-            get_req_task = asyncio.create_task(self.redisScheduler.get_start_req(spider=self))
+            get_req_task = asyncio.create_task(self.hooks.scheduler.get_start_req(spider=self))
             stop_task = asyncio.create_task(self.stop_event.wait())
             done, pending = await asyncio.wait(
                 {get_req_task, stop_task},

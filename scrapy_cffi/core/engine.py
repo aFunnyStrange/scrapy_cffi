@@ -111,6 +111,8 @@ class Engine:
                 return
             elif isinstance(request, Request):
                 await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+            elif isinstance(request, int):
+                await self.taskManager.create(coro=self.process_scheduler())
         else:
             try:
                 request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
