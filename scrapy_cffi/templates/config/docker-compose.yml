@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+  # ---------- Python Application ----------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my_app
+    command: ["python", "runner.py"]
+    env_file:
+      - .env.dev       # Development environment
+      # - .env.prod    # Production environment (uncomment in production)
+    depends_on:
+      - redis
+      - rabbitmq
+      - kafka
+      - mysql
+      - mongodb
+    volumes:
+      - .:/app         # Mount code in development; remove for production
+    ports:
+      - "8002:8002"    # Expose application port
+    restart: unless-stopped
+
+  # ---------- Redis ----------
+  redis:
+    image: redis:7
+    container_name: redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"    # Redis default port
+    restart: unless-stopped
+
+  # ---------- RabbitMQ ----------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Web management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+  # ---------- Kafka (with ZooKeeper) ----------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+
+  # ---------- MySQL ----------
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: app_db
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  # ---------- MongoDB ----------
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+  mysql_data:
+  mongodb_data:

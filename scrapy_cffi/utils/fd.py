@@ -3,8 +3,11 @@ import platform
 
 try:
     import psutil
-except ImportError:
-    psutil = None
+except ImportError as e:
+    raise ImportError(
+        "Missing scrapy dependencies. "
+        "Please install: pip install scrapy"
+    ) from e
 
 class FDUtil:
     """Cross-platform file descriptor / handle utility class"""

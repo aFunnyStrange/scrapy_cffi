@@ -23,7 +23,8 @@ dependencies = [
     "tenacity",
     "redis>=5.0.0",
     "parsel",
-    "regex"
+    "regex",
+    "dotenv"
 ]
 [project.optional-dependencies]
 windows = ["python-magic-bin"]

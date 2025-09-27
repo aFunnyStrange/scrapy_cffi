@@ -1,5 +1,4 @@
 from .email import *
-from .fd import FDUtil
 from .algorithm import *
 from .jsonLoad import *
 from .protobuf import *

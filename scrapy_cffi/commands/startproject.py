@@ -13,6 +13,13 @@ def run(project_name, is_demo=False):
     spiders_dir =  target
     shutil.copytree(template_dir / "spiders", spiders_dir)
     shutil.copytree(template_dir / "js_path", target / "js_path")
+
+    # docker
+    for docker_file in ["Dockerfile", "docker-compose.yml", ".gitignore", ".dockerignore"]:
+        dockerfile_path = template_dir / "config" / docker_file
+        target_docker_path = target / docker_file
+        docker_code = dockerfile_path.read_text(encoding='utf-8')
+        target_docker_path.write_text(docker_code, encoding='utf-8')
     
     config_data = {
         "default": {

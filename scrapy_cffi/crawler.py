@@ -56,7 +56,7 @@ class Crawler:
         framework_cpy = [
             CPYExtension(module_name="bloom")
         ]
-        framework_cpy.extend(self.settings.CPY_EXTENSIONS.RESOURCES)
+        framework_cpy.extend(self.settings.CPY_EXTENSIONS.RESOURCES) # User first principle, same name can cover framework modules
         self.settings.CPY_EXTENSIONS.RESOURCES = framework_cpy
         CExtensionLoader(resource_dir=self.settings.CPY_EXTENSIONS.DIR).load_all(configs=self.settings.CPY_EXTENSIONS.RESOURCES)
 

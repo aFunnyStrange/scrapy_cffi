@@ -5,16 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-1.Redis support single、sentinel、cluster
-2.Extract dupefilter from the scheduler
-3.Extension support databases/mq
-4.Mq module，rabbitmq (70%, aio-pika rpc -> Channel closed by RPC timeout.)
-5.Mq module，kafka for log
-6.Session_end must be an independent object
-7.Command support rabbitmq_spider
-8.Full bloom dupefilter
-9.C Extensions support
-10.SettingsInfo PROJECT_NAME -> QUEUE_NAME
+None
+
+---
+
+## [0.2.0] - 2025-09-27
+### Added
+- Redis support single、sentinel、cluster
+- Extract dupefilter from the scheduler
+- Extension support databases/mq
+- Mq module，rabbitmq (70%, aio-pika rpc -> Channel closed by RPC timeout.)
+- Mq module，kafka for log
+- Session_end must be an independent object
+- Command support rabbitmq_spider
+- Full bloom dupefilter
+- C Extensions support
+- SettingsInfo PROJECT_NAME -> QUEUE_NAME
+- Deploy basic configuration support
+
+## Fixed
+- Request Interceptor behavior bug (return a Response)
 
 ---
 
