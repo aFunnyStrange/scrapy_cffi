@@ -141,7 +141,7 @@ def to_scrapy_settings_py(settings_obj) -> str:
 
 # Load settings from a given path (supports Python or JSON)
 def load_settings_with_path(settings_path: str=""):
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
     if settings_path == "":
         settings_path = str(get_run_py_dir() / "settings.py")
     if ".py" in settings_path:

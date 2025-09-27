@@ -1,7 +1,7 @@
 from pydantic import model_validator, Field
 from enum import Enum
 from typing import Optional, Union, List
-from . import StrictValidatedModel
+from .base import StrictValidatedModel
 
 class BaseDBInfo(StrictValidatedModel):
     URL: Optional[str] = None

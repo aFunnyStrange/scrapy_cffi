@@ -6,8 +6,8 @@ if TYPE_CHECKING:
 
 class CustomExtension(Extension):
     @classmethod
-    def from_crawler(cls, hooks: "SignalsHooks"):
-        extension_cls = cls(hooks)
+    def from_crawler(cls, hooks: "SignalsHooks", **kwargs):
+        extension_cls = cls(hooks, **kwargs)
         hooks.signals.connect(signals.engine_started, extension_cls.engine_started)
         hooks.signals.connect(signals.engine_stopped, extension_cls.engine_stopped)
         hooks.signals.connect(signals.scheduler_empty, extension_cls.scheduler_empty)

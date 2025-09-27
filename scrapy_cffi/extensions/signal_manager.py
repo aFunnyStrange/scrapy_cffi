@@ -4,27 +4,34 @@ from collections import defaultdict
 from typing import Set, TYPE_CHECKING, Callable, Any, TypeVar, Union, Awaitable
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..models.api import SettingsInfo, SingalInfo
+    from ..models.api import SingalInfo
+    from ..settings import SettingsInfo
+    from ..mq.kafka import KafkaManager
 
 T = TypeVar("T")
 
 class SignalManager:
     SignalCallback = Union[Callable[[T], Any], Callable[[T], Awaitable[Any]]]
 
-    def __init__(self, stop_event=None, settings: "SettingsInfo"=None, maxsize=1000):
-        from ..utils import init_logger
-        self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
+    def __init__(self, stop_event=None, settings: "SettingsInfo"=None, maxsize=1000, kafkaManager: "KafkaManager"=None):
         self._listeners = defaultdict(list)
         self._queue = asyncio.Queue(maxsize=maxsize)
         self.stop_event: asyncio.Event = stop_event
         self._run_task = None
         self._pending_tasks: Set[asyncio.Task] = set()
+        from ..utils import init_logger
+        self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
+        if kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(settings)
+            self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
         return cls(
             stop_event=crawler.stop_event, 
-            settings=crawler.settings
+            settings=crawler.settings,
+            kafkaManager=crawler.kafkaManager,
         )
 
     def connect(self, signal: object, callback: SignalCallback):

@@ -14,9 +14,26 @@ from ..utils import create_uniqueId, run_with_timeout
 if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
     from curl_cffi.requests import Response
     from .downloader.internet import HttpRequest, WebSocketRequest
+    from ..mq.kafka import KafkaManager
+
+class CloseSignal:
+    def __init__(
+        self, 
+        session_id: str, 
+        websocket_end_for_key: Union[str, Literal[False], None]=False, 
+        websocket_end_for_url: Union[str, Literal[False], None]=False, 
+        session_end=False
+    ):
+        self.session_id = session_id
+        self.websocket_end_for_key = websocket_end_for_key
+        self.websocket_end_for_url = websocket_end_for_url
+        self.session_end = session_end
+
+    def __repr__(self):
+        return f"<CloseSignal session_id={self.session_id} ws_end={self.websocket_end_for_url} sess_end={self.session_end}>"
 
 class WebSocketEntry:
     """
@@ -164,11 +181,15 @@ class SessionWrapper:
     Wraps an asynchronous HTTP session (curl_cffi.requests.AsyncSession) and maintains a WebSocketPool for that session.
     Supports configuring session-level cookies, retry policy, performing HTTP and WebSocket requests with retries, and closing connections.
     """
-    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo"=None, cookies: Dict=None):
+    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo"=None, cookies: Dict=None, kafkaManager: "KafkaManager" = None):
         self.stop_event = stop_event
         self.settings = settings
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
         self.session = requests.AsyncSession()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
@@ -297,13 +318,14 @@ class SessionManager:
     Tracks reference counts for each session to manage usage, marks sessions as ended when tasks complete, and queues sessions for safe asynchronous cleanup via a background reaper loop.
     Provides methods to get/create sessions, batch register sessions with cookies, acquire/release sessions references, mark sessions as ended, and close sessions/groups safely without concurrency issues.
     """
-    def __init__(self, stop_event=None, settings=None):
+    def __init__(self, stop_event=None, settings=None, kafkaManager=None):
         self._default_session_id = create_uniqueId()
         self._sessions: Dict[str, SessionWrapper] = {self._default_session_id: None}
         self._group_sessions: Dict[str, List[str]] = {}
 
         self.stop_event: asyncio.Event = stop_event
         self.settings: "SettingsInfo" = settings
+        self.kafkaManager: "KafkaManager" = kafkaManager
 
         # Tracks the current reference count (usage) for each session_id. Format: {session_id: count}
         self._ref_counts: Dict[str, int] = {} 
@@ -320,12 +342,17 @@ class SessionManager:
         self._pending_close_set: Set[str] = set()
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if self.kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
         return cls(
             stop_event=crawler.stop_event, 
             settings=crawler.settings,
+            kafkaManager=crawler.kafkaManager,
         )
 
     def debug_sessions(self):
@@ -354,7 +381,7 @@ class SessionManager:
                 wrapper.update_session_cookies(cookies)
             return wrapper
 
-        wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies)
+        wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies, kafkaManager=self.kafkaManager)
         self._sessions[session_id] = wrapper
         return wrapper
     
@@ -367,7 +394,7 @@ class SessionManager:
 
         for session_id, cookies in user_cookies.items():
             if session_id not in self._sessions:
-                wrapper = SessionWrapper(settings=self.settings, cookies=cookies)
+                wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies, kafkaManager=self.kafkaManager)
                 self._sessions[session_id] = wrapper
                 session_ids.append(session_id)
             else:

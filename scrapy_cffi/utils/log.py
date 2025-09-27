@@ -1,11 +1,13 @@
 import logging
 import sys
 import os
+import asyncio
 import multiprocessing
 from logging.handlers import TimedRotatingFileHandler, QueueHandler, QueueListener
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..models.api import LogInfo
+    from ..settings import LogInfo, SettingsInfo
+    from ..mq.kafka import KafkaManager
 
 class ShortNameFormatter(logging.Formatter):
     def format(self, record):
@@ -150,3 +152,63 @@ def init_logger_multiprocessing(
         for h in extra_handlers:
             logger.addHandler(h)
     return logger
+
+class KafkaLoggingHandler(logging.Handler):
+    def __init__(self, kafka: "KafkaManager", topic: str = "scrapy_cffi", stop_event: asyncio.Event = None):
+        super().__init__()
+        self.kafka = kafka
+        self.topic = topic
+        self.stop_event = stop_event
+        self.queue = asyncio.Queue()
+        self.task = asyncio.create_task(self._sender_loop())
+        self._closed = False
+
+    def create_fmt(self, settings: "SettingsInfo") -> "KafkaLoggingHandler":
+        self.setFormatter(logging.Formatter(settings.LOG_INFO.LOG_FORMAT, datefmt=settings.LOG_INFO.LOG_DATEFORMAT))
+        return self
+    
+    async def _sender_loop(self):
+        try:
+            while not self.stop_event.is_set() or not self.queue.empty():
+                try:
+                    msg = await asyncio.wait_for(self.queue.get(), timeout=1)
+                    try:
+                        await self.kafka.produce(self.topic, msg)
+                    finally:
+                        self.queue.task_done()
+                except asyncio.TimeoutError:
+                    continue
+        except asyncio.CancelledError:
+            # Drain remaining messages before exiting
+            while not self.queue.empty():
+                msg = await self.queue.get()
+                try:
+                    await self.kafka.produce(self.topic, msg)
+                finally:
+                    self.queue.task_done()
+            raise
+        except Exception as e:
+            print(f"Kafka send failed: {e}")
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = self.format(record).encode("utf-8")
+            self.queue.put_nowait(msg)
+        except Exception as e:
+            print(f"KafkaLoggingHandler emit error: {e}")
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        self.stop_event.set()
+
+        if self.task and not self.task.done():
+            loop = asyncio.get_event_loop()
+            # Run the sender task to completion synchronously
+            future = asyncio.run_coroutine_threadsafe(self.task, loop)
+            try:
+                future.result()  # Block until the task completes
+            except Exception as e:
+                print(f"KafkaLoggingHandler close error: {e}")
+        super().close()

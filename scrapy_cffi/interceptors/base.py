@@ -8,17 +8,20 @@ from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..hooks.interceptors import InterceptorsHooks
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
+    from ..mq.kafka import KafkaManager
 
 class BaseInterceptor:
     def __init__(
         self, 
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
+        kafkaManager: "KafkaManager"=None,
         **kwargs
     ):
         self.stop_event = stop_event
         self.settings = settings
+        self.kafkaManager = kafkaManager
         self.kwargs = kwargs
 
     @classmethod
@@ -26,6 +29,7 @@ class BaseInterceptor:
         return cls(
             stop_event=crawler.stop_event,
             settings=crawler.settings,
+            kafkaManager=crawler.kafkaManager,
         )
 
 class DownloadInterceptor(BaseInterceptor):
@@ -59,9 +63,10 @@ class _InnerSpiderInterceptor(SpiderInterceptor):
         settings: "SettingsInfo"=None, 
         hooks: "InterceptorsHooks"=None, 
         sessions_lock: asyncio.Lock=None, 
+        kafkaManager: "KafkaManager"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, **kwargs)
+        super().__init__(stop_event=stop_event, settings=settings, kafkaManager=kafkaManager, **kwargs)
         self.hooks = hooks
         self.sessions_lock = sessions_lock
 
@@ -71,5 +76,6 @@ class _InnerSpiderInterceptor(SpiderInterceptor):
             stop_event=crawler.stop_event,
             settings=crawler.settings,
             hooks=interceptors_hooks(crawler),
-            sessions_lock=crawler.sessions_lock
+            sessions_lock=crawler.sessions_lock,
+            kafkaManager=crawler.kafkaManager,
         )

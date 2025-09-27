@@ -1,39 +1,86 @@
 import asyncio
+import logging
 from scrapy_cffi.mq.kafka import KafkaManager
+from scrapy_cffi.utils import KafkaLoggingHandler
 
-async def main():
-    # 1️⃣ 创建 stop_event
+async def run_producer(kafka_url: str, done_event: asyncio.Event):
     stop_event = asyncio.Event()
-
-    # 2️⃣ 初始化 KafkaManager
-    kafka_url = "localhost:9092"  # 或者 ["node1:9092", "node2:9092"] 集群
     kafka_manager = KafkaManager(
         stop_event=stop_event,
         kafka_url=kafka_url,
-        consumer_group="test_group"
+        consumer_group="log_group"
     )
-
-    # 3️⃣ 连接 Kafka（producer 会自动连接）
     await kafka_manager.connect()
-    print("Connected to Kafka")
+    print("✅ Producer connected to Kafka")
 
-    # 4️⃣ 定义测试 topic
-    topic = "test_topic"
+    logger = logging.getLogger("test_logger")
+    logger.setLevel(logging.INFO)
 
-    # 5️⃣ 发送消息
-    messages = [b"hello", b"world", b"asyncio"]
-    for msg in messages:
-        await kafka_manager.produce(topic, msg)
-        print(f"Produced: {msg}")
+    kafka_handler = KafkaLoggingHandler(kafka_manager, topic="log_topic", stop_event=stop_event)
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    kafka_handler.setFormatter(formatter)
+    logger.addHandler(kafka_handler)
 
-    # 6️⃣ 消费消息
-    for _ in range(len(messages)):
-        msg = await kafka_manager.consume(topic, timeout_ms=2000)
-        print(f"Consumed: {msg}")
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
-    # 7️⃣ 关闭 Kafka 连接
+    for i in range(5):
+        logger.info(f"Test log message {i}")
+        await asyncio.sleep(0.1)
+
+    stop_event.set()
+    await done_event.wait()
     await kafka_manager.close()
-    print("Closed Kafka connection")
+    print("✅ Producer closed")
+
+async def run_consumer(kafka_url: str, done_event: asyncio.Event, expected_count: int = 5):
+    stop_event = asyncio.Event()
+    kafka_manager = KafkaManager(
+        stop_event=stop_event,
+        kafka_url=kafka_url,
+        # consumer_group="log_consumer_group" # Commented out for framework demo testing
+    )
+    await kafka_manager.connect()
+    print("✅ Consumer connected to Kafka")
+
+    consumed_messages = []
+
+    async def consumer_callback(msg: bytes):
+        consumed_messages.append(msg)
+        print(f"📥 Consumed: {msg.decode()}")
+
+        if len(consumed_messages) >= expected_count:
+            done_event.set()
+
+    await kafka_manager.register_consumer("scrapy_cffi", consumer_callback) # For framework demo testing, comment out next line
+    # await kafka_manager.register_consumer("log_topic", consumer_callback, auto_offset_reset="latest")  # For this test file
+
+    await done_event.wait()
+    print(f"✅ All consumed messages: {[m.decode() for m in consumed_messages]}")
+    await kafka_manager.close()
+    print("✅ Consumer closed")
+
+
+async def main():
+    kafka_url = "localhost:9092"
+    done_event = asyncio.Event()
+
+    await asyncio.gather(
+        # run_producer(kafka_url, done_event), # Uncomment to run producer
+        run_consumer(kafka_url, done_event),
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+"""
+1.After debug
+docker exec -it kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker exec -it kafka kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic <topic>
+
+2.Optional
+docker exec -it kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+docker exec -it kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --delete --group <group>
+"""

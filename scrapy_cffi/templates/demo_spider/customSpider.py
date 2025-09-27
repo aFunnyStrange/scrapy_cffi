@@ -39,12 +39,16 @@ class CustomSpider(Spider):
                 send_message=f"hello：{self.count} -> {js_res}".encode('utf-8')
             )
         elif self.count == 3:
-            yield WebSocketRequest(
-                session_id=self.session_id,
-                websocket_id=response.websocket_id,
-                websocket_end=True,
-                # send_message=f"hello：{self.count} -> {js_res}".encode('utf-8')
-            )
+            # scrapy_cffi version >= 0.2.0
+            yield CloseSignal(session_id=self.session_id, websocket_end_for_key=response.websocket_id)
+
+            # scrapy_cffi version 0.1.x
+            # yield WebSocketRequest(
+            #     session_id=self.session_id,
+            #     websocket_id=response.websocket_id,
+            #     websocket_end=True,
+            #     # send_message=f"hello：{self.count} -> {js_res}".encode('utf-8')
+            # )
             customItem = CustomItem() or {}
             customItem["session_id"] = response.session_id
             customItem["data"] = response.msg[0].decode()
@@ -52,9 +56,10 @@ class CustomSpider(Spider):
 
             customItem = CustomItem() or {}
             customItem["session_id"] = response.session_id
-            customItem["session_end"] = True
+            # customItem["session_end"] = True # scrapy_cffi version 0.1.x
             customItem["data"] = "spider end"
             yield customItem
+            yield CloseSignal(session_id=self.session_id, session_end=True) # # scrapy_cffi version >= 0.2.0
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,

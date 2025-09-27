@@ -1,4 +1,4 @@
-from . import StrictValidatedModel
+from .base import StrictValidatedModel
 from ..utils import load_object
 from typing import List, Type, Union, Dict, Any
 from pydantic import Field

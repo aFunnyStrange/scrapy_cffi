@@ -11,6 +11,7 @@ Features:
 
 Designed for use within an asyncio event loop and single-threaded context.
 """
+import json
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, TimeoutError
 from tenacity import retry, wait_fixed, retry_if_exception_type
@@ -161,6 +162,50 @@ class RedisManager(redis.Redis):
             key_is_req,
             fingerprint
         )
+    
+    @auto_retry
+    async def do_bloom_filter(
+        self,
+        key_new_seen: str,
+        key_is_req: str,
+        index_list: list[int]
+    ) -> int:
+        script = """
+        local key_new_seen = KEYS[1]
+        local key_is_req = KEYS[2]
+        local indices = cjson.decode(ARGV[1])
+        local is_new = 1
+
+        for i=1,#indices do
+            if redis.call("GETBIT", key_new_seen, indices[i]) == 0 then
+                is_new = 1
+                break
+            else
+                is_new = 0
+            end
+        end
+
+        if is_new == 1 then
+            for i=1,#indices do
+                if redis.call("GETBIT", key_is_req, indices[i]) == 0 then
+                    is_new = 1
+                    break
+                else
+                    is_new = 0
+                end
+            end
+        end
+
+        if is_new == 1 then
+            for i=1,#indices do
+                redis.call("SETBIT", key_new_seen, indices[i], 1)
+            end
+        end
+
+        return is_new
+        """
+        indices_json = json.dumps(index_list)
+        return await self.eval(script, 2, key_new_seen, key_is_req, indices_json)
 
     @auto_retry
     async def dequeue_request(self, queue_key, timeout=2, decode_responses=False): # Pop a request from the queue, with optional timeout and decoding.

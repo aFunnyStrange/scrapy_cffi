@@ -1,4 +1,4 @@
-from . import BaseValidatedModel
+from .base import BaseValidatedModel
 from pydantic import Field, model_validator
 from typing import Optional, Union, Dict
     

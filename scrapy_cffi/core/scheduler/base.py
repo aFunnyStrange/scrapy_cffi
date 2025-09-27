@@ -1,5 +1,5 @@
 import asyncio, time
-from ..downloader.internet import Request, WebSocketRequest
+from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List, Dict
 # from ...utils import run_with_timeout
 from ...extensions import signals
@@ -7,7 +7,7 @@ from ...models.api import SingalInfo
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
-    from ...models.api import SettingsInfo
+    from ...settings import SettingsInfo
     from ...spiders import Spider
     from ...extensions import SignalManager
 
@@ -43,7 +43,7 @@ class BaseScheduler:
         )
     
     def get_queue_key(self, spider: "Spider") -> str:
-        return self.settings.PROJECT_NAME if self.settings.PROJECT_NAME else f"{spider.name}_req"
+        return self.settings.QUEUE_NAME if self.settings.QUEUE_NAME else f"{spider.name}_req"
     
     async def put(self, request: Request, spider: "Spider", **kwargs):
         raise NotImplementedError
@@ -76,24 +76,24 @@ class Scheduler(BaseScheduler):
             dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
             self.dupefilter = dupefilter_cls(settings=self.settings, **kwargs)
         else:
-            from ...dupefilter.api import DupeFilter
-            self.dupefilter = DupeFilter(settings=self.settings, **kwargs)
+            from ...dupefilter.base import MemoryDupeFilter
+            self.dupefilter = MemoryDupeFilter(settings=self.settings, **kwargs)
         self._queue_map: Dict[str, asyncio.Queue] = {}
-        if self.settings.PROJECT_NAME:
-            self._queue_map[self.settings.PROJECT_NAME] = asyncio.Queue()
+        if self.settings.QUEUE_NAME:
+            self._queue_map[self.settings.QUEUE_NAME] = asyncio.Queue()
         else:
             for spider_name in self.spiders_name:
                 self._queue_map[f"{spider_name}_req"] = asyncio.Queue()
 
     async def put(self, request: Request, spider: "Spider", **kwargs):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
-        if request.dont_filter or (isinstance(request, WebSocketRequest) and request.websocket_end):
+        if request.dont_filter:
             await self._queue_map[self.get_queue_key(spider=spider)].put(request)
             self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
             return True
         else:
             async with self.dupefilter.lock:
-                is_seen = self.dupefilter.request_seen(request=request)
+                is_seen = await self.dupefilter.request_seen(request=request)
                 if not is_seen:
                     await self._queue_map[self.get_queue_key(spider=spider)].put(request)
                     self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))

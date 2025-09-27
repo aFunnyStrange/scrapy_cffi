@@ -277,7 +277,6 @@ class WebSocketRequest(Request):
     def __init__(self, 
         session_id="",
         websocket_id="", 
-        websocket_end=False,
         url="", 
         params=None, 
         headers=None, 
@@ -322,7 +321,6 @@ class WebSocketRequest(Request):
             **kwargs
         )
         self.websocket_id = websocket_id
-        self.websocket_end = websocket_end
         if not isinstance(send_message, list):
             send_message = [send_message]
         self.send_message = send_message

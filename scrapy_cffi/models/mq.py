@@ -1,7 +1,7 @@
 from pydantic import Field, model_validator
 from enum import Enum
 from typing import Optional, Union, List
-from . import StrictValidatedModel
+from .base import StrictValidatedModel
 
 class MQMode(str, Enum):
     SINGLE = "single"

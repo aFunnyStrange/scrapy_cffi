@@ -1,5 +1,6 @@
-from .base import BaseDupeFilter
+from .base import MemoryDupeFilter, BloomDupeFilter
 
 __all__ = [
-    "BaseDupeFilter"
+    "MemoryDupeFilter",
+    "BloomDupeFilter",
 ]

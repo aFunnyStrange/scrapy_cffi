@@ -8,7 +8,7 @@ from ...models.api import SingalInfo
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
-    from ...models.api import SettingsInfo
+    from ...settings import SettingsInfo
     from ...spiders import Spider
     from ...databases import RedisManager
     from ...extensions import SignalManager
@@ -43,8 +43,8 @@ class RedisScheduler(BaseScheduler):
             dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
             self.dupefilter = dupefilter_cls(settings=self.settings, redisManager=self.redisManager, **kwargs)
         else:
-            from ...dupefilter.api import BloomDupeFilter
-            self.dupefilter = BloomDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
+            from ...dupefilter.redis import RedisDupeFilter
+            self.dupefilter = RedisDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
 
         self.is_distributed = True
 
@@ -89,7 +89,7 @@ class RedisScheduler(BaseScheduler):
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        request_bytes = await self.redisManager.dequeue_request(queue_key=getattr(spider, "redis_key", self.settings.PROJECT_NAME))
+        request_bytes = await self.redisManager.dequeue_request(queue_key=getattr(spider, "redis_key", self.settings.QUEUE_NAME))
         if request_bytes is None:
             return None
         return request_bytes

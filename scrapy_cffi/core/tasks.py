@@ -4,15 +4,30 @@ from ..models.api import SingalInfo
 from typing import TYPE_CHECKING, Coroutine, Callable, Optional, Set
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
     from ..extensions import SignalManager
+    from ..mq.kafka import KafkaManager
 
 class TaskManager:
-    def __init__(self, stop_event: asyncio.Event=None, global_lock=None, signalManager: "SignalManager"=None, settings: "SettingsInfo"=None, is_distributed=False):
+    def __init__(
+        self, 
+        stop_event: asyncio.Event=None, 
+        global_lock=None, 
+        signalManager: "SignalManager"=None, 
+        kafkaManager: "KafkaManager"=None, 
+        settings: "SettingsInfo"=None, 
+        is_distributed=False
+    ):
         self.stop_event = stop_event
         self.global_lock = global_lock
+
         from ..utils import init_logger
         self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
+        if kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(settings)
+            self.logger.addHandler(kafka_handler)
+
         self.signalManager = signalManager
         self.active_tasks = 1 if is_distributed else 0
         self.managed_tasks: Set[asyncio.Task] = set()
@@ -27,6 +42,7 @@ class TaskManager:
             stop_event=crawler.stop_event,
             global_lock=crawler.global_lock,
             signalManager=crawler.signalManager, 
+            kafkaManager=crawler.kafkaManager,
             settings=crawler.settings, 
             is_distributed=is_distributed
         )

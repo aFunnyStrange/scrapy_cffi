@@ -1,4 +1,4 @@
-import asyncio, random, logging
+import asyncio, random
 from urllib.parse import urlparse
 from typing import Union, AsyncGenerator
 from collections.abc import AsyncIterable, Iterable
@@ -6,15 +6,17 @@ from .base import _InnerSpiderInterceptor
 from ..spiders import Spider
 from ..hooks import interceptors_hooks
 from ..core.downloader.internet import *
+from ..core.sessions import CloseSignal
 from ..exceptions import SessionEndError, BlockRequestError, FilterDomainRequestError
 from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
     from ..utils import RobotsManager
     from ..item import Item
     from ..hooks.interceptors import InterceptorsHooks
-    from ..core.sessions import  SessionWrapper, WebSocketEntry
+    from ..core.sessions import SessionWrapper, WebSocketEntry
+    from ..mq.kafka import KafkaManager
 
 class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
     ResultType = Union[
@@ -32,10 +34,16 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         settings: "SettingsInfo"=None, 
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None,
+        kafkaManager: "KafkaManager"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, **kwargs)
-        self.logger: logging.Logger = logging.getLogger(__name__)
+        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
+        from ..utils import init_logger
+        self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if self.kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
         self.default_ua = self.settings.USER_AGENT
         self.default_headers = self.settings.DEFAULT_HEADERS
@@ -86,28 +94,43 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
 
         It plays a critical role in stabilizing the request lifecycle and maintaining session consistency.
         """
-        if isinstance(result, Request):
+        if isinstance(result, (Request, CloseSignal)):
             async with self.sessions_lock:
                 self.hooks.session.acquire(session_id=result.session_id)
 
-                result = self.pre_check(result)
-                wrapper: "SessionWrapper" = self.hooks.session.get_or_create_session(session_id=result.session_id, cookies=result.cookies)
-                if result.cookies:
-                    wrapper.update_session_cookies(cookies_dict=result.cookies)
+                if isinstance(result, CloseSignal):
+                    wrapper: "SessionWrapper" = self.hooks.session.get_or_create_session(session_id=result.session_id)
+                    if result.websocket_end_for_key:
+                        webSocket_entry: "WebSocketEntry" = wrapper.websocket_pool.get_from_key(result.websocket_end_for_key)
+                        if webSocket_entry:
+                            result.websocket_end_for_url = webSocket_entry.url
+                            wrapper.websocket_pool.acquire_from_url(url=result.websocket_end_for_url)
+                        
+                    if (not result.websocket_end_for_url) and (not result.session_end):
+                        self.logger.error(
+                            f"Received CloseSignal with an unknown end tag — it will be ignored. "
+                            f"(websocket_end_for_url: {result.websocket_end_for_url}, session_end: {result.session_end})"
+                        )
+                        return
+                else:
+                    result = self.pre_check(result)
+                    wrapper: "SessionWrapper" = self.hooks.session.get_or_create_session(session_id=result.session_id, cookies=result.cookies)
+                    if result.cookies:
+                        wrapper.update_session_cookies(cookies_dict=result.cookies)
 
-                # For non-initial WebSocket requests:
-                # The websocket_pool should already contain the key, 
-                # so ensure the request.url is set accordingly and acquire a lock on it.
-                # For initial WebSocket requests, only the session lock is applied.
-                if isinstance(result, WebSocketRequest) and ((not result.url) and result.websocket_id):
-                    webSocket_entry: "WebSocketEntry" = wrapper.websocket_pool.get_from_key(result.websocket_id)
-                    if webSocket_entry:
-                        result.url = webSocket_entry.url
-                        wrapper.websocket_pool.acquire_from_url(url=result.url)
-                    else:
-                        error_text = f'WebSocket connection {result.websocket_id} has been closed, but a new WebSocketRequest was received.'
-                        self.logger.warning(f'WebSocket connection {result.websocket_id} has been closed, but a new WebSocketRequest was received: {result.send_message.decode()}')
-                        return SessionEndError(exception=ValueError(error_text), request=result)
+                    # For non-initial WebSocket requests:
+                    # The websocket_pool should already contain the key, 
+                    # so ensure the request.url is set accordingly and acquire a lock on it.
+                    # For initial WebSocket requests, only the session lock is applied.
+                    if isinstance(result, WebSocketRequest) and ((not result.url) and result.websocket_id):
+                        webSocket_entry: "WebSocketEntry" = wrapper.websocket_pool.get_from_key(result.websocket_id)
+                        if webSocket_entry:
+                            result.url = webSocket_entry.url
+                            wrapper.websocket_pool.acquire_from_url(url=result.url)
+                        else:
+                            error_text = f'WebSocket connection {result.websocket_id} has been closed, but a new WebSocketRequest was received'
+                            self.logger.warning(f'{error_text}: {result.send_message.decode()}')
+                            return SessionEndError(exception=ValueError(error_text), request=result)
         return result
     
 class RobotSpiderInterceptor(_InnerSpiderInterceptor):
@@ -118,12 +141,17 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None, 
         robot: "RobotsManager"=None,
+        kafkaManager: "KafkaManager"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, **kwargs)
+        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
         self.robot = robot
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if self.kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -132,7 +160,8 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
             settings=crawler.settings,
             hooks=interceptors_hooks(crawler),
             sessions_lock=crawler.sessions_lock,
-            robot=crawler.robot
+            robot=crawler.robot,
+            kafkaManager=crawler.kafkaManager
         )
 
     def is_allow(self, url, allow_domains):

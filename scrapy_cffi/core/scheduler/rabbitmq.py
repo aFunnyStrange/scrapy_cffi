@@ -8,7 +8,7 @@ from ...models.api import SingalInfo
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
-    from ...models.api import SettingsInfo
+    from ...settings import SettingsInfo
     from ...spiders import Spider
     from ...databases import RedisManager
     from ...extensions import SignalManager
@@ -78,7 +78,7 @@ class RabbitMqScheduler(RedisScheduler):
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=getattr(spider, "rabbitmq_queue", self.settings.PROJECT_NAME))
+        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=getattr(spider, "rabbitmq_queue", self.settings.QUEUE_NAME))
         if request_bytes is None:
             return None
         return request_bytes

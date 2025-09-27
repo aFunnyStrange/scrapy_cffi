@@ -4,7 +4,8 @@ from curl_cffi import requests
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
+    from ..mq.kafka import KafkaManager
 
 class RobotsTxtRules:
     def __init__(self, rules=None, fallback=False):
@@ -63,17 +64,22 @@ def parse_robots_txt(text: str, user_agent: str = "*") -> RobotsTxtRules:
         return RobotsTxtRules([])
 
 class RobotsManager:
-    def __init__(self, settings: "SettingsInfo"):
+    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo", kafkaManager: "KafkaManager"=None):
+        self.stop_event = stop_event
         self.settings = settings
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
         self._rules_cache = {}
         self._lock = asyncio.Lock()
         self._session = requests.AsyncSession()
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
-        return cls(settings=crawler.settings)
+        return cls(stop_event=crawler.stop_event, settings=crawler.settings, kafkaManager=crawler.kafkaManager)
 
     async def load_rules_for_hosts(self, robot_urls):
         tasks = []

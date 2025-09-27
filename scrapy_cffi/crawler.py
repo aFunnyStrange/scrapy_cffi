@@ -3,12 +3,12 @@ from .core.api import *
 from .interceptors import ChainManager, InterruptibleChainManager
 # from .interceptors import DownloadInterceptor
 from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterceptor
-from .pipelines.api import _InnerPipeline
+from .pipelines import Pipeline
 from .extensions import SignalManager
-from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory
+from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory, KafkaLoggingHandler
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .models.api import SettingsInfo
+    from .settings import SettingsInfo
     from logging import Logger
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -50,6 +50,16 @@ class Crawler:
         self.stop_event = asyncio.Event()
 
         self.settings: "SettingsInfo" = settings
+        from .cpy import CExtensionLoader
+        from .models.api import CPYExtension
+
+        framework_cpy = [
+            CPYExtension(module_name="bloom")
+        ]
+        framework_cpy.extend(self.settings.CPY_EXTENSIONS.RESOURCES)
+        self.settings.CPY_EXTENSIONS.RESOURCES = framework_cpy
+        CExtensionLoader(resource_dir=self.settings.CPY_EXTENSIONS.DIR).load_all(configs=self.settings.CPY_EXTENSIONS.RESOURCES)
+
         self.global_lock = async_context_factory(
             max_tasks=self.settings.MAX_GLOBAL_CONCURRENT_TASKS,
             semaphore_cls=asyncio.BoundedSemaphore
@@ -59,6 +69,12 @@ class Crawler:
         from .utils import init_logger
         logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         self.logger = logger
+        # kafka
+        if self.settings.KAFKA_INFO.resolved_url:
+            from .mq.kafka import KafkaManager
+            self.kafkaManager = KafkaManager.from_crawler(self)
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
         self.sessions_lock = asyncio.Lock()
         self.sessions = SessionManager.from_crawler(self)
@@ -87,18 +103,13 @@ class Crawler:
             if not self.settings.SCHEDULER:
                 self.settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
 
-        # kafka
-        if self.settings.KAFKA_INFO.resolved_url:
-            from .mq.kafka import KafkaManager
-            self.kafkaManager = KafkaManager.from_crawler(self)
-
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
 
         # self.settings.DOWNLOAD_INTERCEPTORS_PATH.value.insert(0, DownloadInterceptor)
         self.downloadInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.DOWNLOAD_INTERCEPTORS_PATH.value)
 
-        self.settings.ITEM_PIPELINES_PATH.value.insert(0, _InnerPipeline)
+        self.settings.ITEM_PIPELINES_PATH.value.insert(0, Pipeline)
         self.pipelines_chain = ChainManager.from_crawler(self, class_list=self.settings.ITEM_PIPELINES_PATH.value)
 
         from .hooks import signals_hooks
@@ -117,8 +128,7 @@ class Crawler:
         # spider start type
         if not self.settings.SPIDERS_PATH:
             self.settings.SPIDERS_PATH = str(self.run_py_dir / "spiders")
-            import warnings
-            warnings.warn(f"not provided self.settings.SPIDERS_PATH，guessed to load -> {self.settings.SPIDERS_PATH}")
+            self.logger.warning(f"not provided self.settings.SPIDERS_PATH，guessed to load -> {self.settings.SPIDERS_PATH}")
             start_type = 0
         if start_type:
             self.spiders = [load_object(path=self.settings.SPIDERS_PATH)]
@@ -195,7 +205,7 @@ class Crawler:
             for spider in self.spiders:
                 if getattr(spider, "redis_key", None):
                     await self.redisManager.delete(spider.redis_key)
-            await self.redisManager.delete(self.settings.PROJECT_NAME)
+            await self.redisManager.delete(self.settings.QUEUE_NAME)
             await self.redisManager.delete(self.settings._NEW_SEEN)
             await self.redisManager.delete(self.settings._SENT_SEEN)
         

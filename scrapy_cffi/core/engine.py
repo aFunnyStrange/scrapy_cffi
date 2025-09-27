@@ -11,11 +11,11 @@ if TYPE_CHECKING:
     from .tasks import TaskManager
     from .scheduler import Scheduler
     from ..extensions import SignalManager
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
     from ..item import Item
     from ..interceptors import ChainManager, InterruptibleChainManager
     from ..spiders import Spider
-    from .sessions import SessionManager, SessionWrapper, WebSocketEntry
+    from .sessions import SessionManager, SessionWrapper, WebSocketEntry, CloseSignal
 
 class Engine:
     def __init__(self, crawler: "Crawler", spider: "Spider"):
@@ -36,6 +36,10 @@ class Engine:
 
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if crawler.kafkaManager:
+            from ..utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=crawler.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler", spider: "Spider"):
@@ -46,7 +50,8 @@ class Engine:
 
     async def start(self, *args, **kwargs):
         self.signalManager.send(signal=signals.engine_started, data=SingalInfo(signal_time=time.time()))
-        await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="open_spider", pad_data=self.spider)
+        if self.pipelines_chain.chain_list: # In fact, at least one pipeline component must be registered, otherwise there may be bugs
+            await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="open_spider", pad_data=self.spider)
         self.signalManager.send(signal=signals.spider_opened, data=SingalInfo(spider=self.spider, signal_time=time.time()))
 
         # Retrieve requests directly from the spider's start method without additional processing,
@@ -59,7 +64,8 @@ class Engine:
             async with self.taskManager.lock:
                 self.taskManager.active_tasks -= 1
 
-        await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
+        if self.pipelines_chain.chain_list:
+            await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
         await self.signalManager._safe_put(signal=signals.spider_closed, data=SingalInfo(spider=self.spider, signal_time=time.time()))
         await self.signalManager._safe_put(signal=signals.engine_stopped, data=SingalInfo(signal_time=time.time()))
 
@@ -94,6 +100,29 @@ class Engine:
                 data = spiderinterceptors_result.model_dump().copy()
                 data["signal_time"] = time.time()
                 self.signalManager.send(signal=signals.spider_error, data=SingalInfo(**data))
+        elif spiderinterceptors_result.next == ChainNextEnum.SESSION:
+            if spiderinterceptors_result.signal.websocket_end_for_key or spiderinterceptors_result.signal.websocket_end_for_url:
+                self.end_websocket(signal=spiderinterceptors_result.signal)
+            elif spiderinterceptors_result.signal.session_end:
+                self.sessions.mark_end(session_id=spiderinterceptors_result.signal.session_id)
+
+    def end_websocket(self, signal: "CloseSignal"):
+        wrapper: "SessionWrapper" = self.sessions.get_or_create_session(signal.session_id)
+        if signal.websocket_end_for_url:
+            websocket_entry: "WebSocketEntry" = wrapper.websocket_pool.get_from_url(signal.websocket_end_for_url)
+            if not websocket_entry:
+                return
+            end_url = websocket_entry.url
+        elif signal.websocket_end_for_key: # In fact, the spiderInterceptor already has a key ->URL
+            websocket_entry: "WebSocketEntry" = wrapper.websocket_pool.get_from_key(signal.websocket_end_for_key)
+            if not websocket_entry:
+                return
+            end_url = websocket_entry.url
+        else:
+            return
+        wrapper.websocket_pool.mark_end_from_url(end_url)
+        websocket_entry.release()
+        self.sessions.release(signal.session_id)
 
     # Scheduler: repeatedly fetches and processes requests until none are left.
     async def process_scheduler(self, request: Request=None):
@@ -206,27 +235,21 @@ class Engine:
             raise ValueError("Scheduling logic error: this request was not properly processed by spider middleware")
         
         websocket_entry: "WebSocketEntry" = wrapper.get_websocket(request.url)
-        if websocket_entry:
-            if request.websocket_end and request.url:
-                wrapper.websocket_pool.mark_end_from_url(url=request.url)
-                websocket_entry.release()
-                self.sessions.release(request.session_id)
-                return
-            if request.send_message:
-                if getattr(getattr(websocket_entry.websocket, "curl", None), "_curl", None) is not None:
-                    # WebSocket communication is deduplicated by connection only.
-                    # Once connection uniqueness is ensured, subsequent messages run on a single device,
-                    # so message deduplication is handled only by new_req_seen, not in is_req.
-                    # Send the message asynchronously in a thread to avoid blocking.
+        if websocket_entry and request.send_message:
+            if getattr(getattr(websocket_entry.websocket, "curl", None), "_curl", None) is not None:
+                # WebSocket communication is deduplicated by connection only.
+                # Once connection uniqueness is ensured, subsequent messages run on a single device,
+                # so message deduplication is handled only by new_req_seen, not in is_req.
+                # Send the message asynchronously in a thread to avoid blocking.
 
-                    # await run_with_timeout(ws.send, request.send_message, stop_event=self.stop_event, timeout=3)
-                    for msg in request.send_message:
-                        if asyncio.iscoroutinefunction(websocket_entry.websocket.send):
-                            await websocket_entry.websocket.send(msg)
-                        else:
-                            await asyncio.to_thread(websocket_entry.websocket.send, msg)
-                websocket_entry.release()
-                self.sessions.release(request.session_id)
+                # await run_with_timeout(ws.send, request.send_message, stop_event=self.stop_event, timeout=3)
+                for msg in request.send_message:
+                    if asyncio.iscoroutinefunction(websocket_entry.websocket.send):
+                        await websocket_entry.websocket.send(msg)
+                    else:
+                        await asyncio.to_thread(websocket_entry.websocket.send, msg)
+            websocket_entry.release()
+            self.sessions.release(request.session_id)
             return
         await self.do_websocket_connect(wrapper=wrapper, connect_request=request)
 
@@ -250,8 +273,7 @@ class Engine:
         except BaseException as e:
             results = DownloadError(exception=e, request=connect_request)
             await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=results, request=connect_request))
-            connect_request.websocket_end = True
-            await self.process_websocket_request(request=connect_request)
+            self.end_websocket(signal=CloseSignal(session_id=connect_request.session_id, websocket_end_for_url=connect_request.url))
         finally:
             # Release session regardless of normal exit or exception cancellation
             self.sessions.release(connect_request.session_id) # Release the session

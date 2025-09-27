@@ -35,12 +35,16 @@ class CustomRedisSpider(RedisSpider):
                 send_message=f"hello：{self.count}".encode('utf-8')
             )
         elif self.count == 3:
-            yield WebSocketRequest(
-                session_id=self.session_id,
-                websocket_id=response.websocket_id,
-                websocket_end=True,
-                # send_message=f"hello：{self.count}".encode('utf-8')
-            )
+            # scrapy_cffi version >= 0.2.0
+            yield CloseSignal(session_id=self.session_id, websocket_end_for_key=response.websocket_id)
+
+            # scrapy_cffi version 0.1.x
+            # yield WebSocketRequest(
+            #     session_id=self.session_id,
+            #     websocket_id=response.websocket_id,
+            #     websocket_end=True,
+            #     # send_message=f"hello：{self.count}".encode('utf-8')
+            # )
             yield {"session_id": response.session_id, "data": response.msg[0].decode()}
             yield {"session_id": response.session_id, "data": "spider end"}
         self.count += 1

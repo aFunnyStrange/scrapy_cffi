@@ -1,5 +1,5 @@
 import asyncio
-from . import BaseSpider
+from .base import BaseSpider
 from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
 from typing import TYPE_CHECKING
@@ -16,6 +16,7 @@ class RedisSpider(BaseSpider):
             settings=crawler.settings,
             run_py_dir=crawler.run_py_dir,
             stop_event=crawler.stop_event,
+            kafkaManager=crawler.kafkaManager,
             session_id="",
             hooks=spiders_hooks(crawler),
         )

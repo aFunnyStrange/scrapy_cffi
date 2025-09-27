@@ -8,16 +8,30 @@ from ...extensions import signals
 from ...models.api import SingalInfo
 if TYPE_CHECKING:
     from ...crawler import Crawler
-    from ...models.api import SettingsInfo
+    from ...settings import SettingsInfo
     from ...extensions import SignalManager
     from ..sessions import SessionManager, SessionWrapper
+    from ...mq.kafka import KafkaManager
 
 class Downloader:
-    def __init__(self, stop_event: asyncio.Event=None, settings: "SettingsInfo"=None, sessions: "SessionManager"=None, sessions_lock=None, signalManager: "SignalManager"=None):
+    def __init__(
+        self, 
+        stop_event: asyncio.Event=None, 
+        settings: "SettingsInfo"=None, 
+        sessions: "SessionManager"=None, 
+        sessions_lock=None, 
+        signalManager: "SignalManager"=None,
+        kafkaManager: "KafkaManager"=None
+    ):
         self.stop_event = stop_event
         self.settings = settings
         from ...utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        if kafkaManager:
+            from ...utils import KafkaLoggingHandler
+            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            self.logger.addHandler(kafka_handler)
+
         self.sessions = sessions
         self.sessions_lock = sessions_lock
         self.signalManager = signalManager
@@ -35,6 +49,7 @@ class Downloader:
             sessions=crawler.sessions,
             sessions_lock=crawler.sessions_lock,
             signalManager=crawler.signalManager,
+            kafkaManager=crawler.kafkaManager,
         )
     
     async def fetch_http(self, request: HttpRequest, callback: Callable) -> asyncio.Task:

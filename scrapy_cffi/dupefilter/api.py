@@ -1,2 +1,1 @@
-from .base import DupeFilter
-from .bloom import BloomDupeFilter
+from .redis import RedisDupeFilter, RedisBloomDupeFilter

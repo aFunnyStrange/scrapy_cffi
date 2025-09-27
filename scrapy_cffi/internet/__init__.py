@@ -1,4 +1,4 @@
-from ..core import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse
+from ..core import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse, CloseSignal
 
 __all__ = [
     "Request",
@@ -7,5 +7,6 @@ __all__ = [
     "WebSocketRequest",
     "Response",
     "HttpResponse",
-    "WebSocketResponse"
+    "WebSocketResponse",
+    "CloseSignal"
 ]

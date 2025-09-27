@@ -8,17 +8,19 @@ if TYPE_CHECKING:
     from ..exceptions import Failure
     from ..crawler import Crawler
     from ..hooks.spiders import SpidersHooks
-    from ..models.api import SettingsInfo
+    from ..settings import SettingsInfo
+    from ..mq.kafka import KafkaManager
 
 class BaseSpider(object):
     name = "cffiSpider"
     robot_scheme = "https"
     allowed_domains = []
 
-    def __init__(self, settings=None, run_py_dir="", stop_event=None, session_id="", hooks=None, *args, **kwargs):
+    def __init__(self, settings=None, run_py_dir="", stop_event=None, kafkaManager=None, session_id="", hooks=None, *args, **kwargs):
         self.settings: "SettingsInfo" = settings
         self.run_py_dir: Path = run_py_dir
         self.stop_event: asyncio.Event = stop_event
+        self.kafkaManager: "KafkaManager" = kafkaManager
         self.session_id = session_id # If not set, all will share the default session
         self.hooks: "SpidersHooks" = hooks
         
@@ -41,6 +43,7 @@ class BaseSpider(object):
             settings=crawler.settings,
             run_py_dir=crawler.run_py_dir,
             stop_event=crawler.stop_event,
+            kafkaManager=crawler.kafkaManager,
             session_id="",
             hooks=spiders_hooks(crawler),
         )

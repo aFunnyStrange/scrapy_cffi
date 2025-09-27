@@ -3,6 +3,7 @@ from ..models import StrictValidatedModel
 from enum import Enum
 from typing import Optional, TYPE_CHECKING, Union, Dict, List, Callable
 from ..spiders import BaseSpider
+from ..core.sessions import CloseSignal
 from ..core.downloader.internet import Request
 from ..core.downloader.internet import Response
 from ..item import Item
@@ -25,8 +26,12 @@ class ChainManager:
         self.create_chain(crawler, class_list)
         self.settings = crawler.settings
         self.redisManager: "RedisManager" = crawler.redisManager
-        from ..utils import init_logger
-        self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        # from ..utils import init_logger
+        # self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
+        # if crawler.kafkaManager:
+        #     from ..utils import KafkaLoggingHandler
+        #     kafka_handler = KafkaLoggingHandler(kafka=crawler.kafkaManager, stop_event=crawler.stop_event).create_fmt(self.settings)
+        #     self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler", class_list: list):
@@ -80,6 +85,7 @@ class ChainNextEnum(str, Enum):
     DOWNLOADER = "downloader"
     PIPELINE = "pipeline"
     SPIDER = "spider"
+    SESSION = "session"
 
 class ChainResult(StrictValidatedModel):
     next: ChainNextEnum
@@ -88,11 +94,12 @@ class ChainResult(StrictValidatedModel):
     spider: Optional[BaseSpider] = None
     item: Optional[Union[Item, Dict]] = None
     exception: Optional[BaseException] = None
+    signal: Optional[CloseSignal] = None
     is_across: int = 0
 
 async def _flatten_asyncgen(value):
     from collections.abc import AsyncIterable, Iterable
-    ATOMIC_TYPES = (Request, Item, BaseException, str, bytes, dict, type(None))
+    ATOMIC_TYPES = (Request, Item, BaseException, CloseSignal, str, bytes, dict, type(None))
     if isinstance(value, AsyncIterable):
         async for v in value:
             async for sub_v in _flatten_asyncgen(v):
@@ -284,6 +291,10 @@ class InterruptibleChainManager(ChainManager):
                     yield ChainResult(next=ChainNextEnum.EXCEPTION, response=response, exception=result, spider=spider)
                     is_error = True
                     return
+                elif isinstance(i, CloseSignal):
+                    result = i
+                    yield ChainResult(next=ChainNextEnum.SESSION, signal=result, spider=spider)
+                    return
                 else:
                     pass
                     # return f"Unsupported spider return type: {type(i)}"
@@ -295,6 +306,8 @@ class InterruptibleChainManager(ChainManager):
             yield ChainResult(next=ChainNextEnum.RESCHEDULE, request=result, spider=spider)
         elif isinstance(result, (Item, dict)):
             yield ChainResult(next=ChainNextEnum.PIPELINE, item=result, spider=spider)
+        elif isinstance(result, CloseSignal):
+            yield ChainResult(next=ChainNextEnum.SESSION, signal=result, spider=spider)
         else:
             raise ValueError(f"Unsupported spider return type: {type(result)}")
     

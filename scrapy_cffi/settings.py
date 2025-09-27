@@ -1,5 +1,5 @@
-from ..models import BaseValidatedModel, StrictValidatedModel
-from ..models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo, RabbitMQInfo, KafkaInfo
+from .models import BaseValidatedModel, StrictValidatedModel
+from .models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo, RabbitMQInfo, KafkaInfo, CPYExtensionsConfig
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
 
@@ -36,7 +36,7 @@ class SettingsInfo(BaseValidatedModel):
     # _encoding_fields: ClassVar[List[str]] = ["FEED_EXPORT_ENCODING"]
 
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()
-    QUEUE_NAME: Optional[Union[str]] = "" # # If set, this queue will be shared in run_all_spiders mode. Be aware of potential request race conditions when using the same scheduler.
+    QUEUE_NAME: Optional[Union[str]] = "" # If set, this queue will be shared in run_all_spiders mode. Be aware of potential request race conditions when using the same scheduler.
     ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
 
     USER_AGENT: Optional[str] = "scrapy_cffiBot"
@@ -81,6 +81,9 @@ class SettingsInfo(BaseValidatedModel):
 
     RABBITMQ_INFO: Optional[RabbitMQInfo] = RabbitMQInfo()
     KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
+    KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
+
+    CPY_EXTENSIONS: Optional[CPYExtensionsConfig] = CPYExtensionsConfig()
     
     @property
     def _NEW_SEEN(self):
