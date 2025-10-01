@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 None
 
 ---
+## [0.2.1] - 2025-10-1
+### Added
+- PipelinesHooks now supports `sessions.get_session_cookies`
+- Added `settings.DEDUP_TTL` for automatic key expiration when deduplicating in Redis
+
+## Fixed
+- Fixed `ImportError` warning in `scrapy_cffi.utils.fd`
+
+## Removed
+- Removed redundant `settings.py` under `scrapy_cffi.models`
+- Removed duplicate `KafkaInfo` in `SettingsInfo`
+- Removed `RET_COOKIES` from `SettingsInfo`
+
+---
 
 ## [0.2.0] - 2025-09-27
 ### Added

@@ -37,7 +37,7 @@ class RedisInfo(BaseDBInfo):
     MODE: RedisMode = RedisMode.SINGLE
 
     SENTINELS: Optional[List[tuple[str, int]]] = Field(default_factory=list)
-    MASTER_NAME: Optional[str] = None  # sentinel 模式需要
+    MASTER_NAME: Optional[str] = None  # sentinel mode
 
     CLUSTER_NODES: Optional[List[dict]] = Field(default_factory=list)
 

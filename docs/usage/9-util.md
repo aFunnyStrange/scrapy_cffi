@@ -1,5 +1,5 @@
 # 1.Introduction
-`scrapy_cffi.utils` provides a set of commonly used utility functions covering multiple areas, mainly focusing on **Concurrency**, **Logging**, **Media**, **JsonLoad**, **Protobuf** and **ScrapyRunner** processing.
+`scrapy_cffi.utils` provides a set of commonly used utility functions covering multiple areas, mainly focusing on **Concurrency**, **Logging**, **Media**, **JsonLoad**, **Protobuf**, **ScrapyRunner**, **fd** and **envConfig** processing.
 
 
 ---
@@ -536,3 +536,95 @@ Methods and parameters are similar to `ScrapyRunner`, with an additional `use_pr
 **✅ Summary**
 - **ScrapyRunner**: Simplest execution method, each spider runs in an independent child process, similar to running the CLI, cross-platform and stable.
 - **InlineScrapyRunner**: Flexible execution, suitable for embedding spiders in Python programs, supports non-blocking threads or independent processes, allowing centralized management.
+
+
+---
+
+
+# 8.Fd
+Provides static utilities to inspect file descriptor / handle usage of the current process.
+
+## 8.1 get_max_fd
+**Purpose**: Retrieve the maximum number of file descriptors (FDs) or handles the current process can open.
+
+**Platform Behavior**:
+- **Windows**: Uses CRT `_getmaxstdio`.
+- **Linux/macOS**: Uses `resource.RLIMIT_NOFILE`.
+
+**Returns**: `int` – Maximum FD count.
+
+## 8.1 get_used_fd
+**Purpose**: Get the number of FDs / handles currently in use by the process.
+
+**Platform Behavior**:
+- **Windows**: Uses `psutil.Process().num_handles()`.
+- **Linux/macOS**: Counts entries in `/proc/self/fd` (fallback `-1` if not accessible).
+
+**Returns**: `int` – Number of used FDs, or `-1` if unknown.
+
+## 8.3 print_fd_info
+**Purpose**: Print a quick summary of the current process FD usage.
+
+**Output Example**:
+```python
+[FDUtil] Max FD: 1024, Used FD: 42
+```
+
+**Usage**:
+```python
+from scrapy_cffi.utils.fd import FDUtil
+
+FDUtil.print_fd_info()
+```
+
+---
+
+
+# 9.envConfig
+Utilities to convert between `SettingsInfo` objects and `.env` files.
+
+## 9.1 settings_to_env
+**Purpose**: Serialize a `SettingsInfo` object (or similar Pydantic-like object) into a `.env` file.
+
+**Behavior**:
+- `dict` and `list` fields → JSON strings
+- `bool` → `'true'` / `'false'`
+- Special `ComponentInfo` fields → empty JSON `'{}'`
+- `None` values → skipped
+
+**Parameters**:
+- `obj: Any` – Object to serialize
+- `env_path: Union[str, Path]` – Destination `.env` file
+
+**Example**:
+```python
+from scrapy_cffi.utils import settings_to_env
+from scrapy_cffi.settings import SettingsInfo
+
+config = SettingsInfo()
+settings_to_env(config, ".env.dev")
+```
+
+## 9.2 env_to_settings
+**Purpose**: Load a `.env` file and convert it into an instance of the specified class (e.g., `SettingsInfo`).
+
+**Behavior**:
+- Automatically parses JSON strings into `dict` / `list`
+- Converts `'true'` / `'false'` to bool
+- Converts numeric strings to `int` / `float`
+- Restores `ComponentInfo` fields from dict
+
+**Parameters**:
+- `env_path: Union[str, Path]` – Path to the `.env` file
+- `cls: Type[Any]` – Target class type to instantiate
+
+**Returns**: An instance of `cls` with all fields populated from the `.env`.
+
+**Example**:
+```python
+from scrapy_cffi.utils import env_to_settings
+from scrapy_cffi.settings import SettingsInfo
+
+config = env_to_settings(".env.dev", SettingsInfo)
+print(config.TEST_DATA)
+```

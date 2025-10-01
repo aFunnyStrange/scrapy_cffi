@@ -221,9 +221,15 @@ Same as `protobuf_encode`, but with additional support for the `is_gzip` paramet
 #### 2.3.2.3 grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Similar to `HttpRequest.grpc_encode` in `List[Tuple[Dict, Dict]]` mode.
 
-However, due to the complexity of WebSocket streaming (which would require an extra nesting layer), the framework **only supports encoding into a single message**.
+However, due to two key limitations:
+1. **WebSocket streaming complexity** — it would require an additional nesting layer for proper framing.
+2. **CPU-bound encoding overhead** — since the framework is asynchronous and single-threaded, large stream-encoding tasks cannot be accelerated within the event loop.
 
-If you need to send multiple gRPC stream messages within a single `WebSocketRequest`, you should **manually encode them and provide them directly to** `send_message`. This keeps message handling explicit and avoids framework-side ambiguity.
+The framework therefore **only supports encoding into a single message**.
+
+If you need to send multiple gRPC stream messages within a single `WebSocketRequest`, you should **manually encode them and pass them directly to `send_message`**. This approach keeps message handling explicit, avoids ambiguity at the framework level, and is the **recommended practice**.
+
+👉 For performance, CPU-intensive encoding should be delegated to worker threads. Once encoding is complete, the result can be passed directly to `send_message`.
 
 
 

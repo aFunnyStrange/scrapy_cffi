@@ -67,6 +67,10 @@ Retrieve cookies of a session immediately by `session_id`, without waiting for s
 ---
 
 # 3.Pipeline
+## 3.1 Session
+### 3.1.1 `get_session_cookies`
+Same as **2.1.2** Section.
+
 ## 3.1 Signals
 Signal-related hooks are accessed via `self.hooks.signals`.
 ### 3.1.1 send

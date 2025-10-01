@@ -18,7 +18,7 @@ class CExtensionLoader:
         return module
 
     def _load_ctypes_wrapper(self, wrapper_path: Path) -> ModuleType:
-        # wrapper.py 内部负责 ctypes 动态库加载
+        # Wrapper. py is responsible for loading ctypes dynamic libraries internally
         spec = importlib.util.spec_from_file_location(wrapper_path.stem, wrapper_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

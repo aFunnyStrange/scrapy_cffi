@@ -34,6 +34,9 @@ def _pipelines_hooks(crawler: "Crawler") -> "_PipelinesHooks":
 
 def pipelines_hooks(crawler: "Crawler") -> "PipelinesHooks":
     hooks_obj = Hooks(
+        session=Hooks(
+            get_session_cookies=crawler.sessions.get_session_cookies,
+        ),
         signals=Hooks(
             send=crawler.signalManager.send
         )

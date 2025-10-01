@@ -38,10 +38,10 @@ class BaseMQInfo(StrictValidatedModel):
 
 class RabbitMQInfo(BaseMQInfo):
     VHOST: Optional[str] = "/"
-    EXCHANGE_NAME: str = "scrapy_cffi"
-    EXCHANGE_TYPE: str = "direct"  # direct / fanout / topic / headers
-    PREFETCH_COUNT: int = 10
-    DONT_FILTER: bool = False
+    EXCHANGE_NAME: Optional[str] = "scrapy_cffi"
+    EXCHANGE_TYPE: Optional[str] = "direct"
+    PREFETCH_COUNT: Optional[int] = 10
+    DONT_FILTER: Optional[bool] = False
 
     @model_validator(mode="after")
     def assemble_url(self) -> "RabbitMQInfo":
@@ -54,7 +54,7 @@ class RabbitMQInfo(BaseMQInfo):
 
 class KafkaInfo(BaseMQInfo):
     CONSUMER_GROUP: Optional[str] = "scrapy_cffi"
-    PERSISTENT_TIME: Optional[int] = 24*60*60*7000
+    PERSISTENT_TIME: Optional[int] = 7*24*60*60*1000
 
 __all__ = [
     "RabbitMQInfo",

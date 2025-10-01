@@ -2,7 +2,7 @@ from pathlib import Path
 from scrapy_cffi.utils import get_run_py_dir
 from scrapy_cffi.settings import SettingsInfo
 
-def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=True, used_kafka=False, *args, **kwargs):
+def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=False, used_kafka=False, *args, **kwargs):
     if env_path:
         env_file = Path(env_path)
         if env_file.exists():

@@ -50,7 +50,6 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         self.timeout = self.settings.TIMEOUT
         self.dont_filter = self.settings.DONT_FILTER
         self.proxies = self.settings.PROXIES
-        self.proxies_list = self.settings.PROXIES_LIST
         self.proxies_list = [{"http": proxy_url, "https": proxy_url} for proxy_url in self.settings.PROXIES_LIST]
 
     def pre_check(self, request: Request) -> Request:

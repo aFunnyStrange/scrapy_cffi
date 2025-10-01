@@ -5,8 +5,8 @@ try:
     import psutil
 except ImportError as e:
     raise ImportError(
-        "Missing scrapy dependencies. "
-        "Please install: pip install scrapy"
+        "Missing psutil dependencies. "
+        "Please install: pip install psutil"
     ) from e
 
 class FDUtil:

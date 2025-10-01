@@ -40,6 +40,9 @@ class RedisDupeFilter(MemoryDupeFilter):
             key_new_seen=key_new_seen,
             key_is_req=key_is_req,
         )
+        if self.settings.DEDUP_TTL > 0:
+            await self.redisManager.expire(key_new_seen, self.settings.DEDUP_TTL)
+            await self.redisManager.expire(key_is_req, self.settings.DEDUP_TTL)
         return is_new == 0
 
     async def mark_sent(self, request: "Request", spider: "Spider", **kwargs):
@@ -73,6 +76,9 @@ class RedisBloomDupeFilter(RedisDupeFilter):
             key_is_req=key_is_req,
             index_list=index_list
         )
+        if self.settings.DEDUP_TTL > 0:
+            await self.redisManager.expire(key_new_seen, self.settings.DEDUP_TTL)
+            await self.redisManager.expire(key_is_req, self.settings.DEDUP_TTL)
         return is_new == 0
 
     async def mark_sent(self, request: "Request", spider: "Spider", **kwargs):

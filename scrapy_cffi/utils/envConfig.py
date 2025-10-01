@@ -109,7 +109,7 @@ if __name__ == "__main__":
     config.TEST_DATA = {"a":1, "b":2}
     print("Before .env:", config.TEST_DATA)
 
-    env_path = r"D:\_project\use_scrapy\cffi_project\.env.dev"
+    env_path = r".env.dev"
 
     # Generate .env
     settings_to_env(config, env_path)

@@ -28,23 +28,33 @@ cd <project_name>
 scrapy-cffi genspider -r <spider_name> <domain>
 ```
 
+## 3.3 RabbitmqSpider
+RabbitmqSpider has higher priority than RedisSpider. By default, it still uses Redis for deduplication.
+```bash
+cd <project_name>
+scrapy-cffi genspider -m <spider_name> <domain>
+```
+
 ---
 
 
 
 # 4.demo
 > If you need to refer to the demo project.
-## 4.1 Normal
-### 4.1.1 Spider
+## 4.1 Spider
 ```bash
 scrapy-cffi demo
 ```
 
-### 4.1.2 RedisSpider
+### 4.2 RedisSpider
 ```bash
 scrapy-cffi demo -r
 ```
 
+### 4.3 RabbitmqSpider
+```bash
+scrapy-cffi demo -m
+```
 
 
 # 5.extra

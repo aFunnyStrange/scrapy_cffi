@@ -62,6 +62,7 @@ class SettingsInfo(BaseValidatedModel):
     DUPEFILTER: Optional[str] = None
     BLOOM_INFO: Optional[BloomInfo] = BloomInfo()
     SCHEDULER_PERSIST: Optional[bool] = False
+    DEDUP_TTL: Optional[int] = 0
     INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
     FILTER_KEY: Optional[str] = "cffiFilter"
     DONT_FILTER: Optional[bool] = False
@@ -69,7 +70,7 @@ class SettingsInfo(BaseValidatedModel):
     _sent_seeen: str = PrivateAttr()
 
     WS_END_TAG: Optional[str] = "websocket end" # You can customize the TAG to avoid conflicts with the response content
-    RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
+    # RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
     
     JS_PATH: Optional[Union[str, bool]] = None # Absolute/relative path to JS files or default to ./js_path under the running script directory
     
@@ -80,7 +81,6 @@ class SettingsInfo(BaseValidatedModel):
     MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
 
     RABBITMQ_INFO: Optional[RabbitMQInfo] = RabbitMQInfo()
-    KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
     KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
 
     CPY_EXTENSIONS: Optional[CPYExtensionsConfig] = CPYExtensionsConfig()

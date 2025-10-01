@@ -9,6 +9,7 @@ A common base class for `DownloadInterceptor` and `SpiderInterceptor`, serving a
 | Attribute | Description |
 | --------- | ----------- |
 | settings | Global configuration from `settings.py` for convenient access |
+| kafkaManager | Provides direct access to the Kafka manager, allowing spiders to produce logs or push items into additional Kafka queues. |
 
 ```python 
 RequestType = Union[HttpRequest, WebSocketRequest]

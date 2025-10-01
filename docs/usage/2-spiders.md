@@ -10,7 +10,8 @@ Each spider class includes several built-in attributes by default:
 | run_py_dir | A `Path` object representing the directory path of the executing `.py` script. |
 | session_id | Defaults to an empty string; used to assign a specific session ID per spider. |
 | ctx_dict | Stores all loaded JavaScript execution contexts (as specified by `js_path`). Keys are filenames, values are context objects. |
-| hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. For more in "9-hook.md" |
+| kafkaManager | Provides direct access to the Kafka manager, allowing spiders to produce logs or push items into additional Kafka queues. |
+| hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. For more in **"10-hook.md"** |
 
 ---
 
@@ -46,11 +47,11 @@ raise NotImplementedError("parse is not defined.")
 ```
 
 ### 1.2.3 errRet
-The default error handler. If a request has an errback set, this method will be used by default.
+The default error handler. If a request has an errback set, this method can be used by default.
 
 ---
 
-`scrapy_cffi` provides two spider base classes: `Spider` and `RedisSpider`, consistent with Scrapy's design — one class per spider.
+`scrapy_cffi` provides two spider base classes: `Spider`, `RedisSpider` and `RabbitmqSpider`, consistent with Scrapy's design — one class per spider.
 
 
 
@@ -67,7 +68,10 @@ The default error handler. If a request has an errback set, this method will be 
 - **Type**: str
 - **Description**: The name of the Redis queue from which tasks (URLs) are pulled and scheduled.
 
-
+## 2.3 RabbitmqSpider
+### 2.2.1 rabbitmq_queue
+- **Type**: str
+- **Description**: The name of the rabbitmq queue from which tasks (URLs) are pulled and scheduled.
 
 
 
@@ -185,7 +189,7 @@ Then you can run with:
 scrapy_cffi.run_spider(settings, task_data=task_data)
 ```
 
-## 4.2 Use Redis Task Data
+## 4.2 Use Redis/Rabbitmq Task Data
 Similar to `scrapy-redis`, override `make_request_from_data`.
 **Note**: Must be defined as an `async def.` If you want generator-style behavior, override `start` too.
 ```python 

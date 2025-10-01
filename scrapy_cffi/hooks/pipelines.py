@@ -5,13 +5,17 @@ if TYPE_CHECKING:
 class SignalHooks(Protocol):
     def send(self, signal: object, data: "SingalInfo") -> None: ...
 
-class SessionHooks(Protocol):
+class _SessionHooks(Protocol):
     def mark_end(self, session_id: str) -> None: ...
 
     def get_session_cookies(self, session_id: str) -> Dict: ...
 
+class SessionHooks(Protocol):
+    def get_session_cookies(self, session_id: str) -> Dict: ...
+
 class _PipelinesHooks(Protocol):
-    session: SessionHooks
+    session: _SessionHooks
 
 class PipelinesHooks(Protocol):
+    session: SessionHooks
     signals: SignalHooks
