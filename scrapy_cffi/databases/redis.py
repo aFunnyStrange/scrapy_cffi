@@ -50,12 +50,14 @@ class RedisManager(redis.Redis):
         redis_url: Union[str, List[Tuple[str, int]], List[Dict]],
         redis_mode: str = "single",
         master_name: str = None,
+        sentinel_override_master: Tuple[str,int]=None,
         **kwargs
     ):
         self.stop_event = stop_event
         self.redis_mode = redis_mode
         self._redis_url = redis_url
         self._master_name = master_name
+        self._sentinel_override_master = sentinel_override_master
         self._method_cache = {}
         self._sentinel = None
 
@@ -66,12 +68,26 @@ class RedisManager(redis.Redis):
                 raise ValueError("Sentinel mode requires a list of (host, port)")
             from redis.sentinel import Sentinel
             self._sentinel = Sentinel(redis_url, **kwargs)
-            tmp_instance = self._sentinel.master_for(master_name, **kwargs)
+            if self._sentinel_override_master:
+                host, port = self._sentinel_override_master
+                tmp_instance = redis.Redis(host=host, port=port, **kwargs)
+            else:
+                tmp_instance = self._sentinel.master_for(master_name, **kwargs)
         elif redis_mode == "cluster":
             if not isinstance(redis_url, list):
-                raise ValueError("Cluster mode requires a list of dict [{'host':..., 'port':...}]")
+                raise ValueError("Cluster mode requires a list of dict [{'host':..., 'port':...}] or list of URLs")
             from redis.cluster import RedisCluster
-            tmp_instance = RedisCluster(startup_nodes=redis_url, **kwargs)
+
+            if isinstance(redis_url[0], str):
+                from urllib.parse import urlparse
+                startup_nodes = [{"host": urlparse(u).hostname, "port": urlparse(u).port} for u in redis_url]
+            else:
+                startup_nodes = redis_url
+            tmp_instance = RedisCluster(
+                startup_nodes=startup_nodes,
+                decode_responses=True,
+                skip_full_coverage_check=True
+            )
         else:
             raise ValueError(f"Unsupported redis_mode: {redis_mode}")
 
@@ -86,21 +102,26 @@ class RedisManager(redis.Redis):
             stop_event=crawler.stop_event,
             redis_mode=crawler.settings.REDIS_INFO.MODE,
             redis_url=crawler.settings.REDIS_INFO.resolved_url,
-            master_name=crawler.settings.REDIS_INFO.MASTER_NAME
+            master_name=crawler.settings.REDIS_INFO.MASTER_NAME,
+            sentinel_override_master=crawler.settings.REDIS_INFO.SENTINEL_OVERRIDE_MASTER,
         )
 
     async def _reconnect(self):
         if self.stop_event.is_set():
             return
         await self.close()
+        
         if self.redis_mode == "single":
             new_instance: "Redis" = redis.from_url(self._redis_url)
             self.connection_pool: "ConnectionPool" = new_instance.connection_pool
-
         elif self.redis_mode == "sentinel":
-            master = self._sentinel.master_for(self._master_name)
-            self.connection_pool: "ConnectionPool"  = master.connection_pool
-
+            if self._sentinel_override_master:
+                host, port = self._sentinel_override_master
+                new_instance = redis.Redis(host=host, port=port)
+                self.connection_pool: "ConnectionPool" = new_instance.connection_pool
+            else:
+                master = self._sentinel.master_for(self._master_name)
+                self.connection_pool: "ConnectionPool" = master.connection_pool
         elif self.redis_mode == "cluster":
             from redis.cluster import RedisCluster
             new_instance: RedisCluster  = RedisCluster(startup_nodes=self._redis_url)

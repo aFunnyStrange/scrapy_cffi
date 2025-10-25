@@ -246,7 +246,7 @@ If PROXIES is not set and this is provided, a random proxy from the list will be
 ---
 
 ### 2.4.2 ComponentInfo
-`SPIDER_INTERCEPTORS_PATH`, `DOWNLOAD_INTERCEPTORS_PATH`, `ITEM_PIPELINES_PATH`, and `EXTENSIONS_PATH` are all internally converted to `ComponentInfo`.
+`SPIDER_INTERCEPTORS_PATH`, `DOWNLOAD_INTERCEPTORS_PATH`, `ITEM_PIPELINES_PATH` and `EXTENSIONS_PATH` are all internally converted to `ComponentInfo`.
 - **Type**: **Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]]**
 A flexible container for specifying component module paths, supporting multiple formats. Internally, the framework will normalize all input into a consistent list of module strings. This allows users to configure components in a concise and readable manner.
 Supported formats:

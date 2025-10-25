@@ -11,7 +11,7 @@ elif sys.platform == "darwin":
     # macOS
     lib = CDLL(str(dir / "build" / "libbloom.dylib"))
 else:
-    # Linux / 其他 Unix
+    # Linux / Unix
     lib = CDLL(str(dir / "build" / "libbloom.so"))
 
 lib.bloom_init.restype = c_void_p
@@ -36,7 +36,7 @@ lib.bloom_get_hash_count.argtypes = [c_void_p]
 lib.bloom_get_indices.argtypes = [c_void_p, c_char_p, c_size_t, POINTER(c_size_t)]
 lib.bloom_get_indices.restype = c_size_t
 
-# Python 封装函数
+# Python code
 def bloom_init(size: int, expected: int, k: int = 0) -> c_void_p:
     return lib.bloom_init(size, expected, k)
 

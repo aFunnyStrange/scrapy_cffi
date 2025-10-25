@@ -29,7 +29,7 @@ pip install scrapy_cffi
 unstable on github
 ```bash
 git clone https://github.com/aFunnyStrange/scrapy_cffi.git
-cd curl_cffi
+cd scrapy_cffi
 pip install -e .
 ```
 

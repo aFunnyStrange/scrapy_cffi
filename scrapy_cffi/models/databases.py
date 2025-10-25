@@ -1,6 +1,6 @@
 from pydantic import model_validator, Field
 from enum import Enum
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 from .base import StrictValidatedModel
 
 class BaseDBInfo(StrictValidatedModel):
@@ -38,6 +38,7 @@ class RedisInfo(BaseDBInfo):
 
     SENTINELS: Optional[List[tuple[str, int]]] = Field(default_factory=list)
     MASTER_NAME: Optional[str] = None  # sentinel mode
+    SENTINEL_OVERRIDE_MASTER: Optional[Tuple[str, int]] = None # sentinel mode -> (master_host, master_port)
 
     CLUSTER_NODES: Optional[List[dict]] = Field(default_factory=list)
 

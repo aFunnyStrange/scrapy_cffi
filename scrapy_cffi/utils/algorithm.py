@@ -11,7 +11,7 @@ def create_uniqueId():
         value -= 2**64
     return str(value)
 
-def do_totp(secret: str, counter: int=None, timestamp_10: int=None) -> str:
+def do_otp(secret: str, counter: int=None, timestamp_10: int=None) -> str:
     try:
         import pyotp
         secret_clean = secret.replace(" ", "")
