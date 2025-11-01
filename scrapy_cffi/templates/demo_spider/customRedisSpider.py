@@ -22,7 +22,7 @@ class CustomRedisSpider(RedisSpider):
             dont_filter=self.settings.DONT_FILTER,
             callback=self.sec_test, 
             errback=self.errRet,
-            send_message=f"connect send test".encode('utf-8')
+            send_message=WebSocketMsg(data=f"connect send test".encode('utf-8'))
         )
 
     async def sec_test(self, response: WebSocketResponse):
@@ -32,7 +32,7 @@ class CustomRedisSpider(RedisSpider):
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,
-                send_message=f"hello：{self.count}".encode('utf-8')
+                send_message=WebSocketMsg(data=f"hello：{self.count}".encode('utf-8'))
             )
         elif self.count == 3:
             # scrapy_cffi version >= 0.2.0

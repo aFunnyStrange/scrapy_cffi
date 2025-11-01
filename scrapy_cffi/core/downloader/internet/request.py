@@ -87,26 +87,28 @@ class Request(object):
         return f'{url}?{urlencode(params, doseq=True)}' if params else url
     
     def to_dict(self) -> Dict:
+        def _encode_data(data):
+            if isinstance(data, bytes):
+                return {"__bytes__": True, "b64": base64.b64encode(data).decode()}
+            elif isinstance(data, WebSocketMsg):
+                return data.to_dict()
+            elif isinstance(data, list):
+                return [_encode_data(v) for v in data]
+            elif isinstance(data, dict):
+                return {k: _encode_data(v) for k, v in data.items()}
+            elif isinstance(data, tuple):
+                return tuple(_encode_data(v) for v in data)
+            else:
+                return data
+
         result = {}
         for key, value in self.__dict__.items():
             if key in self.ENCODE_FIELDS:
-                result[key] = self._encode_data(value)
+                result[key] = _encode_data(value)
             else:
                 result[key] = value
         return result
     
-    @staticmethod
-    def _encode_data(data):
-        if isinstance(data, bytes):
-            return {"__bytes__": True, "b64": base64.b64encode(data).decode()}
-        elif isinstance(data, list):
-            return [Request._encode_data(v) for v in data]
-        elif isinstance(data, dict):
-            return {k: Request._encode_data(v) for k, v in data.items()}
-        elif isinstance(data, tuple):
-            return tuple(Request._encode_data(v) for v in data)
-        return data
-
     def to_bytes(self) -> bytes:
         d = self.to_dict()
         d["class"] = self.__class__.__name__
@@ -122,15 +124,18 @@ class Request(object):
     
     @staticmethod
     def _decode_data(data):
-        if isinstance(data, dict) and data.get("__bytes__"):
-            return base64.b64decode(data["b64"])
+        if isinstance(data, dict):
+            if data.get("__bytes__"):
+                return base64.b64decode(data["b64"])
+            if data.get("__wsmsg__"):
+                return WebSocketMsg.from_dict(data)
+            return {k: Request._decode_data(v) for k, v in data.items()}
         elif isinstance(data, list):
             return [Request._decode_data(v) for v in data]
-        elif isinstance(data, dict):
-            return {k: Request._decode_data(v) for k, v in data.items()}
         elif isinstance(data, tuple):
             return tuple(Request._decode_data(v) for v in data)
-        return data
+        else:
+            return data
 
     @classmethod
     def _from_dict(cls, d):
@@ -273,7 +278,7 @@ class MediaRequest(HttpRequest):
 @register_request_class
 class WebSocketRequest(Request):
     ENCODE_FIELDS = {
-        "headers", "send_message", "cookies", "proxies", "meta", "kwargs"
+        "headers", "send_message", "ping_data", "cookies", "proxies", "meta", "kwargs"
     }
 
     def __init__(

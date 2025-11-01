@@ -66,3 +66,20 @@ If you try to directly start a `scrapy_cffi` spider inside `Celery` code, it may
 
 **✅ Recommended Approach:**
 Let the `backend` push task messages → `Celery` distributes them to specific `Redis` keys → `scrapy_cffi’s` RedisSpider consumes those keys and runs the spider accordingly. For details, refer to [system](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/system.jpg).
+
+
+
+# 6.Issues
+## 6.1 Unclean shutdown on Ctrl+C
+In certain cases, when stopping the crawler with `Ctrl+C`, Python may display harmless exceptions such as:
+```python
+Task was destroyed but it is pending!
+RuntimeError: Event loop is closed
+```
+
+This behavior is a known side effect of Python’s asynchronous event loop.
+Since task cancellation in asyncio is cooperative, some background tasks may still be pending when the event loop closes, producing these warnings.
+
+The framework ensures that all managed resources are properly released, but console output may not always be perfectly clean.
+
+Contributions or suggestions to improve shutdown handling and minimize these messages are welcome.

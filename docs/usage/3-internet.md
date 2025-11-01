@@ -177,7 +177,9 @@ According to the gRPC wire protocol:
 | --------- | ----------- |
 | **websocket_id** | Identifier for an existing WebSocket session (for reuse). Not required for initial connection. |
 | **websocket_end** | Indicates that the WebSocket should be closed. |
-| **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. 此项在版本>=0.2.2后，要求每一条消息都采用 WebSocketMsg 包裹，因为在 websocket 通信中，发送的消息不一定是字节流，WebSocketMsg 是消息与消息类型的一一对应封装。 |
+| **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. (Since version ≥ 0.2.2, each message must be wrapped in a `WebSocketMsg` object, because in WebSocket communication, messages are not always byte streams — `WebSocketMsg` provides a one-to-one mapping between message content and its type.)  |
+| **ping_data** | User-level ping data. Some connections define custom ping content; maintaining this in the crawler layer would be inconvenient, so the framework implements internal management for it (configured when the WebSocket is established and cannot be changed afterward). This field applies only to user-defined pings and has no effect on protocol-level pings (which are handled internally by the underlying `curl_cff`). Like `send_message`, the value should be wrapped in `WebSocketMsg`, but without the `[message]` list form. |
+| **ping_interval** | Interval between ping messages. |
 
 ### 2.3.2 Methods
 #### 2.3.2.1 protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]])

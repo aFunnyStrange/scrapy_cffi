@@ -5,16 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+None
+
+---
+## [0.2.2] - 2025-11-1
+### Added
 - Updated test cases related to the MQ cluster
 - Uploaded C implementation of Bloom filter
 - WebSocket message sending now requires specifying flags -> curlflags
 - Added `ping_data` maintenance for WebSocket; this ping is user-defined, while protocol-level ping requests are automatically handled by the library and do not require user intervention
 - Replaced asyncio coroutines using `inspect` for detection
 - Factory classes for LZ4 and Zstd compression algorithms
-- Top-level Python process may display exceptions on Ctrl+C when shutting down the async event loop; the program exits correctly, but the output is less clean compared to previous versions. Investigation pending.
-
-## Fixed
-- v0.2.1: Circular import issue
 
 ---
 ## [0.2.1] - 2025-10-1
