@@ -5,7 +5,7 @@ from ..extensions import signals, Extension
 from typing import TYPE_CHECKING, Callable, Awaitable, Any
 if TYPE_CHECKING:
     from scrapy_cffi.hooks.signals import SignalsHooks
-    from scrapy_cffi.models.api import SingalInfo
+    from scrapy_cffi.extensions import SignalInfo
 
 def locked(method: Callable[..., Awaitable[Any]]):
     @functools.wraps(method)
@@ -49,61 +49,61 @@ class StatisticsExtension(Extension):
         return extension_cls
 
     @locked
-    async def engine_started(self, data: "SingalInfo"):
+    async def engine_started(self, data: "SignalInfo"):
         self.count["engine_started"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def engine_stopped(self, data: "SingalInfo"):
+    async def engine_stopped(self, data: "SignalInfo"):
         self.count["engine_stopped"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def scheduler_empty(self, data: "SingalInfo"):
+    async def scheduler_empty(self, data: "SignalInfo"):
         self.count["scheduler_empty"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def task_error(self, data: "SingalInfo"):
+    async def task_error(self, data: "SignalInfo"):
         self.count["task_error"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def spider_opened(self, data: "SingalInfo"):
+    async def spider_opened(self, data: "SignalInfo"):
         self.count["spider_opened"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def spider_closed(self, data: "SingalInfo"):
+    async def spider_closed(self, data: "SignalInfo"):
         self.count["spider_closed"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def spider_error(self, data: "SingalInfo"):
+    async def spider_error(self, data: "SignalInfo"):
         self.count["spider_error"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def request_scheduled(self, data: "SingalInfo"):
+    async def request_scheduled(self, data: "SignalInfo"):
         self.count["request_scheduled"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def request_dropped(self, data: "SingalInfo"):
+    async def request_dropped(self, data: "SignalInfo"):
         self.count["request_dropped"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def request_reached_downloader(self, data: "SingalInfo"):
+    async def request_reached_downloader(self, data: "SignalInfo"):
         self.count["request_reached_downloader"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def response_received(self, data: "SingalInfo"):
+    async def response_received(self, data: "SignalInfo"):
         self.count["response_received"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))
 
     @locked
-    async def item_scraped(self, data: "SingalInfo"):
+    async def item_scraped(self, data: "SignalInfo"):
         self.count["item_scraped"] += 1
         print(json.dumps(self.count, indent=4, ensure_ascii=False))

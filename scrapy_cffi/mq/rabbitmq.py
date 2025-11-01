@@ -177,10 +177,16 @@ class RabbitMQManager:
 
     @auto_retry
     async def llen(self, queue_name: str) -> int:
-        queue = await self._channel.declare_queue(
-            queue_name, durable=self.persist, passive=True
-        )
-        return queue.declaration_result.message_count
+        try:
+            queue = await self._channel.declare_queue(
+                queue_name, durable=self.persist, passive=True
+            )
+            return queue.declaration_result.message_count
+        except aio_pika.exceptions.ChannelClosed:
+            await self.connect()
+            return 0
+        except aio_pika.exceptions.ChannelInvalidStateError:
+            return 0
 
     async def close(self):
         self.stop_event.set()

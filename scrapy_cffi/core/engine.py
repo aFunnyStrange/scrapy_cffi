@@ -1,10 +1,10 @@
 import asyncio, time
-from ..extensions import signals
-from ..models.api import SingalInfo
+from ..extensions import signals, SignalInfo
 from .downloader import *
 from ..exceptions import DownloadError
 from ..interceptors import ChainResult, ChainNextEnum
 from ..interceptors.chains import _ensure_asyncgen
+from ..utils.concurrency import safe_call
 from typing import TYPE_CHECKING, Dict, Union
 if TYPE_CHECKING:
     from ..crawler import Crawler
@@ -49,10 +49,10 @@ class Engine:
         )
 
     async def start(self, *args, **kwargs):
-        self.signalManager.send(signal=signals.engine_started, data=SingalInfo(signal_time=time.time()))
+        self.signalManager.send(signal=signals.engine_started, data=SignalInfo(signal_time=time.time()))
         if self.pipelines_chain.chain_list: # In fact, at least one pipeline component must be registered, otherwise there may be bugs
             await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="open_spider", pad_data=self.spider)
-        self.signalManager.send(signal=signals.spider_opened, data=SingalInfo(spider=self.spider, signal_time=time.time()))
+        self.signalManager.send(signal=signals.spider_opened, data=SignalInfo(spider=self.spider, signal_time=time.time()))
 
         # Retrieve requests directly from the spider's start method without additional processing,
         # mark them as start URLs, and submit them to the spider middleware chain.
@@ -66,8 +66,8 @@ class Engine:
 
         if self.pipelines_chain.chain_list:
             await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
-        await self.signalManager._safe_put(signal=signals.spider_closed, data=SingalInfo(spider=self.spider, signal_time=time.time()))
-        await self.signalManager._safe_put(signal=signals.engine_stopped, data=SingalInfo(signal_time=time.time()))
+        await self.signalManager._safe_put(signal=signals.spider_closed, data=SignalInfo(spider=self.spider, signal_time=time.time()))
+        await self.signalManager._safe_put(signal=signals.engine_stopped, data=SignalInfo(signal_time=time.time()))
 
     async def get_spider_output(self, output, response=None, mark_as_start=False):
         async for single_result in _ensure_asyncgen(output):
@@ -99,7 +99,7 @@ class Engine:
             else:
                 data = spiderinterceptors_result.model_dump().copy()
                 data["signal_time"] = time.time()
-                self.signalManager.send(signal=signals.spider_error, data=SingalInfo(**data))
+                self.signalManager.send(signal=signals.spider_error, data=SignalInfo(**data))
         elif spiderinterceptors_result.next == ChainNextEnum.SESSION:
             if spiderinterceptors_result.signal.websocket_end_for_key or spiderinterceptors_result.signal.websocket_end_for_url:
                 self.end_websocket(signal=spiderinterceptors_result.signal)
@@ -126,6 +126,9 @@ class Engine:
 
     # Scheduler: repeatedly fetches and processes requests until none are left.
     async def process_scheduler(self, request: Request=None):
+        if self.stop_event.is_set():
+            return
+            
         if request:
             put_scheduler = await self.scheduler.put(request=request, spider=self.spider)
             if put_scheduler:
@@ -136,7 +139,7 @@ class Engine:
         if self.scheduler.is_distributed:
             request = await self.scheduler.get(spider=self.spider)
             if isinstance(request, int) and not request: # scheduler empty
-                self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
+                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                 return
             elif isinstance(request, Request):
                 await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
@@ -151,7 +154,7 @@ class Engine:
             except asyncio.CancelledError:
                 raise
             if self.scheduler.empty(spider=self.spider):
-                self.signalManager.send(signal=signals.scheduler_empty, data=SingalInfo(signal_time=time.time()))
+                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                 return 
             else:
                 await self.taskManager.create(coro=self.process_scheduler())
@@ -202,7 +205,8 @@ class Engine:
             output = self.get_backFunc(backFunc=request.callback, response=response)
         else:
             return
-        await self.taskManager.create(coro=self.get_spider_output(output=output, response=response))
+        if not self.stop_event.is_set():
+            await self.taskManager.create(coro=self.get_spider_output(output=output, response=response))
 
     # manager callback
     def get_backFunc(self, backFunc=None, response: Union[Response, BaseException]=None, fill_text=""):
@@ -225,7 +229,7 @@ class Engine:
                 self.logger.info(fill_text)
 
     async def process_items(self, item: Union["Item", Dict]):
-        self.signalManager.send(signal=signals.item_scraped, data=SingalInfo(signal_time=time.time(), item=item, spider=self.spider))
+        self.signalManager.send(signal=signals.item_scraped, data=SignalInfo(signal_time=time.time(), item=item, spider=self.spider))
         await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="process_item", pad_data=item, spider=self.spider)
 
     # Process a WebSocket request
@@ -244,10 +248,8 @@ class Engine:
 
                 # await run_with_timeout(ws.send, request.send_message, stop_event=self.stop_event, timeout=3)
                 for msg in request.send_message:
-                    if asyncio.iscoroutinefunction(websocket_entry.websocket.send):
-                        await websocket_entry.websocket.send(msg)
-                    else:
-                        await asyncio.to_thread(websocket_entry.websocket.send, msg)
+                    await safe_call(websocket_entry.websocket.send, msg.data, flags=msg.flags)
+
             websocket_entry.release()
             self.sessions.release(request.session_id)
             return
@@ -257,16 +259,20 @@ class Engine:
         try:
             task, queue, websocket_event = await self.downloader.fetch_websocket(wrapper, connect_request)
             while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
-                msg = await queue.get()
-                if isinstance(msg, DownloadError) or (isinstance(msg, str) and msg == self.settings.WS_END_TAG):
-                    websocket_event.set()
-                    # task.cancel()
-                    # self.logger.debug(f'{msg}: {connect_request.url}, listener ended')
-                    break
-                await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=msg, request=connect_request))
-                if b'keepalive ping timeout' in msg.msg[0]:
-                    websocket_event.set()
-                await asyncio.sleep(0)
+                try:
+                    msg = await queue.get()
+                    # msg = await asyncio.wait_for(queue.get(), timeout=3.0)
+                    if isinstance(msg, DownloadError) or (isinstance(msg, str) and msg == self.settings.WS_END_TAG):
+                        websocket_event.set()
+                        # task.cancel()
+                        # self.logger.debug(f'{msg}: {connect_request.url}, listener ended')
+                        break
+                    await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=msg, request=connect_request))
+                    if b'keepalive ping timeout' in msg.msg[0]:
+                        websocket_event.set()
+                    await asyncio.sleep(0)
+                except asyncio.TimeoutError:
+                    pass
         except asyncio.CancelledError:
             self.logger.debug(f'WebSocket listener task cancelled: {connect_request.url}')
             raise

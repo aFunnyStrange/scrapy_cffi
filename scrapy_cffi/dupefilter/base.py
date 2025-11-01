@@ -31,7 +31,7 @@ class BaseFingerprint:
                 parts.append(json.dumps(request.data, separators=(",", ":"), sort_keys=True).encode('latin-1'))
         elif isinstance(request, WebSocketRequest):
             for msg in request.send_message:
-                parts.append(msg)
+                parts.append(msg.data)
         return b''.join(parts)
 
     def get_fingerprint(self, request: Request) -> str:

@@ -2,8 +2,7 @@ import asyncio, time
 from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List, Dict
 # from ...utils import run_with_timeout
-from ...extensions import signals
-from ...models.api import SingalInfo
+from ...extensions import signals, SignalInfo
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
@@ -89,19 +88,19 @@ class Scheduler(BaseScheduler):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
         if request.dont_filter:
             await self._queue_map[self.get_queue_key(spider=spider)].put(request)
-            self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
+            self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
             return True
         else:
             async with self.dupefilter.lock:
                 is_seen = await self.dupefilter.request_seen(request=request)
                 if not is_seen:
                     await self._queue_map[self.get_queue_key(spider=spider)].put(request)
-                    self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
+                    self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
                     return True
                 else:
                     async with self.sessions_lock:
                         self.sessions.release(session_id=request.session_id)
-                    self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
+                    self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
                     return False
 
     async def put_is_req(self, request: "Request", spider: "Spider", **kwargs):

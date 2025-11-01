@@ -1,9 +1,9 @@
 from typing import Protocol, TYPE_CHECKING, Dict
 if TYPE_CHECKING:
-    from ..models.api import SingalInfo
+    from ..extensions import SignalInfo
 
 class SignalHooks(Protocol):
-    def send(self, signal: object, data: "SingalInfo") -> None: ...
+    def send(self, signal: object, data: "SignalInfo") -> None: ...
 
 class _SessionHooks(Protocol):
     def mark_end(self, session_id: str) -> None: ...

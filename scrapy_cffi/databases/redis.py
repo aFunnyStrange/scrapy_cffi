@@ -40,6 +40,8 @@ def auto_retry(func):
                 raise asyncio.CancelledError("Stop event set during reconnect")
             await self._reconnect()
             return await func(self, *args, **kwargs)
+        except KeyboardInterrupt:
+            pass
     return wrapper
 
 

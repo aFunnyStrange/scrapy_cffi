@@ -1,10 +1,10 @@
-import asyncio
+import asyncio, inspect
 from collections import defaultdict
 # from ..utils import run_with_timeout
 from typing import Set, TYPE_CHECKING, Callable, Any, TypeVar, Union, Awaitable
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..models.api import SingalInfo
+    from ..extensions import SignalInfo
     from ..settings import SettingsInfo
     from ..mq.kafka import KafkaManager
 
@@ -39,7 +39,7 @@ class SignalManager:
             raise TypeError(f"Signal callback must be callable: got {type(callback)}")
         self._listeners[signal].append(callback)
 
-    def send(self, signal: object, data: "SingalInfo"):
+    def send(self, signal: object, data: "SignalInfo"):
         if self.stop_event.is_set() or (not self._listeners[signal]):
             return
         asyncio.create_task(self._safe_put(signal, data))
@@ -58,7 +58,7 @@ class SignalManager:
     async def _dispatch(self, signal, data):
         for callback in self._listeners[signal]:
             try:
-                if asyncio.iscoroutinefunction(callback):
+                if inspect.iscoroutinefunction(callback):
                     task = asyncio.create_task(callback(data))
                     self._pending_tasks.add(task)
                     task.add_done_callback(lambda t: self._pending_tasks.discard(t))
@@ -74,6 +74,13 @@ class SignalManager:
                 signal, data = await self._queue.get()
                 if signal is not None:
                     await self._dispatch(signal, data)
+
+                # try:
+                #     signal, data = await asyncio.wait_for(self._queue.get(), timeout=3.0)
+                #     if signal is not None:
+                #         await self._dispatch(signal, data)
+                # except asyncio.TimeoutError:
+                #     pass
         except asyncio.CancelledError:
             self.logger.warning("[SignalManager] run task cancelled, waiting for pending callbacks...")
             for task in self._pending_tasks:

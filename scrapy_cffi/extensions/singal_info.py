@@ -5,7 +5,7 @@ from ..item.base import Item
 from typing import Union, Dict, Optional
 
 @dataclass(config={"extra": "ignore", "arbitrary_types_allowed": True})
-class SingalInfo:
+class SignalInfo:
     signal_time: Optional[float] = 0.0
     reason: Optional[str] = ""
     next: Optional[str] = ""
@@ -16,5 +16,5 @@ class SingalInfo:
     item: Optional[Union[Item, Dict]] = None
 
 __all__ = [
-    "SingalInfo"
+    "SignalInfo"
 ]

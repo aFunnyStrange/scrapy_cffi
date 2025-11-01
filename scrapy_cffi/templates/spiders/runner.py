@@ -5,7 +5,8 @@ import scrapy_cffi
 from settings import create_settings
 from typing import Tuple
 if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from scrapy_cffi.utils import setup_uvloop_once
 setup_uvloop_once()
 

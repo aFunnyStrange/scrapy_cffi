@@ -177,7 +177,7 @@ According to the gRPC wire protocol:
 | --------- | ----------- |
 | **websocket_id** | Identifier for an existing WebSocket session (for reuse). Not required for initial connection. |
 | **websocket_end** | Indicates that the WebSocket should be closed. |
-| **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. |
+| **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. 此项在版本>=0.2.2后，要求每一条消息都采用 WebSocketMsg 包裹，因为在 websocket 通信中，发送的消息不一定是字节流，WebSocketMsg 是消息与消息类型的一一对应封装。 |
 
 ### 2.3.2 Methods
 #### 2.3.2.1 protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]])
@@ -230,6 +230,24 @@ The framework therefore **only supports encoding into a single message**.
 If you need to send multiple gRPC stream messages within a single `WebSocketRequest`, you should **manually encode them and pass them directly to `send_message`**. This approach keeps message handling explicit, avoids ambiguity at the framework level, and is the **recommended practice**.
 
 👉 For performance, CPU-intensive encoding should be delegated to worker threads. Once encoding is complete, the result can be passed directly to `send_message`.
+
+
+**Notes**:
+Starting from version >=0.2.2, `protobuf_encode` and `grpc_encode` are bound to each individual `WebSocketMsg` rather than the `WebSocketRequest` object.
+
+The `grpc_stream_encode` method now encodes and concatenates all byte messages from `send_message` into a single streaming byte message. Since protobuf/grpc encoding is already handled within `WebSocketMsg`, `grpc_stream_encode` no longer accepts input parameters.
+
+Based on the `curl_cffi` API for `ws.send`, the first argument must be of type `bytes`. Additionally, a `flags` parameter can be specified to indicate the message type. You can check available flags via `from curl_cffi.const import CurlWsFlag`.  
+
+Example:
+```python
+yield WebSocketRequest(
+    send_message=[
+        WebSocketMsg(data={"1": b"hello"}, flags=CurlWsFlag.BINARY).protobuf_encode(typedef={"1": "bytes"}),
+        WebSocketMsg(data=b"hi", flags=CurlWsFlag.BINARY),
+    ]
+).grpc_stream_encode()
+```
 
 
 

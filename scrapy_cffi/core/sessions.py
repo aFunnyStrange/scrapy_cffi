@@ -10,7 +10,7 @@ from curl_cffi import requests
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
 from .downloader.internet import MediaRequest
-from ..utils import create_uniqueId, run_with_timeout
+from ..utils import create_uniqueId, run_with_timeout, safe_call
 if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from curl_cffi.requests import Response
     from .downloader.internet import HttpRequest, WebSocketRequest
     from ..mq.kafka import KafkaManager
+    from ..models.api import WebSocketMsg
 
 class CloseSignal:
     def __init__(
@@ -40,7 +41,16 @@ class WebSocketEntry:
     Represents a single WebSocket connection identified by its URL (including parameters) and the underlying WebSocket object.
     Manages reference counting for shared usage, supports graceful close on last release or explicit end marking, and handles listener task cancellation and connection cleanup.
     """
-    def __init__(self, logger, end_tag, url, task, queue):
+    def __init__(
+        self, 
+        logger, 
+        end_tag: str, 
+        url: str, 
+        task: asyncio.Task, 
+        queue: asyncio.Queue,
+        ping_data: "WebSocketMsg"=None,
+        ping_interval: float=15.0
+    ):
         self.logger: "Logger" = logger
         self.end_tag: str = end_tag
         self.url: str = url
@@ -55,6 +65,10 @@ class WebSocketEntry:
         self._closed = False
         self._close_lock = asyncio.Lock()
 
+        self._ping_task: asyncio.Task = None
+        if ping_data is not None:
+            self._ping_task = asyncio.create_task(self._ping_loop(ping_data, ping_interval))
+
     def acquire(self):
         self.ref_count += 1
 
@@ -68,6 +82,21 @@ class WebSocketEntry:
         if self.ref_count <= 0:
             asyncio.create_task(self.close())
 
+    async def _ping_loop(self, ping_data: "WebSocketMsg", interval):
+        try:
+            while not self.stop_event.is_set() and not self.marked_end:
+                await asyncio.sleep(interval)
+                try:
+                    if self.websocket:
+                        await safe_call(self.websocket.send, ping_data.data, flags=ping_data.flags)
+                    else:
+                        await asyncio.sleep(0)
+                except Exception as e:
+                    self.logger.warning(f"[WebSocketEntry] Ping failed for {self.url}: {e}")
+                    break
+        except asyncio.CancelledError:
+            raise
+
     async def close(self):
         try:
             async with self._close_lock:
@@ -77,6 +106,13 @@ class WebSocketEntry:
 
                 self.stop_event.set()
                 await self.queue.put(self.end_tag)
+
+                if self._ping_task:
+                    self._ping_task.cancel()
+                    try:
+                        await self._ping_task
+                    except asyncio.CancelledError:
+                        pass
 
                 if self.task:
                     self.task.cancel()
@@ -94,10 +130,7 @@ class WebSocketEntry:
 
                 if hasattr(self.websocket, "close"):
                     try:
-                        if asyncio.iscoroutinefunction(self.websocket.close):
-                            await self.websocket.close()
-                        else:
-                            self.websocket.close()
+                        await safe_call(self.websocket.close)
                     except Exception as e:
                         self.logger.warning(f"[WebSocketEntry] websocket.close() error for {self.url}: {e}")
         except BaseException as e:
@@ -116,10 +149,26 @@ class WebSocketPool:
     def _key(self, url: str) -> str:
         return hashlib.md5(url.encode("utf-8")).hexdigest()
 
-    def init_websocket(self, end_tag: str, url: str, task: asyncio.Task, queue: asyncio.Queue) -> str: # return websocket_id
+    def init_websocket(
+        self, 
+        end_tag: str, 
+        url: str, 
+        task: asyncio.Task, 
+        queue: asyncio.Queue, 
+        ping_data: "WebSocketMsg"=None, 
+        ping_interval: float=15.0,
+    ) -> str: # return websocket_id
         key = self._key(url)
         if key not in self._pool:
-            self._pool[key] = WebSocketEntry(logger=self.logger, end_tag=end_tag, url=url, task=task, queue=queue)
+            self._pool[key] = WebSocketEntry(
+                logger=self.logger, 
+                end_tag=end_tag, 
+                url=url, 
+                task=task, 
+                queue=queue,
+                ping_data=ping_data,
+                ping_interval=ping_interval
+            )
         return key
     
     def set_websocket(self, url: str, websocket: requests.websockets.WebSocket) -> str: # return websocket_id
@@ -292,8 +341,8 @@ class SessionWrapper:
     def get_websocket(self, url: str) -> WebSocketEntry:
         return self.websocket_pool.get_from_url(url)
     
-    def init_websocket(self, url: str, task: asyncio.Task, queue: asyncio.Queue) -> str: # return websocket_id
-        return self.websocket_pool.init_websocket(end_tag=self.settings.WS_END_TAG, url=url, task=task, queue=queue)
+    def init_websocket(self, url: str, task: asyncio.Task, queue: asyncio.Queue, ping_data: bytes=None, ping_interval: float=15.0) -> str: # return websocket_id
+        return self.websocket_pool.init_websocket(end_tag=self.settings.WS_END_TAG, url=url, task=task, queue=queue, ping_data=ping_data, ping_interval=ping_interval)
 
     def set_websocket(self, url: str, websocket: requests.websockets.WebSocket) -> str: # return websocket_id
         return self.websocket_pool.set_websocket(url=url, websocket=websocket)

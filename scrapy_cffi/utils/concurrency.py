@@ -87,7 +87,7 @@ def process_entrypoint(func: Callable, kwargs: Dict, queue: Optional[multiproces
         signal.signal(signal.SIGINT, handle_exit)
 
     try:
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             result = asyncio.run(func(**kwargs))
         else:
             result = func(**kwargs)
@@ -279,3 +279,21 @@ class ThreadFuture:
             fn(self)
         else:
             self._callbacks.append(fn)
+
+async def safe_call(
+    func: Callable,
+    *args,
+    use_thread: bool = True,
+    **kwargs
+) -> Any:
+    if inspect.iscoroutinefunction(func):
+        return await func(*args, **kwargs)
+
+    if use_thread:
+        result = await asyncio.to_thread(func, *args, **kwargs)
+    else:
+        result = func(*args, **kwargs)
+
+    if inspect.isawaitable(result):
+        return await result
+    return result

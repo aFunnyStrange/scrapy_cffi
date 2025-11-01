@@ -147,7 +147,11 @@ class KafkaManager:
             return
         if self._producer is None:
             await self.connect()
-        self._producer.send(topic, message, key=key)
+        result = self._producer.send(topic, message, key=key)
+        if inspect.iscoroutine(result):
+            await result
+        else:
+            await asyncio.to_thread(lambda: result)
 
     async def ensure_topics(self, topics: List[str]):
         for t in topics:

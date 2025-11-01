@@ -3,8 +3,7 @@ from . import BaseScheduler
 from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List
 # from ...utils import run_with_timeout
-from ...extensions import signals
-from ...models.api import SingalInfo
+from ...extensions import signals, SignalInfo
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
@@ -65,17 +64,17 @@ class RedisScheduler(BaseScheduler):
         if is_seen:
             async with self.sessions_lock:
                 self.sessions.release(session_id=request.session_id)
-            self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
+            self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
             return False
         else:
             res = await self.redisManager.rpush(self.get_queue_key(spider=spider), request.to_bytes())
             if res:
-                self.signalManager.send(signal=signals.request_scheduled, data=SingalInfo(signal_time=time.time(), request=request))
+                self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
                 return True
             else:
                 async with self.sessions_lock:
                     self.sessions.release(session_id=request.session_id)
-                self.signalManager.send(signal=signals.request_dropped, data=SingalInfo(signal_time=time.time(), request=request, reason=f"insert redis error: {request.url}"))
+                self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"insert redis error: {request.url}"))
                 return False
 
     async def put_is_req(self, request: "Request", spider: "Spider", **kwargs):

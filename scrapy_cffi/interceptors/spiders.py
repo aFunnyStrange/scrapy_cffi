@@ -128,7 +128,7 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
                             wrapper.websocket_pool.acquire_from_url(url=result.url)
                         else:
                             error_text = f'WebSocket connection {result.websocket_id} has been closed, but a new WebSocketRequest was received'
-                            self.logger.warning(f'{error_text}: {result.send_message.decode()}')
+                            self.logger.warning(f'{error_text}: {result.send_message}')
                             return SessionEndError(exception=ValueError(error_text), request=result)
         return result
     

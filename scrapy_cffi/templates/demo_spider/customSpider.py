@@ -1,4 +1,5 @@
 import random
+from curl_cffi.const import CurlWsFlag
 from scrapy_cffi.utils import create_uniqueId
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.exceptions import Failure
@@ -25,7 +26,8 @@ class CustomSpider(Spider):
             dont_filter=self.settings.DONT_FILTER,
             callback=self.sec_test, 
             errback=self.errRet,
-            send_message=f"connect send test".encode('utf-8')
+            send_message=WebSocketMsg(data=f"connect send test".encode('utf-8'), flags=CurlWsFlag.BINARY), # Pydantic v2 models do not support positional initialization for fields, you must always use keywords.
+            ping_data=WebSocketMsg(data="ping"),
         )
 
     async def sec_test(self, response: WebSocketResponse):
@@ -36,7 +38,7 @@ class CustomSpider(Spider):
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,
-                send_message=f"hello：{self.count} -> {js_res}".encode('utf-8')
+                send_message=WebSocketMsg(data=f"hello：{self.count} -> {js_res}".encode('utf-8'), flags=CurlWsFlag.BINARY)
             )
         elif self.count == 3:
             # scrapy_cffi version >= 0.2.0
@@ -63,7 +65,7 @@ class CustomSpider(Spider):
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,
-                send_message=f"retry after send session_end=True：{self.count} -> {js_res}".encode('utf-8')
+                send_message=WebSocketMsg(data=f"retry after send session_end=True：{self.count} -> {js_res}".encode('utf-8'), flags=CurlWsFlag.BINARY)
             )
         self.count += 1
 

@@ -2,7 +2,7 @@ from scrapy_cffi.extensions import signals, Extension
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from scrapy_cffi.hooks.signals import SignalsHooks
-    from scrapy_cffi.models.api import SingalInfo
+    from scrapy_cffi.extensions import SignalInfo
 
 class CustomExtension(Extension):
     @classmethod
@@ -22,38 +22,38 @@ class CustomExtension(Extension):
         hooks.signals.connect(signals.item_scraped, extension_cls.item_scraped)
         return extension_cls
 
-    async def engine_started(self, data: "SingalInfo"):
+    async def engine_started(self, data: "SignalInfo"):
         print(f'CustomExtension -> engine started: {data.signal_time}')
 
-    async def engine_stopped(self, data: "SingalInfo"):
+    async def engine_stopped(self, data: "SignalInfo"):
         print(f'CustomExtension -> engine stopped: {data.signal_time}')
 
-    async def scheduler_empty(self, data: "SingalInfo"):
+    async def scheduler_empty(self, data: "SignalInfo"):
         print(f'CustomExtension -> scheduler empty: {data.signal_time}')
 
-    async def task_error(self, data: "SingalInfo"):
+    async def task_error(self, data: "SignalInfo"):
         print(f'CustomExtension -> task error: {data.reason}, signal_time：{data.signal_time}')
 
-    async def spider_opened(self, data: "SingalInfo"):
+    async def spider_opened(self, data: "SignalInfo"):
         print(f'CustomExtension -> spider opened: {data.spider.name}, start_time: {data.signal_time}')
 
-    async def spider_closed(self, data: "SingalInfo"):
+    async def spider_closed(self, data: "SignalInfo"):
         print(f'CustomExtension -> spider closed: {data.spider.name}, end_time: {data.signal_time}')
 
-    async def spider_error(self, data: "SingalInfo"):
+    async def spider_error(self, data: "SignalInfo"):
         print(f'CustomExtension -> spider error: {data.spider.name}, exception: {data.exception}, signal_time：{data.signal_time}')
 
-    async def request_scheduled(self, data: "SingalInfo"):
+    async def request_scheduled(self, data: "SignalInfo"):
         print(f'CustomExtension -> request scheduled: {data.request.url}, signal_time：{data.signal_time}')
 
-    async def request_dropped(self, data: "SingalInfo"):
+    async def request_dropped(self, data: "SignalInfo"):
         print(f'CustomExtension -> request dropped: {data.request.url}, reason: {data.reason}, signal_time：{data.signal_time}')
 
-    async def request_reached_downloader(self, data: "SingalInfo"):
+    async def request_reached_downloader(self, data: "SignalInfo"):
         print(f'CustomExtension -> request reached downloader: {data.request.url}, signal_time：{data.signal_time}')
 
-    async def response_received(self, data: "SingalInfo"):
+    async def response_received(self, data: "SignalInfo"):
         print(f'CustomExtension -> response received: {data.response}, request: {data.request.url}, signal_time：{data.signal_time}')
 
-    async def item_scraped(self, data: "SingalInfo"):
+    async def item_scraped(self, data: "SignalInfo"):
         print(f'CustomExtension -> item scraped: {data.item}, spider_name: {data.spider.name}, signal_time：{data.signal_time}')

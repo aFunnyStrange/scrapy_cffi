@@ -1,0 +1,66 @@
+version: "3.9"
+
+networks:
+  rabbit_net:
+    driver: bridge
+
+services:
+  rabbit1:
+    image: rabbitmq:3.13-management
+    container_name: rabbit1
+    hostname: rabbit1
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "MY_SECRET_COOKIE"
+      RABBITMQ_NODENAME: "rabbit@rabbit1"
+      # EXTERNAL_IP: "<PUBLIC_IP>" # Uncomment in cluster mode
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "25672:25672" # Erlang clustering port
+    volumes:
+      - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh
+    command: ["/bin/bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
+    networks:
+      - rabbit_net
+
+  rabbit2:
+    image: rabbitmq:3.13-management
+    container_name: rabbit2
+    hostname: rabbit2
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "MY_SECRET_COOKIE"
+      RABBITMQ_NODENAME: "rabbit@rabbit2"
+      CLUSTER_MASTER: "rabbit1"
+      # EXTERNAL_IP: "<PUBLIC_IP>" # Uncomment in cluster mode
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+      - "25673:25672"
+    depends_on:
+      - rabbit1
+    volumes:
+      - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh
+    command: ["/bin/bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
+    networks:
+      - rabbit_net
+
+  rabbit3:
+    image: rabbitmq:3.13-management
+    container_name: rabbit3
+    hostname: rabbit3
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "MY_SECRET_COOKIE"
+      RABBITMQ_NODENAME: "rabbit@rabbit3"
+      CLUSTER_MASTER: "rabbit1"
+      # EXTERNAL_IP: "<PUBLIC_IP>" # Uncomment in cluster mode
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+      - "25674:25672"
+    depends_on:
+      - rabbit1
+    volumes:
+      - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh
+    command: ["/bin/bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
+    networks:
+      - rabbit_net

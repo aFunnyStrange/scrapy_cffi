@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from scrapy_cffi.utils import get_run_py_dir
 from scrapy_cffi.settings import SettingsInfo
@@ -18,6 +19,10 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         "interceptors.CustomDownloadInterceptor2": 200,
     }
     settings.JS_PATH = str(get_run_py_dir() / "js_path") # can be a custom path string, or True to use the default: get_run_py_dir() / "js_path"
+
+    if sys.platform.startswith("win"):
+        settings.MAX_GLOBAL_CONCURRENT_TASKS = None
+        settings.MAX_CONCURRENT_REQ = None
 
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.BloomDupeFilter" # In-memory Bloom filter deduplication
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisBloomDupeFilter" # Enable Redis Bloom filter deduplication
@@ -47,7 +52,7 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
     return settings
 
 if __name__ == "__main__":
-    from scrapy_cffi.utils import settings_to_env, env_to_settings
+    from scrapy_cffi.utils.envConfig import settings_to_env, env_to_settings
     from scrapy_cffi.utils import get_run_py_dir
     
     spider_path = str(get_run_py_dir() / "spiders")

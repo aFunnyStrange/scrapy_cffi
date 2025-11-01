@@ -1,6 +1,6 @@
-import asyncio, time
-from ..extensions import signals
-from ..models.api import SingalInfo
+import asyncio, time, inspect
+from ..extensions import signals, SignalInfo
+from ..utils.concurrency import safe_call
 from typing import TYPE_CHECKING, Coroutine, Callable, Optional, Set
 if TYPE_CHECKING:
     from ..crawler import Crawler
@@ -57,15 +57,9 @@ class TaskManager:
                     self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{coro}')
                     result = await coro
                     if callback:
-                        if asyncio.iscoroutinefunction(callback):
-                            await callback(result,**callback_kwargs)
-                        elif asyncio.iscoroutine(callback):
-                            self.logger.error(f"Coroutine object was mistakenly passed as a callback：{coro} -> {callback}")
-                            await callback
-                        else:
-                            callback(result, **callback_kwargs)
-                except asyncio.CancelledError:
-                    if coro and asyncio.iscoroutine(coro):
+                        await safe_call(callback, result, **callback_kwargs)
+                except (asyncio.CancelledError, KeyboardInterrupt) as e:
+                    if coro and inspect.iscoroutine(coro):
                         coro.close()
                         self.error_event.set()
                     raise
@@ -73,7 +67,7 @@ class TaskManager:
                     result = f"<Task-Error exception={repr(e)}>"
                     self.logger.error(result)
                     self.error_event.set()
-                    self.signalManager.send(signal=signals.task_error, data=SingalInfo(signal_time=time.time(), reason=result))
+                    self.signalManager.send(signal=signals.task_error, data=SignalInfo(signal_time=time.time(), reason=result))
                     raise ValueError(result)
                 finally:
                     async with self.lock:

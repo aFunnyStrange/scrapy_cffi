@@ -1,7 +1,9 @@
 import json as jsonlib
 import gzip, base64, warnings
+from curl_cffi.const import CurlWsFlag
 from urllib.parse import urlencode
 from typing import Optional, Union, Dict, Tuple, List
+from ....models.api import WebSocketMsg
 from ....utils import ProtobufFactory
 from .registry import register_request_class, get_request_class
 
@@ -274,15 +276,18 @@ class WebSocketRequest(Request):
         "headers", "send_message", "cookies", "proxies", "meta", "kwargs"
     }
 
-    def __init__(self, 
+    def __init__(
+        self,
         session_id="",
-        websocket_id="", 
-        url="", 
-        params=None, 
-        headers=None, 
-        send_message: Union[bytes, List[bytes]] = [b''],
-        cookies=None, 
-        proxies=None, 
+        websocket_id="",
+        url="",
+        params=None,
+        headers=None,
+        send_message: Union[WebSocketMsg, List[WebSocketMsg]] = None,
+        ping_data: WebSocketMsg=None,
+        ping_interval: float=15.0,
+        cookies=None,
+        proxies=None,
         timeout=30,
         allow_redirects=True,
         max_redirects=30,
@@ -290,21 +295,21 @@ class WebSocketRequest(Request):
         impersonate=None,
         ja3=None,
         akamai=None,
-        meta=None, 
-        dont_filter=None, 
-        callback=None, 
+        meta=None,
+        dont_filter=None,
+        callback=None,
         errback=None,
         desc_text="",
         no_proxy=False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             session_id=session_id,
-            url=url, 
-            params=params, 
-            headers=headers, 
-            cookies=cookies, 
-            proxies=proxies, 
+            url=url,
+            params=params,
+            headers=headers,
+            cookies=cookies,
+            proxies=proxies,
             timeout=timeout,
             allow_redirects=allow_redirects,
             max_redirects=max_redirects,
@@ -312,42 +317,45 @@ class WebSocketRequest(Request):
             impersonate=impersonate,
             ja3=ja3,
             akamai=akamai,
-            meta=meta, 
-            dont_filter=dont_filter, 
-            callback=callback, 
+            meta=meta,
+            dont_filter=dont_filter,
+            callback=callback,
             errback=errback,
             desc_text=desc_text,
             no_proxy=no_proxy,
-            **kwargs
+            **kwargs,
         )
         self.websocket_id = websocket_id
-        if not isinstance(send_message, list):
+        if send_message is None:
+            send_message = [WebSocketMsg(data=b"ping", flags=CurlWsFlag.BINARY)]
+        elif not isinstance(send_message, list):
             send_message = [send_message]
+
+        if not all([isinstance(it, WebSocketMsg) for it in send_message]):
+            warning_text = f"send_message must be WebSocketMsg in versions >=0.2.2, got {type(send_message)}"
+            warnings.warn(warning_text)
+            raise ValueError(warning_text)
+        
+        if ping_data and not isinstance(ping_data, WebSocketMsg):
+            raise ValueError(f"ping_data must be WebSocketMsg, got {type(ping_data)}")
+
         self.send_message = send_message
 
-    def protobuf_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]]):
-        if isinstance(typedef_or_stream, list):
-            msgs = []
-            for msg, typedef in typedef_or_stream:
-                msgs.append(ProtobufFactory.protobuf_encode(data=msg, typedef=typedef))
-            self.send_message = msgs
-        else:
-            self.send_message = [ProtobufFactory.protobuf_encode(data=self.send_message[0], typedef=typedef_or_stream)]
-        return self
-    
-    def grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False):
-        if isinstance(typedef_or_stream, list):
-            msgs = []
-            for msg, typedef in typedef_or_stream:
-                msgs.append(ProtobufFactory.grpc_encode(data=msg, typedef=typedef, is_gzip=is_gzip))
-            self.send_message = msgs
-        else:
-            self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message[0], typedef=typedef_or_stream, is_gzip=is_gzip)]
-        return self
-    
-    def grpc_stream_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False):
-        if isinstance(typedef_or_stream, dict):
-            self.send_message = [ProtobufFactory.grpc_encode(data=self.send_message, typedef=typedef_or_stream, is_gzip=is_gzip)]
-        elif isinstance(typedef_or_stream, list):
-            self.send_message = [ProtobufFactory.grpc_stream_encode(data=typedef_or_stream, is_gzip=is_gzip)]
+        self.ping_data = ping_data
+        self.ping_interval = ping_interval
+
+    def grpc_stream_encode(self) -> "WebSocketRequest":
+        if not self.send_message:
+            raise ValueError("No WebSocket messages to encode.")
+
+        # all_flags = {m.flags for m in self.send_message}
+        # if len(all_flags) > 1:
+        #     raise ValueError(f"Cannot stream-encode messages with different flags: {all_flags}")
+
+        for m in self.send_message:
+            if not isinstance(m.data, (bytes, bytearray)):
+                raise TypeError(f"Message {m!r} not encoded as bytes.")
+
+        stream_bytes = b"".join(m.data for m in self.send_message)
+        self.send_message = [WebSocketMsg(data=stream_bytes, flags=CurlWsFlag.BINARY)]
         return self

@@ -1,4 +1,5 @@
 from ..core import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse, CloseSignal
+from ..models.api import WebSocketMsg
 
 __all__ = [
     "Request",
@@ -8,5 +9,6 @@ __all__ = [
     "Response",
     "HttpResponse",
     "WebSocketResponse",
-    "CloseSignal"
+    "CloseSignal",
+    "WebSocketMsg",
 ]

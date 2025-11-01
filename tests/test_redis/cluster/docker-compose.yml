@@ -2,7 +2,7 @@ version: "3.9"
 
 networks:
   rediscluster_net:
-    driver: bridge
+    driver: bridge # overlay
 
 services:
   # Master Nodes

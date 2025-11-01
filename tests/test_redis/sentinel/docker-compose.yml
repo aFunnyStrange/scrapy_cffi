@@ -1,6 +1,6 @@
 networks:
   redisnet:
-    driver: bridge
+    driver: bridge # overlay
 
 services:
   # Master

@@ -1,0 +1,1 @@
+Due to potential differences in `Python.h` across different Python versions, for cross-platform compatibility it is generally recommended to compile shared libraries (`.dll` / `.pyd` / `.so`) and interface with them using `ctypes` or `cffi`, rather than directly relying on `Python.h`.

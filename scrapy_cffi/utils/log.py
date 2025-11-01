@@ -186,6 +186,15 @@ class KafkaLoggingHandler(logging.Handler):
                     await self.kafka.produce(self.topic, msg)
                 finally:
                     self.queue.task_done()
+                    
+                # try:
+                #     msg = await asyncio.wait_for(self.queue.get(), timeout=3.0)
+                #     try:
+                #         await self.kafka.produce(self.topic, msg)
+                #     finally:
+                #         self.queue.task_done()
+                # except asyncio.TimeoutError:
+                #     pass
             raise
         except Exception as e:
             print(f"Kafka send failed: {e}")

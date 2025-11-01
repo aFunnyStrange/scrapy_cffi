@@ -1,11 +1,10 @@
-import asyncio, time
-from ...utils import async_context_factory
+import asyncio, time, inspect
+from ...utils import async_context_factory, safe_call
 from typing import Tuple, TYPE_CHECKING, List, Callable
 # from ...utils import run_with_timeout
 from .internet import *
 from ...exceptions import DownloadError
-from ...extensions import signals
-from ...models.api import SingalInfo
+from ...extensions import signals, SignalInfo
 if TYPE_CHECKING:
     from ...crawler import Crawler
     from ...settings import SettingsInfo
@@ -54,7 +53,7 @@ class Downloader:
     
     async def fetch_http(self, request: HttpRequest, callback: Callable) -> asyncio.Task:
         try:
-            self.signalManager.send(signal=signals.request_reached_downloader, data=SingalInfo(signal_time=time.time(), request=request))
+            self.signalManager.send(signal=signals.request_reached_downloader, data=SignalInfo(signal_time=time.time(), request=request))
             wrapper: "SessionWrapper" = self.sessions.get_or_create_session(
                 session_id=request.session_id,
                 cookies=request.cookies
@@ -75,7 +74,7 @@ class Downloader:
                     request=request
                 )
                 self.logger.debug(f'request for {request.url} result -> status_code: {response.status_code}')
-                self.signalManager.send(signal=signals.response_received, data=SingalInfo(signal_time=time.time(), request=request, response=response))
+                self.signalManager.send(signal=signals.response_received, data=SignalInfo(signal_time=time.time(), request=request, response=response))
                 await callback(response=response, request=request)
             else:
                 self.logger.warning(f'HTTP request timed out or got no response: {request.url}')
@@ -107,14 +106,11 @@ class Downloader:
                 if request.send_message: # Sending requests is supported during the initial WebSocket handshake
                     # await run_with_timeout(websocket.send, request.send_message, stop_event=self.stop_event)
                     for msg in request.send_message:
-                        if asyncio.iscoroutinefunction(websocket.send):
-                            await websocket.send(msg)
-                        else:
-                            await asyncio.to_thread(websocket.send, msg)
+                        await safe_call(websocket.send, msg.data, flags=msg.flags)
 
                 while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
                     try:
-                        if asyncio.iscoroutinefunction(websocket.recv):
+                        if inspect.iscoroutinefunction(websocket.recv):
                             recv_task = asyncio.create_task(websocket.recv())
                         else:
                             recv_task = asyncio.create_task(asyncio.to_thread(websocket.recv))
@@ -137,7 +133,7 @@ class Downloader:
                                 desc_text=request.desc_text,
                                 request=request
                             )
-                            self.signalManager.send(signal=signals.response_received, data=SingalInfo(signal_time=time.time(), request=request, response=response))
+                            self.signalManager.send(signal=signals.response_received, data=SignalInfo(signal_time=time.time(), request=request, response=response))
                             await queue.put(response)
                         else:
                             await self.cancel_ws_tasks(tasks=tasks)
@@ -167,10 +163,10 @@ class Downloader:
             await queue.put(self.settings.WS_END_TAG)
 
     async def fetch_websocket(self, wrapper: "SessionWrapper", request: WebSocketRequest) -> Tuple[asyncio.Task, asyncio.Queue, asyncio.Event]:
-        self.signalManager.send(signal=signals.request_reached_downloader, data=SingalInfo(signal_time=time.time(), request=request))
+        self.signalManager.send(signal=signals.request_reached_downloader, data=SignalInfo(signal_time=time.time(), request=request))
         websocket_event = asyncio.Event()
         websocket_event.clear()
         queue = asyncio.Queue()
         task = asyncio.create_task(self.downloaderWebSocketListener(websocket_event=websocket_event, wrapper=wrapper, request=request, queue=queue))
-        websocket_id = wrapper.init_websocket(url=request.url, task=task, queue=queue)
+        websocket_id = wrapper.init_websocket(url=request.url, task=task, queue=queue, ping_data=request.ping_data, ping_interval=request.ping_interval)
         return task, queue, websocket_event
