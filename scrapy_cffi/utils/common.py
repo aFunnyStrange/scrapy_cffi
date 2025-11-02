@@ -9,6 +9,25 @@ def get_run_py_dir():
     from pathlib import Path
     return Path(sys.argv[0]).resolve().parent
 
+def get_or_create_loop():
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if sys.platform.startswith("win"):
+        # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    return loop
+
 def setup_uvloop_once():
     if getattr(setup_uvloop_once, "_done", False):
         return
@@ -19,8 +38,8 @@ def setup_uvloop_once():
             print("uvloop enabled")
         else:
             print("uvloop not available on Windows")
-    except ImportError:
-        print("uvloop not installed")
+    except ImportError as e:
+        print("uvloop is not install")
     finally:
         setup_uvloop_once._done = True
 
@@ -45,7 +64,8 @@ def async_context_factory(
 
 class ResultHolder:
     def __init__(self):
-        self._future = asyncio.get_event_loop().create_future()
+        loop = get_or_create_loop()
+        self._future = loop.create_future()
 
     def set_result(self, value):
         if not self._future.done():
@@ -231,7 +251,7 @@ async def run_with_timeout(
     **kwargs
 ) -> Any:
     is_async = inspect.iscoroutinefunction(func)
-    start_time = asyncio.get_event_loop().time()
+    start_time = asyncio.get_running_loop().time()
 
     while not stop_event.is_set():
         try:
@@ -248,7 +268,7 @@ async def run_with_timeout(
                 except asyncio.CancelledError:
                     pass
 
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             if max_total_time is not None and (now - start_time > max_total_time):
                 raise asyncio.TimeoutError("Maximum total wait time exceeded")
 

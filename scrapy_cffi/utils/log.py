@@ -213,7 +213,7 @@ class KafkaLoggingHandler(logging.Handler):
         self.stop_event.set()
 
         if self.task and not self.task.done():
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             # Run the sender task to completion synchronously
             future = asyncio.run_coroutine_threadsafe(self.task, loop)
             try:

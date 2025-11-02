@@ -7,7 +7,7 @@ from typing import Tuple
 if sys.platform.startswith("win"):
     # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-from scrapy_cffi.utils import setup_uvloop_once
+from scrapy_cffi.utils import setup_uvloop_once, get_or_create_loop
 setup_uvloop_once()
 
 # Ordinary users
@@ -54,32 +54,29 @@ async def advance_main_all(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler
     crawler, engine_task = await scrapy_cffi.run_all_spiders(settings=settings, new_loop=False, *args, **kwargs)
     return crawler, engine_task
 
+# ————————————————————————————————————————————————————————————————————————
+def setup_signal_handlers(loop: asyncio.AbstractEventLoop, shutdown_event: asyncio.Event):
+    if sys.platform == "win32":
+        print(">>> [info] Signal handlers not supported on Windows (fallback to KeyboardInterrupt)")
+        return
+
+    import signal
+    def _handle_signal():
+        print(">>> [signal] Received stop signal")
+        shutdown_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _handle_signal)
+        except (NotImplementedError, ValueError):
+            pass
+
 if __name__ == "__main__":
-    # Advanced users, self owned loops, self managed tasks
-    def setup_signal_handlers(shutdown_event: asyncio.Event):
-        if sys.platform != "win32":
-            import signal
-
-            def _handle_signal():
-                print(">>> [signal] Received stop signal")
-                shutdown_event.set()
-
-            loop = asyncio.get_event_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                try:
-                    loop.add_signal_handler(sig, _handle_signal)
-                except NotImplementedError:
-                    pass
-
-        else:
-            print(">>> [info] Signal handlers not supported on Windows, fallback to KeyboardInterrupt.")
-
-    loop = asyncio.get_event_loop()
+    loop = get_or_create_loop()
     shutdown_event = asyncio.Event()
-    global crawler
-    crawler: scrapy_cffi.crawler.Crawler = None
+    setup_signal_handlers(loop, shutdown_event)
 
-    setup_signal_handlers(shutdown_event)
+    crawler: scrapy_cffi.crawler.Crawler = None
 
     async def demo_main():
         global crawler
@@ -101,7 +98,7 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(demo_main())
     except KeyboardInterrupt:
-        print(">>> [KeyboardInterrupt] fallback triggered")
+        print(">>> [KeyboardInterrupt] manual stop")
         if crawler:
             loop.run_until_complete(crawler.shutdown())
     finally:

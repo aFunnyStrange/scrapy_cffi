@@ -47,7 +47,7 @@ class KafkaManager:
         persistent_time: int = 7*24*60*60*1000
     ):
         self.stop_event = stop_event or asyncio.Event()
-        self.loop = loop or asyncio.get_event_loop()
+        self.loop = loop or asyncio.get_running_loop()
         self.consumer_group = consumer_group
         self.persistent_time = persistent_time
 

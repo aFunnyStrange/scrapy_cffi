@@ -255,20 +255,7 @@ def run_sync_base(start_type, settings: "SettingsInfo", new_loop=True, *args, **
         robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
         await crawler.start_engines(robot_task, *args, **kwargs)
         crawler.stop_event.set()
-        # await asyncio.Event().wait()
         await crawler.shutdown()
-
-    if sys.platform != "win32":
-        import signal
-        def handler():
-            print("Signal received, stopping...")
-            loop.stop()
-
-        try:
-            loop.add_signal_handler(signal.SIGINT, handler)
-            loop.add_signal_handler(signal.SIGTERM, handler)
-        except NotImplementedError:
-            pass
 
     try:
         loop.run_until_complete(main())

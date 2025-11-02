@@ -55,7 +55,7 @@ class RabbitMQManager:
         self.exchange_type = exchange_type
         self.prefetch_count = prefetch_count
         self.persist = persist
-        self.loop = loop or asyncio.get_event_loop()
+        self.loop = loop or asyncio.get_running_loop()
         self._lock = asyncio.Lock()
 
         if isinstance(rabbitmq_url, str):
