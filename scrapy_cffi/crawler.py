@@ -199,6 +199,12 @@ class Crawler:
         self.taskManager.tasks_done_event.set()
         self.taskManager.error_event.set()
 
+        # await asyncio.sleep(1)
+        for engine in self.engines:
+            await engine.taskManager.cancel_all()
+        await self.sessions.close_all()
+        await self.signalManager.stop()
+
         if not self.settings.SCHEDULER_PERSIST and self.redisManager:
             for spider in self.spiders:
                 if getattr(spider, "redis_key", None):
@@ -212,12 +218,6 @@ class Crawler:
 
         if self.kafkaManager:
             await self.kafkaManager.close()
-
-        # await asyncio.sleep(1)
-        for engine in self.engines:
-            await engine.taskManager.cancel_all()
-        await self.sessions.close_all()
-        await self.signalManager.stop()
 
 def cleanup_loop(loop: asyncio.AbstractEventLoop):
     pending = asyncio.all_tasks(loop=loop)

@@ -10,22 +10,19 @@ def get_run_py_dir():
     return Path(sys.argv[0]).resolve().parent
 
 def get_or_create_loop():
-    try:
-        return asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
     if sys.platform.startswith("win"):
-        # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                raise RuntimeError
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
     return loop
 
 def setup_uvloop_once():
