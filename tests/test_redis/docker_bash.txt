@@ -1,12 +1,12 @@
 1.common commands
 update <PUBLIC_IP> to your public ip
 
-docker-compose -f docker-compose.yml up -d
-docker-compose -f docker-compose.yml down
+docker compose up -d
+docker compose down
 
 2. sentinel mode
-# docker-compose -f docker-compose.yml up -d redis-master redis-slave1 redis-slave2
-# docker-compose -f docker-compose.yml up -d sentinel1 sentinel2 sentinel3
+# docker compose -f docker-compose.yml up -d redis-master redis-slave1 redis-slave2
+# docker compose -f docker-compose.yml up -d sentinel1 sentinel2 sentinel3
 
 redis-cli -h <ip> -p <port> sentinel get-master-addr-by-name mymaster
 

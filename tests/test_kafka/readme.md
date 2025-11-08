@@ -12,6 +12,19 @@ docker run -d --name kafka \
   bitnami/kafka:3.7
 ```
 
+**Docker Images for Kafka**
+- **Linux single broker behavior**: Running a single Kafka broker with `KAFKA_ENABLE_KRAFT=yes` on Linux may not always work as expected. Cluster setups (multiple brokers) tend to be more reliable. Single-node setups on Windows generally work without issues.
+
+- **Bitnami Kafka images**: For example, `bitnami/kafka:3.7` was previously usable, but some versions may no longer be available or may behave differently than expected. Always check Docker Hub for the available versions.
+
+- **Alternative images**:
+  - `apache/kafka:3.7.1` – tested to work, suitable for single-node experiments (Windows) or cluster mode (Linux).
+  - `apache/kafka:4.1.1-rc2` – supports the latest KRaft mode, recommended for Linux cluster environments.
+
+**Note**: There are multiple Kafka images on Docker, maintained differently and with varying versions. If a particular image or version is unavailable, consider trying other official or community images.
+
+
+
 ## 2.cluster
 
 #### 2.1 Start the cluster

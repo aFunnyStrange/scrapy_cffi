@@ -14,7 +14,7 @@ class BaseMQInfo(StrictValidatedModel):
     PORT: Optional[Union[str, int]] = None
     USERNAME: Optional[str] = None
     PASSWORD: Optional[str] = None
-    MODE: MQMode = MQMode.SINGLE
+    MODE: Union[MQMode, str] = MQMode.SINGLE
     CLUSTER_NODES: Optional[List[str]] = Field(default_factory=list)
 
     @model_validator(mode="after")

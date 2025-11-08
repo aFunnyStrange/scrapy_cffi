@@ -20,6 +20,13 @@ async def test_single():
 
     # 4️⃣ Define the test queue
     queue_name = "scrapy_cffi"
+    # ✅ Declare the queue (essential step)
+    # Note: In the actual framework, the workflow is to first consume from the queue
+    # and then push requests back. By the time dequeue_request is called, the queue
+    # has already been declared. Therefore, in the framework, you typically do not
+    # need to explicitly declare the queue before pushing.
+    await manager.declare_queue(queue_name)
+    print(f"✅ Queue '{queue_name}' declared on node {manager._mq_url}")
 
     # 5️⃣ Push messages to the queue
     messages = [
@@ -48,9 +55,9 @@ async def test_cluster():
     stop_event = asyncio.Event()
 
     rabbitmq_nodes = [
-        "amqp://guest:guest@192.168.10.53:5672/",
-        "amqp://guest:guest@192.168.10.53:5673/",
-        "amqp://guest:guest@192.168.10.53:5674/"
+        "amqp://guest:guest@<PUBLIC_IP>:5672/",
+        "amqp://guest:guest@<PUBLIC_IP>:5673/",
+        "amqp://guest:guest@<PUBLIC_IP>:5674/"
     ]
 
     manager = RabbitMQManager(
@@ -67,6 +74,10 @@ async def test_cluster():
     queue_name = "scrapy_cffi"
 
     # ✅ Declare the queue (essential step)
+    # Note: In the actual framework, the workflow is to first consume from the queue
+    # and then push requests back. By the time dequeue_request is called, the queue
+    # has already been declared. Therefore, in the framework, you typically do not
+    # need to explicitly declare the queue before pushing.
     await manager.declare_queue(queue_name)
     print(f"✅ Queue '{queue_name}' declared on node {manager._mq_url}")
 

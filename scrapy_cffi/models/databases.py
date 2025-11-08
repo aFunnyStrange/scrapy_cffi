@@ -34,7 +34,7 @@ class RedisMode(str, Enum):
     CLUSTER = "cluster"
     
 class RedisInfo(BaseDBInfo):
-    MODE: RedisMode = RedisMode.SINGLE
+    MODE: Union[RedisMode, str] = RedisMode.SINGLE
 
     SENTINELS: Optional[List[tuple[str, int]]] = Field(default_factory=list)
     MASTER_NAME: Optional[str] = None  # sentinel mode
