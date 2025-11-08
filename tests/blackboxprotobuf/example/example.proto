@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package demo;
+
+// inner message
+message Address {
+  string street = 1;
+  string city = 2;
+  string country = 3;
+}
+
+// main message
+message Person {
+  uint32 id = 1;
+  string name = 2;
+  bool active = 3;
+
+  // proto3 optional field
+  optional string nickname = 4;
+
+  // repeated field
+  repeated string emails = 5;
+
+  // map type
+  map<string, string> attributes = 6;
+
+  // inner message
+  Address address = 7;
+}

@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 - Cross-platform and cross-version testing
+- Refactored the third-party library **blackboxprotobuf**, inheriting only the required APIs instead of depending on the full external package.
 
 ---
 ## [0.2.2] - 2025-11-1

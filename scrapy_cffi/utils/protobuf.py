@@ -1,4 +1,5 @@
-import blackboxprotobuf, gzip
+import gzip
+from . import blackboxprotobuf
 from typing import Union, Dict, List, Tuple
 
 class ProtobufFactory(object):

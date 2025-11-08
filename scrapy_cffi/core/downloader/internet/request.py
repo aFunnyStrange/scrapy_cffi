@@ -205,7 +205,7 @@ class HttpRequest(Request):
             **kwargs
         )
         if self.is_protobuf() and not isinstance(data, bytes):
-            warnings.warn(f'[WARNING] Content-Type includes "protobuf", but the provided data is not in bytes format. Consider installing bbpb and encoding the message via blackboxprotobuf.encode_message(data, typedef).')
+            warnings.warn(f'[WARNING] Content-Type includes "protobuf", but the provided data is not in bytes format.')
 
     def protobuf_encode(self, typedef: Dict):
         self.data = ProtobufFactory.protobuf_encode(data=self.data, typedef=typedef)

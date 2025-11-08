@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy_cffi"
-version = "0.2.3"
+version = "0.2.4"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = "BSD-3-Clause"
@@ -16,7 +16,6 @@ dependencies = [
     "PyExecjs",
     "orjson",
     "json5",
-    "bbpb",
     "toml",
     "pydantic>=2.0.0",
     "jinja2",

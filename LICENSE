@@ -1,14 +1,9 @@
-Portions of this project are derived from the Scrapy project (https://github.com/scrapy/scrapy),
-which is licensed under the BSD 3-Clause License.
-
-In particular, the `item.py` module is adapted from Scrapy's `scrapy/item.py`
-with necessary adjustments for integration with the asyncio-based engine.
-Original copyright:
-Copyright (c) Scrapy developers. All rights reserved.
-
----
-
 BSD 3-Clause License
+
+This project (scrapy_cffi) is distributed under the BSD 3-Clause License.
+It also includes portions of code derived from the Scrapy and blackboxprotobuf
+projects, which retain their original BSD and MIT licenses respectively.
+See THIRD_PARTY_NOTICES.md for details.
 
 Copyright (c) 2025, aFunnyStrange
 

@@ -387,8 +387,13 @@ print(data)
 
 
 # 6.Protobuf
-`ProtobufFactory` is a utility class that provides unified methods for encoding and decoding Protobuf and gRPC messages.
+`ProtobufFactory` is a utility class that provides unified methods for encoding and decoding **Protobuf** and **gRPC** messages.
 All methods are **static**, and it relies on the third-party library **blackboxprotobuf** (install via `pip install bbpb`; note that `pip install blackprotobuf` is an old fork).
+
+Starting from **version ≥ 0.2.4**, `scrapy_cffi` refactored the `blackboxprotobuf` source code (version 1.4.2), keeping only two commonly used APIs:
+- `encode_message`
+- `decode_message`
+
 ## 6.1 protobuf_encode
 **Purpose**: Encode a Python dictionary into a Protobuf byte stream.
 
