@@ -1,7 +1,7 @@
-import asyncio, time, inspect
+import asyncio, time
 from ..extensions import signals, SignalInfo
-from ..utils.concurrency import safe_call
-from typing import TYPE_CHECKING, Coroutine, Callable, Optional, Set
+from ..utils.concurrency import safe_call, CallFunction
+from typing import TYPE_CHECKING, Callable, Optional, Set
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..settings import SettingsInfo
@@ -47,20 +47,22 @@ class TaskManager:
             is_distributed=is_distributed
         )
 
-    async def create(self, coro: Coroutine, callback: Optional[Callable] = None, **callback_kwargs):
+    async def create(self, callfunc: "CallFunction", callback: Optional[Callable] = None, **callback_kwargs):
+        if not isinstance(callfunc, CallFunction):
+            raise TypeError("callfunc must be CallFunction instance")
+        
         if self.stop_event.is_set():
             return
 
         async def wrapped():
             async with self.global_lock():
                 try:
-                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{coro}')
-                    result = await coro
+                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{callfunc.get_func_name()}')
+                    result = await callfunc.to_coro()
                     if callback:
                         await safe_call(callback, result, **callback_kwargs)
                 except (asyncio.CancelledError, KeyboardInterrupt) as e:
-                    if coro and inspect.iscoroutine(coro):
-                        coro.close()
+                    if callfunc:
                         self.error_event.set()
                     raise
                 except Exception as e:
@@ -72,7 +74,7 @@ class TaskManager:
                 finally:
                     async with self.lock:
                         self.active_tasks -= 1
-                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{coro}')
+                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{callfunc.get_func_name()}')
                         if self.active_tasks <= 0:
                             self.tasks_done_event.set()
 

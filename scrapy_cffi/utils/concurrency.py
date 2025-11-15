@@ -1,4 +1,5 @@
 import asyncio, threading, multiprocessing, inspect
+from functools import partial
 from multiprocessing.managers import BaseManager as _BaseManager
 from typing import Any, Callable, Union, Dict, List, Optional, Awaitable
 
@@ -279,6 +280,36 @@ class ThreadFuture:
             fn(self)
         else:
             self._callbacks.append(fn)
+
+class CallFunction:
+    def __init__(self, func: Callable, **kwargs):
+        self.func = func
+        self.kwargs = kwargs
+
+        self.obj_id = self._get_obj_id(func)
+
+    def _get_obj_id(self, func):
+        obj = getattr(func, "__self__", None)
+        if obj is None:
+            return None
+        return id(obj)
+
+    def to_coro(self) -> Awaitable:
+        result = self.func(**self.kwargs)
+
+        if inspect.isawaitable(result):
+            return result
+
+        async def _wrap_sync():
+            return result
+
+        return _wrap_sync()
+
+    def get_func_name(self) -> str:
+        base = self.func.__name__
+        if self.obj_id:
+            return f"{base}[{self.obj_id}]"
+        return base
 
 async def safe_call(
     func: Callable,

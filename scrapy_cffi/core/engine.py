@@ -4,7 +4,7 @@ from .downloader import *
 from ..exceptions import DownloadError
 from ..interceptors import ChainResult, ChainNextEnum
 from ..interceptors.chains import _ensure_asyncgen
-from ..utils.concurrency import safe_call
+from ..utils.concurrency import safe_call, CallFunction
 from typing import TYPE_CHECKING, Dict, Union
 if TYPE_CHECKING:
     from ..crawler import Crawler
@@ -57,7 +57,7 @@ class Engine:
         # Retrieve requests directly from the spider's start method without additional processing,
         # mark them as start URLs, and submit them to the spider middleware chain.
         async for output in self.spider.start(*args, **kwargs):
-            await self.taskManager.create(coro=self.get_spider_output(output=output, mark_as_start=True))
+            await self.taskManager.create(callfunc=CallFunction(func=self.get_spider_output, output=output, mark_as_start=True))
         try:
             await self.taskManager.wait_until_stopped()
         except KeyboardInterrupt as e:
@@ -78,11 +78,11 @@ class Engine:
                 result=single_result,
                 spider=self.spider
             ):
-                await self.taskManager.create(coro=self.manager_spiderinterceptors_result(spiderinterceptors_result=item))
+                await self.taskManager.create(callfunc=CallFunction(func=self.manager_spiderinterceptors_result, spiderinterceptors_result=item))
 
     async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult):
         if spiderinterceptors_result.next == ChainNextEnum.RESCHEDULE:
-            await self.taskManager.create(coro=self.process_scheduler(request=spiderinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler, request=spiderinterceptors_result.request))
         elif spiderinterceptors_result.next == ChainNextEnum.SPIDER:
             await self.process_response(response=spiderinterceptors_result.response, request=spiderinterceptors_result.request)
         elif spiderinterceptors_result.next == ChainNextEnum.PIPELINE:
@@ -132,7 +132,7 @@ class Engine:
         if request:
             put_scheduler = await self.scheduler.put(request=request, spider=self.spider)
             if put_scheduler:
-                await self.taskManager.create(coro=self.process_scheduler())
+                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
             else:
                 return
 
@@ -142,13 +142,13 @@ class Engine:
                 self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                 return
             elif isinstance(request, Request):
-                await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+                await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
             elif isinstance(request, int):
-                await self.taskManager.create(coro=self.process_scheduler())
+                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
         else:
             try:
                 request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
-                await self.taskManager.create(coro=self.process_downloadInterceptor_chain(request=request))
+                await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
             except asyncio.TimeoutError:
                 pass
             except asyncio.CancelledError:
@@ -157,7 +157,7 @@ class Engine:
                 self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                 return 
             else:
-                await self.taskManager.create(coro=self.process_scheduler())
+                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
 
     # Download middleware processing
     async def process_downloadInterceptor_chain(self, response: Union[Response, BaseException, None]=None, request: Request=None):
@@ -169,11 +169,11 @@ class Engine:
     # Handles results from the download interceptors or exceptions raised during downloading.
     async def manager_downloadinterceptors_result(self, downloadinterceptors_result: ChainResult):
         if downloadinterceptors_result.next == ChainNextEnum.RESCHEDULE:
-            await self.taskManager.create(coro=self.process_scheduler(request=downloadinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.DOWNLOADER:
-            await self.taskManager.create(coro=self.process_downloader(request=downloadinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloader, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.RESPONSE:
-            await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=downloadinterceptors_result.response, request=downloadinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, response=downloadinterceptors_result.response, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.SPIDER:
             await self.spiderInterceptor_chain.process_spider_input_chain(
                 response=downloadinterceptors_result.response, 
@@ -192,7 +192,7 @@ class Engine:
         if isinstance(request, HttpRequest):
             await self.downloader.fetch_http(request=request, callback=self.process_downloadInterceptor_chain)
         elif isinstance(request, WebSocketRequest):
-            await self.taskManager.create(coro=self.process_websocket_request(request=request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_websocket_request, request=request))
             
     # Callback to spider with the response
     async def process_response(self, response: Union[Response, BaseException], request: Request):
@@ -206,7 +206,7 @@ class Engine:
         else:
             return
         if not self.stop_event.is_set():
-            await self.taskManager.create(coro=self.get_spider_output(output=output, response=response))
+            await self.taskManager.create(callfunc=CallFunction(func=self.get_spider_output, output=output, response=response))
 
     # manager callback
     def get_backFunc(self, backFunc=None, response: Union[Response, BaseException]=None, fill_text=""):
@@ -267,7 +267,7 @@ class Engine:
                         # task.cancel()
                         # self.logger.debug(f'{msg}: {connect_request.url}, listener ended')
                         break
-                    await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=msg, request=connect_request))
+                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, response=msg, request=connect_request))
                     if b'keepalive ping timeout' in msg.msg[0]:
                         websocket_event.set()
                     await asyncio.sleep(0)
@@ -278,7 +278,7 @@ class Engine:
             raise
         except BaseException as e:
             results = DownloadError(exception=e, request=connect_request)
-            await self.taskManager.create(coro=self.process_downloadInterceptor_chain(response=results, request=connect_request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, response=results, request=connect_request))
             self.end_websocket(signal=CloseSignal(session_id=connect_request.session_id, websocket_end_for_url=connect_request.url))
         finally:
             # Release session regardless of normal exit or exception cancellation

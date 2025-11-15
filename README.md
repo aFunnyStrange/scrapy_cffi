@@ -85,7 +85,7 @@ Example `settings.py` snippet:
 ```python
 settings.REDIS_INFO.MODE = "sentinel"
 
-settings.REDIS_INFO.SENTINELS = [("<master_host1>", "int(master_port1)"), ("<master_host2>", "int(master_port2)"), ("<master_host3>", "int(master_port3)")]
+settings.REDIS_INFO.SENTINELS = [("<sentinel_host1>", "int(sentinel_port1)"), ("<sentinel_host2>", "int(sentinel_port2)"), ("<sentinel_host3>", "int(sentinel_port3)")]
 
 settings.REDIS_INFO.MASTER_NAME = "<master_name>"
 
