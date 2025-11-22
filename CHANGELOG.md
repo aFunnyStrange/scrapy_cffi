@@ -5,7 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+None
+
+---
+## [0.2.5] - 2025-11-22
+### Changed
 - Deferred coroutine creation to avoid un-awaited coroutine warnings during `Ctrl+C`.
+- Replaced the old recursive task-spawning scheduler with a centralized multi-worker `scheduler_loop` model, eliminating deep task-chain growth and event-loop starvation, and delivering multi-fold throughput and stability improvements under high concurrency.
 
 ---
 ## [0.2.3~0.2.4] - 2025-11-2~2025.11.8

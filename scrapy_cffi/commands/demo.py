@@ -50,7 +50,7 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
             "3. Push a task into RabbitMQ.\n"
             "\tYou don’t need to modify anything — the demo project works out of the box.\n"
             "\tFor pushing tasks, simply refer to the ready-to-use test file in the open-source repo:\n"
-            "\thttps://github.com/aFunnyStrange/scrapy_cffi/tree/main/tests/test_rabbitmq.py"
+            "\thttps://github.com/aFunnyStrange/scrapy_cffi/tree/main/tests/test_rabbitmq"
         )
     elif use_redis:
         readme_code = readme_code + '\n3.redis-cli\n4.RPUSH customRedisSpider_test http://127.0.0.1:8002\r\n'

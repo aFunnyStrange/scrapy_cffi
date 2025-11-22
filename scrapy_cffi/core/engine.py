@@ -56,8 +56,17 @@ class Engine:
 
         # Retrieve requests directly from the spider's start method without additional processing,
         # mark them as start URLs, and submit them to the spider middleware chain.
-        async for output in self.spider.start(*args, **kwargs):
-            await self.taskManager.create(callfunc=CallFunction(func=self.get_spider_output, output=output, mark_as_start=True))
+        await self.taskManager.create(callfunc=CallFunction(func=self.run_spider_start, args=args, kwargs=kwargs))
+
+        # Start a centralized scheduler loop:
+        # Unlike the old recursive process_scheduler (where each put/get would create a new task forming a deep task chain),
+        # the centralized scheduler_loop runs as a single persistent task, avoiding the overhead of excessive coroutine switching
+        # caused by a growing task tree, significantly improving throughput and scheduling stability.
+        # Recursive mode may give a more immediate "task chaining" perception to the user,
+        # but it severely reduces performance under high concurrency.
+        for i in range(self.settings.MAX_SCHEDULER_LOOP_NUM):
+            await self.taskManager.create(callfunc=CallFunction(func=self.scheduler_loop))
+
         try:
             await self.taskManager.wait_until_stopped()
         except KeyboardInterrupt as e:
@@ -68,6 +77,35 @@ class Engine:
             await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
         await self.signalManager._safe_put(signal=signals.spider_closed, data=SignalInfo(spider=self.spider, signal_time=time.time()))
         await self.signalManager._safe_put(signal=signals.engine_stopped, data=SignalInfo(signal_time=time.time()))
+
+    async def run_spider_start(self, *args, **kwargs):
+        async for output in self.spider.start(*args, **kwargs):
+            await self.taskManager.create(
+                callfunc=CallFunction(func=self.get_spider_output, output=output, mark_as_start=True)
+            )
+
+    async def scheduler_loop(self):
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    if self.scheduler.is_distributed:
+                        request = await self.scheduler.get(spider=self.spider)
+                    else:
+                        request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
+                except asyncio.TimeoutError:
+                    if self.scheduler.empty(spider=self.spider):
+                        self.signalManager.send(
+                            signal=signals.scheduler_empty,
+                            data=SignalInfo(signal_time=time.time())
+                        )
+                        return
+                    continue
+                if isinstance(request, Request):
+                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
+                else:
+                    continue
+        except asyncio.CancelledError:
+            raise
 
     async def get_spider_output(self, output, response=None, mark_as_start=False):
         async for single_result in _ensure_asyncgen(output):
@@ -82,7 +120,7 @@ class Engine:
 
     async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult):
         if spiderinterceptors_result.next == ChainNextEnum.RESCHEDULE:
-            await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler, request=spiderinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.enqueue_request, request=spiderinterceptors_result.request))
         elif spiderinterceptors_result.next == ChainNextEnum.SPIDER:
             await self.process_response(response=spiderinterceptors_result.response, request=spiderinterceptors_result.request)
         elif spiderinterceptors_result.next == ChainNextEnum.PIPELINE:
@@ -124,40 +162,12 @@ class Engine:
         websocket_entry.release()
         self.sessions.release(signal.session_id)
 
-    # Scheduler: repeatedly fetches and processes requests until none are left.
-    async def process_scheduler(self, request: Request=None):
+    async def enqueue_request(self, request: Request=None):
         if self.stop_event.is_set():
             return
             
         if request:
-            put_scheduler = await self.scheduler.put(request=request, spider=self.spider)
-            if put_scheduler:
-                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
-            else:
-                return
-
-        if self.scheduler.is_distributed:
-            request = await self.scheduler.get(spider=self.spider)
-            if isinstance(request, int) and not request: # scheduler empty
-                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                return
-            elif isinstance(request, Request):
-                await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-            elif isinstance(request, int):
-                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
-        else:
-            try:
-                request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
-                await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-            except asyncio.TimeoutError:
-                pass
-            except asyncio.CancelledError:
-                raise
-            if self.scheduler.empty(spider=self.spider):
-                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                return 
-            else:
-                await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler))
+            await self.scheduler.put(request=request, spider=self.spider)
 
     # Download middleware processing
     async def process_downloadInterceptor_chain(self, response: Union[Response, BaseException, None]=None, request: Request=None):
@@ -169,7 +179,7 @@ class Engine:
     # Handles results from the download interceptors or exceptions raised during downloading.
     async def manager_downloadinterceptors_result(self, downloadinterceptors_result: ChainResult):
         if downloadinterceptors_result.next == ChainNextEnum.RESCHEDULE:
-            await self.taskManager.create(callfunc=CallFunction(func=self.process_scheduler, request=downloadinterceptors_result.request))
+            await self.taskManager.create(callfunc=CallFunction(func=self.enqueue_request, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.DOWNLOADER:
             await self.taskManager.create(callfunc=CallFunction(func=self.process_downloader, request=downloadinterceptors_result.request))
         elif downloadinterceptors_result.next == ChainNextEnum.RESPONSE:

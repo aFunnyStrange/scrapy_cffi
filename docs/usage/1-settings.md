@@ -143,6 +143,75 @@ If set to True, the crawler will skip URLs disallowed by robots.txt.
 
 ---
 
+### 2.1.4 MAX_SCHEDULER_LOOP_NUM
+- **Type**: Optional[int]
+- **Default**: 10
+- **Description**: defines how many concurrent scheduler consumer loops (workers) the engine should create.
+Each worker continuously pulls requests from the scheduler and executes the full processing pipeline independently.
+This value directly determines the framework’s concurrency level.
+
+
+
+**Impact on Performance**
+
+A higher value can increase throughput when the spider has enough pending requests.
+However, setting this value too high may reduce performance under light workloads:
+
+Too many idle workers increase task scheduling overhead.
+
+The event loop spends more time waking, parking, and switching between workers.
+
+CPU time may be wasted on workers that have no work to perform.
+
+Actual task processing can become slower than with fewer workers.
+
+In short:
+> **More workers ≠ always faster.**
+> Worker count should match the expected workload.
+
+
+
+**Why the Framework Does Not Auto-Scale Workers**
+
+This framework intentionally forbids automatic worker expansion or reduction.
+
+**Reason 1 — Canceling workers is unsafe**
+A worker may currently be:
+- holding a request,
+- inside middleware,
+- downloading,
+- or running spider callbacks.
+Force-canceling it can drop the in-flight request, which violates the framework's design principle:
+
+**“No request should be lost due to internal worker cancellation.”**
+
+**Reason 2 — Auto-scaling makes the system non-deterministic**
+Dynamic cancellation introduces unpredictable race conditions and debugging difficulty.
+Fixed workers ensure stable and repeatable scheduling behavior.
+
+**Reason 3 — Concurrency must be user-defined**
+Worker count reflects how aggressively requests should be processed.
+It must be configured explicitly by the user based on machine resources and spider design.
+
+For these reasons, the framework always uses a **fixed-size worker pool**, with no auto-scaling.
+
+
+
+**Notes**
+- Workers are persistent and run for the entire lifetime of the engine.
+- No recursive task creation occurs, preventing coroutine tree explosion.
+- Too few workers lowers concurrency; too many workers increase scheduling overhead.
+- Adjust according to workload and system resources.
+
+| **Worker Count** | **Workload** |     **Expected Effect**      |
+| ---------------- | ------------ | ---------------------------- |
+|       Low        |     Heavy    |       Bottleneck / slow      |
+|       High       |     Heavy    |        Good throughput       |
+|       High       |     Light    | Slower due to overscheduling |
+|  Extremely High  |      Any     |       Event-loop thrash      |
+
+---
+
 ## 2.2 Request
 ### 2.2.1 USER_AGENT
 - **Type**: Optional[str]
