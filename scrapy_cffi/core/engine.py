@@ -86,14 +86,21 @@ class Engine:
 
     async def scheduler_loop(self):
         distributed_empty = False # Avoid unlimited sending
+        end_count = self.settings.SCHEDULER_LOOP_END
         try:
             while not self.stop_event.is_set():
                 try:
                     if self.scheduler.is_distributed:
                         request = await self.scheduler.get(spider=self.spider)
-                        if isinstance(request, int) and (not request) and (not distributed_empty): # scheduler empty
-                            self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
+                        if isinstance(request, int) and (not request): # scheduler empty
+                            if not distributed_empty:
+                                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                             distributed_empty = True
+                            
+                            if end_count is not None:
+                                end_count -= 1
+                                if end_count <= 0:
+                                    return
                         elif isinstance(request, Request):
                             distributed_empty = False
                             await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))

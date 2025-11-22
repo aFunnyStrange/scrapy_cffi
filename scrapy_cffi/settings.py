@@ -38,7 +38,8 @@ class SettingsInfo(BaseValidatedModel):
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()
     QUEUE_NAME: Optional[Union[str]] = "" # If set, this queue will be shared in run_all_spiders mode. Be aware of potential request race conditions when using the same scheduler.
     ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
-    MAX_SCHEDULER_LOOP_NUM: Optional[int] = 10 
+    MAX_SCHEDULER_LOOP_NUM: Optional[int] = 10
+    SCHEDULER_LOOP_END: Optional[Union[int, None]] = None
 
     USER_AGENT: Optional[str] = "scrapy_cffiBot"
     DEFAULT_HEADERS: Optional[Dict] = Field(default_factory=dict)

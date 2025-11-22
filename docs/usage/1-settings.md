@@ -150,6 +150,8 @@ If set to True, the crawler will skip URLs disallowed by robots.txt.
 Each worker continuously pulls requests from the scheduler and executes the full processing pipeline independently.
 This value directly determines the framework’s concurrency level.
 
+**Note:**
+In a `single Crawler` scenario, when using the `run_all_spiders` mode to start multiple spiders, each spider corresponds to an Engine, and **each Engine creates self.settings.MAX_SCHEDULER_LOOP_NUM scheduler_loop**. By default, **end_count (i.e., SCHEDULER_LOOP_END) is None**, meaning the loops continuously listen to the queue. Under these conditions, `aio_pika.connect_robust` may raise errors. This is fundamentally due to limitations in aio_pika's underlying connection pool implementation. While multiple scheduler_loop instances are used to increase concurrency under high task load, aio_pika does not fully support a large number of concurrent robust connections.
 
 
 **Impact on Performance**
@@ -209,6 +211,17 @@ For these reasons, the framework always uses a **fixed-size worker pool**, with 
 |       High       |     Heavy    |        Good throughput       |
 |       High       |     Light    | Slower due to overscheduling |
 |  Extremely High  |      Any     |       Event-loop thrash      |
+
+---
+
+### 2.1.5 SCHEDULER_LOOP_END
+- **Type**: Union[int, None]
+- **Default**: None
+- **Description**: For terminable spiders using `RedisScheduler`, `RabbitMqScheduler`, or other custom schedulers in `scrapy-cffi >= 0.2.5`, this setting allows controlling the number of scheduler loops before the program exits automatically.
+    - If `None` (default), the scheduler continues listening indefinitely.
+    - Only set this for finite/terminable spiders.
+    - Continuous-listening spiders (e.g., `RedisSpider` + `RedisScheduler`, `RabbitMqSpider` + `RabbitMqScheduler`, or other custom persistent spiders) should **not** configure this option.
+
 
 ---
 

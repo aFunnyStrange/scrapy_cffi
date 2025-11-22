@@ -32,9 +32,12 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Used for request deduplication
         settings.RABBITMQ_INFO.URL = "amqp://guest:guest@localhost"
+        # settings.SCHEDULER_LOOP_END = 5
+        settings.MAX_SCHEDULER_LOOP_NUM = 1 # One crawler, run_all_spiders, aio_pika does not fully support a large number of concurrent robust connections.
     elif used_redis:
         settings.SCHEDULER = "scrapy_cffi.scheduler.RedisScheduler" # Starting the Redis scheduler requires configuring Redis information
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
+        # settings.SCHEDULER_LOOP_END = 5
 
     if used_kafka:
         settings.KAFKA_INFO.URL = "localhost:9092"

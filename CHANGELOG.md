@@ -5,11 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+None
+
+---
+## [0.2.6] - 2025-11-22
+### Added
+- settings `SCHEDULER_LOOP_END`, Allow `Spider` to use `RedisScheduler`, `RabbitMqScheduler`.
+
 ## Fixed
 - Fixed scheduler empty signal loss.
+- After testing, `aio_pika` does not fully support a large number of concurrent robust connections.
 
 ---
 ## [0.2.5] - 2025-11-22
+### Added
+- settings `MAX_SCHEDULER_LOOP_NUM`
+
 ### Changed
 - Deferred coroutine creation to avoid un-awaited coroutine warnings during `Ctrl+C`.
 - Replaced the old recursive task-spawning scheduler with a centralized multi-worker `scheduler_loop` model, eliminating deep task-chain growth and event-loop starvation, and delivering multi-fold throughput and stability improvements under high concurrency.
