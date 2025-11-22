@@ -85,24 +85,26 @@ class Engine:
             )
 
     async def scheduler_loop(self):
+        distributed_empty = False
         try:
             while not self.stop_event.is_set():
                 try:
                     if self.scheduler.is_distributed:
                         request = await self.scheduler.get(spider=self.spider)
+                        if isinstance(request, int) and (not request) and distributed_empty: # scheduler empty
+                            self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
+                            distributed_empty = True
+                        elif isinstance(request, Request):
+                            distributed_empty = False
+                            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
                     else:
                         request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
+                        if isinstance(request, Request):
+                            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
                 except asyncio.TimeoutError:
                     if self.scheduler.empty(spider=self.spider):
-                        self.signalManager.send(
-                            signal=signals.scheduler_empty,
-                            data=SignalInfo(signal_time=time.time())
-                        )
+                        self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                         return
-                    continue
-                if isinstance(request, Request):
-                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-                else:
                     continue
         except asyncio.CancelledError:
             raise

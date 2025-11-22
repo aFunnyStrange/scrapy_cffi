@@ -65,6 +65,7 @@ python runner.py
 
 **Notes:**
 > The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
+> Starting from `scrapy-cffi` >= 0.2.5, `RedisScheduler` and `RabbitMqScheduler` are no longer compatible with "terminable" spiders. Once the scheduler queue is empty, it continues listening, so these schedulers should be used with `RedisSpider` or `RabbitMqSpider`. This incompatibility only affects automatic termination; task scheduling still works correctly.
 
 ---
 
