@@ -85,13 +85,13 @@ class Engine:
             )
 
     async def scheduler_loop(self):
-        distributed_empty = False
+        distributed_empty = False # Avoid unlimited sending
         try:
             while not self.stop_event.is_set():
                 try:
                     if self.scheduler.is_distributed:
                         request = await self.scheduler.get(spider=self.spider)
-                        if isinstance(request, int) and (not request) and distributed_empty: # scheduler empty
+                        if isinstance(request, int) and (not request) and (not distributed_empty): # scheduler empty
                             self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                             distributed_empty = True
                         elif isinstance(request, Request):
