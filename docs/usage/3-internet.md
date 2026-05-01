@@ -495,6 +495,16 @@ async def parse(self, response: HttpResponse):
     print(response.extract_json_strong(key="target"))    # => ['button', 'window']
 ```
 
+#### 3.2.2.7 extract_json_chain(keys: List[str], strict_level=2, re_rule="")
+Use chain scanning when you want to search keys in order instead of searching one key globally:
+
+```python
+async def parse(self, response: HttpResponse):
+    ids = response.extract_json_chain(keys=["payload", "items", "id"])
+```
+
+The scanner extracts all `payload` values first, scans only those values for `items`, then scans only those values for `id`. Each layer is deduplicated.
+
 **Question**: 
 Should I always use `extract_json_strong` since it's more powerful?
 
@@ -503,14 +513,14 @@ The `extract_json` function is based on regular expression matching, while `extr
 
 Therefore, when the response text is standard JSON, you should prefer using `extract_json`. When `extract_json_strong` is necessary, it's recommended to first extract the top-level keys of the data and then access the desired values via dictionary traversal. This approach minimizes the use of `extract_json_strong` and yields better performance.
 
-#### 3.2.2.7 protobuf_decode
+#### 3.2.2.8 protobuf_decode
 Decodes a Protobuf message from the given `content` (or `msg` for WebSocket) using `blackboxprotobuf`. Returns a tuple `(data, typedef)`.
 
 ```python
 data, typedef = response.protobuf_decode()
 ```
 
-#### 3.2.2.8 grpc_decode
+#### 3.2.2.9 grpc_decode
 Decodes one or more gRPC-framed messages from the HTTP response (`response.content`). This method parses the standard gRPC frame format — including the 1-byte compression flag, 4-byte big-endian length prefix, and Protobuf-encoded message — and returns the decoded content using `blackboxprotobuf`.
 
 **Returns**: `Union[Tuple[Dict, Dict], List[Tuple[Dict, Dict]]]`

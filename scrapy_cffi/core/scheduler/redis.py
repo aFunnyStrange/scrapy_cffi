@@ -88,7 +88,31 @@ class RedisScheduler(BaseScheduler):
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        request_bytes = await self.redisManager.dequeue_request(queue_key=getattr(spider, "redis_key", self.settings.QUEUE_NAME))
+        queue_key = getattr(spider, "redis_key", self.settings.QUEUE_NAME)
+        start_mode = getattr(spider, "redis_start_mode", "list")
+        group_name = getattr(spider, "redis_group", None) or getattr(spider, "redis_xgroup", None)
+        if start_mode == "stream" or group_name:
+            if not group_name:
+                raise ValueError("Redis stream mode requires spider.redis_group or spider.redis_xgroup")
+            request_bytes = await self.redisManager.dequeue_stream_request(
+                stream_key=queue_key,
+                group_name=group_name,
+                consumer_name=getattr(spider, "redis_consumer", None) or getattr(spider, "redis_xconsumer", None) or spider.name,
+                field=getattr(spider, "redis_stream_field", "data"),
+                count=getattr(spider, "redis_stream_count", 1),
+                block=getattr(spider, "redis_stream_block_ms", 2000),
+                group_start_id=getattr(spider, "redis_stream_group_start_id", "0"),
+                read_id=getattr(spider, "redis_stream_read_id", ">"),
+                mkstream=getattr(spider, "redis_stream_mkstream", True),
+            )
+            return request_bytes
+
+        request_bytes = await self.redisManager.dequeue_request(queue_key=queue_key)
         if request_bytes is None:
             return None
         return request_bytes
+
+    async def ack_start_req(self, spider: "Spider", message, **kwargs):
+        group_name = getattr(spider, "redis_group", None) or getattr(spider, "redis_xgroup", None)
+        if group_name:
+            return await self.redisManager.ack_stream_request(message=message, group_name=group_name)

@@ -80,6 +80,21 @@ class MysqlInfo(BaseDBInfo):
             self.URL = f"{self.DRIVER}://{auth_part}{self.HOST}:{self.PORT}{db_part}"
         return self
 
+class PostgresInfo(BaseDBInfo):
+    DRIVER: str = "postgresql+asyncpg"
+
+    @model_validator(mode="after")
+    def assemble_url(self) -> "PostgresInfo":
+        if not self.URL and self.HOST and self.PORT:
+            auth_part = ""
+            if self.USERNAME and self.PASSWORD:
+                auth_part = f"{self.USERNAME}:{self.PASSWORD}@"
+            elif self.PASSWORD:
+                auth_part = f":{self.PASSWORD}@"
+            db_part = f"/{self.DB}" if self.DB is not None else ""
+            self.URL = f"{self.DRIVER}://{auth_part}{self.HOST}:{self.PORT}{db_part}"
+        return self
+
 class MongodbInfo(BaseDBInfo):
     @model_validator(mode="after")
     def assemble_url(self) -> "MongodbInfo":
@@ -96,5 +111,6 @@ class MongodbInfo(BaseDBInfo):
 __all__ = [
     "RedisInfo",
     "MysqlInfo",
+    "PostgresInfo",
     "MongodbInfo",
 ]

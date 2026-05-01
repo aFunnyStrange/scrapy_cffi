@@ -7,6 +7,7 @@ class Extension:
         self.hooks = hooks
         self.redisManager = kwargs.get("redisManager")
         self.mysqlManager = kwargs.get("mysqlManager")
+        self.postgresManager = kwargs.get("postgresManager")
         self.mongodbManager = kwargs.get("mongodbManager")
         self.rabbitmqManager = kwargs.get("rabbitmqManager")
         self.kafkaManager = kwargs.get("kafkaManager")

@@ -9,6 +9,7 @@ class SessionHooks(Protocol):
 
 class SchedulerHooks(Protocol):
     def get_start_req(self, spider: "Spider", **kwargs) -> Union[None, bytes]: ...
+    def ack_start_req(self, spider: "Spider", message, **kwargs): ...
 
 class SpidersHooks(Protocol):
     session: SessionHooks

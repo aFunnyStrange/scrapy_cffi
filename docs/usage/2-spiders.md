@@ -68,6 +68,21 @@ The default error handler. If a request has an errback set, this method can be u
 - **Type**: str
 - **Description**: The name of the Redis queue from which tasks (URLs) are pulled and scheduled.
 
+### 2.2.2 Redis Stream / XGROUP
+By default, `RedisSpider` consumes `redis_key` as a Redis list with `BLPOP`. To consume Redis Streams through a consumer group, configure the spider like this:
+
+```python
+class DemoRedisStreamSpider(RedisSpider):
+    name = "demoRedisStreamSpider"
+    redis_key = "demo:stream"
+    redis_start_mode = "stream"
+    redis_group = "demo-group"
+    redis_consumer = "consumer-1"  # optional; defaults to spider.name
+    redis_stream_field = "data"    # XADD demo:stream * data "https://example.com"
+```
+
+`redis_xgroup` and `redis_xconsumer` are also supported as aliases. The stream message is acknowledged with `XACK` after it is converted into a start request and yielded.
+
 ## 2.3 RabbitmqSpider
 ### 2.2.1 rabbitmq_queue
 - **Type**: str

@@ -690,7 +690,15 @@ This setting determines how other fields (`SENTINELS`, `MASTER_NAME`, `CLUSTER_N
 
 ---
 
-### 2.9.4 MongodbInfo
+### 2.9.4 PostgresInfo
+#### 2.9.4.1 DRIVER
+- **Type**: str
+- **Default**: "postgresql+asyncpg"
+- **Description**: The default driver prefix for integration with the `SQLAlchemyPostgresManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] asyncpg`). If you are using a custom PostgreSQL manager, you may override this field to adapt the driver.
+
+---
+
+### 2.9.5 MongodbInfo
 > All configuration fields are the same as in **BaseDBInfo**.
 
 ---

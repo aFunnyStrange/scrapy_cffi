@@ -13,15 +13,24 @@ Designed for use within an asyncio event loop and single-threaded context.
 """
 import json
 import redis.asyncio as redis
-from redis.exceptions import ConnectionError, TimeoutError
+from redis.exceptions import ConnectionError, ResponseError, TimeoutError
 from tenacity import retry, wait_fixed, retry_if_exception_type
 from functools import wraps
+from dataclasses import dataclass
 import inspect, asyncio
-from typing import TYPE_CHECKING, Union, Tuple, List, Dict
+from typing import TYPE_CHECKING, Union, Tuple, List, Dict, Optional
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from redis.asyncio.client import Redis
     from redis.asyncio.connection import ConnectionPool
+
+@dataclass
+class RedisStreamMessage:
+    stream_key: str
+    message_id: Union[str, bytes]
+    data: bytes
+    fields: Dict
+
 
 def auto_retry(func):
     @wraps(func)
@@ -62,6 +71,7 @@ class RedisManager(redis.Redis):
         self._sentinel_override_master = sentinel_override_master
         self._method_cache = {}
         self._sentinel = None
+        self._stream_groups_initialized = set()
 
         if redis_mode == "single":
             tmp_instance: "Redis" = redis.from_url(redis_url, **kwargs)
@@ -240,3 +250,91 @@ class RedisManager(redis.Redis):
                 request = request.decode('utf-8')
             return request
         return None
+
+    @auto_retry
+    async def dequeue_stream_request(
+        self,
+        stream_key: str,
+        group_name: str,
+        consumer_name: str,
+        field: Optional[str] = "data",
+        count: int = 1,
+        block: int = 2000,
+        group_start_id: str = "0",
+        read_id: str = ">",
+        mkstream: bool = True,
+    ) -> Optional[RedisStreamMessage]:
+        group_key = (stream_key, group_name)
+        if group_key not in self._stream_groups_initialized:
+            try:
+                await self.xgroup_create(
+                    name=stream_key,
+                    groupname=group_name,
+                    id=group_start_id,
+                    mkstream=mkstream,
+                )
+            except ResponseError as exc:
+                if "BUSYGROUP" not in str(exc):
+                    raise
+            self._stream_groups_initialized.add(group_key)
+
+        result = await self.xreadgroup(
+            groupname=group_name,
+            consumername=consumer_name,
+            streams={stream_key: read_id},
+            count=count,
+            block=block,
+        )
+        if not result:
+            return None
+
+        raw_stream_key, messages = result[0]
+        if not messages:
+            return None
+
+        message_id, fields = messages[0]
+        data = self._extract_stream_data(fields=fields, field=field)
+        if data is None:
+            return None
+
+        return RedisStreamMessage(
+            stream_key=self._to_text(raw_stream_key),
+            message_id=message_id,
+            data=data,
+            fields=fields,
+        )
+
+    async def ack_stream_request(self, message: RedisStreamMessage, group_name: str):
+        return await self.xack(message.stream_key, group_name, message.message_id)
+
+    def _extract_stream_data(self, fields: Dict, field: Optional[str]) -> Optional[bytes]:
+        if not fields:
+            return None
+
+        value = None
+        if field:
+            value = fields.get(field)
+            if value is None:
+                value = fields.get(field.encode("utf-8"))
+            if value is None and len(fields) == 1:
+                value = next(iter(fields.values()))
+        elif len(fields) == 1:
+            value = next(iter(fields.values()))
+        if value is None and (not field or len(fields) > 1):
+            value = json.dumps({
+                self._to_text(k): self._to_text(v)
+                for k, v in fields.items()
+            }, ensure_ascii=False).encode("utf-8")
+
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, str):
+            return value.encode("utf-8")
+        return json.dumps(value, ensure_ascii=False).encode("utf-8")
+
+    def _to_text(self, value):
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return value

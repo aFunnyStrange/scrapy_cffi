@@ -365,6 +365,17 @@ data = scanner.scan_text(text, key="user")
 print(data)
 ```
 
+### 5.2.1 Chain Key Scanning
+When a single key is too broad, use chain scanning to narrow the search layer by layer:
+
+```python
+from scrapy_cffi.utils import extract_json_chain
+
+data = extract_json_chain(text, keys=["payload", "items", "id"])
+```
+
+This first extracts all `payload` values, converts those values back to text, scans them for `items`, then scans those results for `id`. Results are deduplicated at each layer.
+
 ## 5.3 JSONExtractor (Internal)
 **Purpose**: Base class for `JSONScanner`, provides lower-level extraction methods:
 - `remove_json_comments(text: str) -> str` – remove JavaScript-style comments.

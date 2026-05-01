@@ -1,7 +1,5 @@
-import hashlib, json, json5, orjson, re
-from typing import Any, List, Dict, Union
 import hashlib, json, json5, orjson, re, regex
-from typing import Any, List, Dict, Union
+from typing import Any, List, Dict, Sequence, Union
 
 def extract_nested_objects(
     text: str,
@@ -60,6 +58,38 @@ class JSONExtractor:
             return hashlib.md5(dumped.encode('utf-8')).hexdigest()
         except Exception:
             return str(id(obj))
+
+    def hash_value(self, value: Any) -> str:
+        if isinstance(value, bytes):
+            return hashlib.md5(value).hexdigest()
+        if isinstance(value, str):
+            return hashlib.md5(value.encode("utf-8")).hexdigest()
+        return self.hash_obj(value)
+
+    def value_to_text(self, value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="ignore")
+        if isinstance(value, str):
+            return value
+        return json.dumps(value, ensure_ascii=False, default=str)
+
+    def normalize_results(self, results: Any) -> List[Any]:
+        if results is None or results == []:
+            return []
+        if isinstance(results, list):
+            return results
+        return [results]
+
+    def unique_results(self, results: List[Any]) -> List[Any]:
+        seen = set()
+        final_results = []
+        for result in results:
+            result_hash = self.hash_value(result)
+            if result_hash in seen:
+                continue
+            seen.add(result_hash)
+            final_results.append(result)
+        return final_results
 
     def try_parse_json_recursive(self, json_str: str, max_depth: int = 5) -> Union[Dict, List, None]:
         json_str = json_str.strip()
@@ -240,8 +270,43 @@ class JSONScanner(JSONExtractor):
                 seen.add(h)
         return final_results[0] if final_results else final_results
 
+    def scan_chain_text(
+        self,
+        text: str,
+        keys: Sequence[str],
+        re_rule: str = "",
+    ) -> Union[List[Union[Dict, str]], Dict, str]:
+        if isinstance(keys, str):
+            keys = [keys]
+        keys = [key for key in keys if key]
+        if not keys:
+            return self.scan_text(text=text, re_rule=re_rule)
+
+        current_results: List[Any] = [text]
+        for index, key in enumerate(keys):
+            next_results = []
+            for value in current_results:
+                value_text = self.value_to_text(value)
+                scan_re_rule = re_rule if index == 0 else ""
+                results = self.scan_text(text=value_text, key=key, re_rule=scan_re_rule)
+                next_results.extend(self.normalize_results(results))
+            current_results = self.unique_results(next_results)
+            if not current_results:
+                return []
+
+        return current_results[0] if len(current_results) == 1 else current_results
+
+def extract_json_chain(
+    text: str,
+    keys: Sequence[str],
+    strict_level: int = 2,
+    re_rule: str = "",
+) -> Union[List[Union[Dict, str]], Dict, str]:
+    return JSONScanner(strict_level=strict_level).scan_chain_text(text=text, keys=keys, re_rule=re_rule)
+
 __all__ = [
     "extract_nested_objects",
+    "extract_json_chain",
     "JSONScanner",
 ]
 

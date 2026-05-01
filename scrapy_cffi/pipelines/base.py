@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from ..spiders import Spider
     from ..databases import RedisManager
     from ..databases.mysql import SQLAlchemyMySQLManager
+    from ..databases.postgres import SQLAlchemyPostgresManager
     from ..databases.mongodb import MongoDBManager
     from ..settings import SettingsInfo
     from ..hooks.pipelines import PipelinesHooks
@@ -20,6 +21,7 @@ class Pipeline:
         settings: "SettingsInfo"=None, 
         redisManager: "RedisManager"=None, 
         mysqlManager: "SQLAlchemyMySQLManager"=None,
+        postgresManager: "SQLAlchemyPostgresManager"=None,
         mongodbManager: "MongoDBManager"=None,
         rabbitmqManager: "RabbitMQManager"=None,
         kafkaManager: "KafkaManager"=None,
@@ -29,6 +31,7 @@ class Pipeline:
         self.settings = settings
         self.redisManager = redisManager
         self.mysqlManager = mysqlManager
+        self.postgresManager = postgresManager
         self.mongodbManager = mongodbManager
         self.rabbitmqManager = rabbitmqManager
         self.kafkaManager = kafkaManager
@@ -47,6 +50,7 @@ class Pipeline:
             settings=crawler.settings,
             redisManager=crawler.redisManager,
             mysqlManager=crawler.mysqlManager,
+            postgresManager=crawler.postgresManager,
             mongodbManager=crawler.mongodbManager,
             rabbitmqManager=crawler.rabbitmqManager,
             kafkaManager=crawler.kafkaManager,

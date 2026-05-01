@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ..hooks.pipelines import _PipelinesHooks
     from ..databases import RedisManager
     from ..databases.mysql import SQLAlchemyMySQLManager
+    from ..databases.postgres import SQLAlchemyPostgresManager
     from ..databases.mongodb import MongoDBManager
     from ..mq.rabbitmq import RabbitMQManager
     from ..mq.kafka import KafkaManager
@@ -21,6 +22,7 @@ class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
         settings: "SettingsInfo"=None, 
         redisManager: "RedisManager"=None, 
         mysqlManager: "SQLAlchemyMySQLManager"=None,
+        postgresManager: "SQLAlchemyPostgresManager"=None,
         mongodbManager: "MongoDBManager"=None,
         rabbitmqManager: "RabbitMQManager"=None,
         kafkaManager: "KafkaManager"=None,
@@ -31,6 +33,7 @@ class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
             settings=settings, 
             redisManager=redisManager,
             mysqlManager=mysqlManager,
+            postgresManager=postgresManager,
             mongodbManager=mongodbManager,
             rabbitmqManager=rabbitmqManager,
             kafkaManager=kafkaManager,
@@ -44,6 +47,7 @@ class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
             settings=crawler.settings,
             redisManager=crawler.redisManager,
             mysqlManager=crawler.mysqlManager,
+            postgresManager=crawler.postgresManager,
             mongodbManager=crawler.mongodbManager,
             rabbitmqManager=crawler.rabbitmqManager,
             kafkaManager=crawler.kafkaManager,

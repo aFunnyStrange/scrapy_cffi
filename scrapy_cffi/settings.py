@@ -1,5 +1,5 @@
 from .models import BaseValidatedModel, StrictValidatedModel
-from .models.api import ComponentInfo, RedisInfo, MysqlInfo, MongodbInfo, RabbitMQInfo, KafkaInfo, CPYExtensionsConfig
+from .models.api import ComponentInfo, RedisInfo, MysqlInfo, PostgresInfo, MongodbInfo, RabbitMQInfo, KafkaInfo, CPYExtensionsConfig
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
 
@@ -80,6 +80,8 @@ class SettingsInfo(BaseValidatedModel):
 
     REDIS_INFO: Optional[RedisInfo] = RedisInfo()
     MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
+    POSTGRES_INFO: Optional[PostgresInfo] = PostgresInfo()
+    POSTGRESS_INFO: Optional[PostgresInfo] = None # Typo-compatible alias for POSTGRES_INFO.
     MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
 
     RABBITMQ_INFO: Optional[RabbitMQInfo] = RabbitMQInfo()
@@ -125,6 +127,9 @@ class SettingsInfo(BaseValidatedModel):
     def check_after(self):
         if self.PROXY_URL:
             self.PROXIES = {"http": self.PROXY_URL, "https": self.PROXY_URL}
+
+        if self.POSTGRESS_INFO and not self.POSTGRES_INFO.resolved_url:
+            self.POSTGRES_INFO = self.POSTGRESS_INFO
 
         self._new_seen  = f'{self.FILTER_KEY}_new_seen'
         self._sent_seeen = f'{self.FILTER_KEY}_sent_seen'

@@ -82,6 +82,9 @@ class HttpResponse(Response):
 
     def extract_json_strong(self, key: str="", strict_level=2, re_rule="") -> Union[List[Union[Dict, str]], Dict, str]:
         return self.selector.extract_json_strong(key, strict_level=strict_level, re_rule=re_rule)
+
+    def extract_json_chain(self, keys: List[str], strict_level=2, re_rule="") -> Union[List[Union[Dict, str]], Dict, str]:
+        return self.selector.extract_json_chain(keys=keys, strict_level=strict_level, re_rule=re_rule)
     
     def protobuf_decode(self) -> Tuple[Dict, Dict]:
         return self.selector.protobuf_decode()

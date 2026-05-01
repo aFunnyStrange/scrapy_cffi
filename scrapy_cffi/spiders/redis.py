@@ -5,10 +5,21 @@ from ..hooks import spiders_hooks
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from ..databases.redis import RedisStreamMessage
 
 class RedisSpider(BaseSpider):
     name = "redisSpider"
     redis_key = "redis_key"
+    redis_start_mode = "list"       # list or stream
+    redis_group = None              # stream consumer group name; redis_xgroup is also supported
+    redis_consumer = None           # defaults to spider.name; redis_xconsumer is also supported
+    redis_stream_field = "data"     # XADD redis_key * data "https://example.com"
+    redis_stream_count = 1
+    redis_stream_block_ms = 2000
+    redis_stream_group_start_id = "0"
+    redis_stream_read_id = ">"
+    redis_stream_mkstream = True
+    redis_stream_ack = True
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -41,9 +52,14 @@ class RedisSpider(BaseSpider):
                 if not data:
                     await asyncio.sleep(1)
                     continue
+                stream_message = self._get_stream_message(data)
+                if stream_message:
+                    data = stream_message.data
                 request = await self.make_request_from_data(data)
                 if request:
                     yield request
+                if stream_message and self.redis_stream_ack:
+                    await self.hooks.scheduler.ack_start_req(spider=self, message=stream_message)
 
     # By default, only a URL is expected. If data is in JSON format, this method should be overridden in subclasses.
     async def make_request_from_data(self, data: bytes):
@@ -58,3 +74,8 @@ class RedisSpider(BaseSpider):
             callback=self.parse, 
             errback=self.errRet
         )
+
+    def _get_stream_message(self, data):
+        if hasattr(data, "message_id") and hasattr(data, "data") and hasattr(data, "fields"):
+            return data
+        return None

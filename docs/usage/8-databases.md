@@ -1,7 +1,8 @@
 # 1.Introduction
-scrapy_cffi.databases provides adapter frameworks with automatic retry and reconnection utility classes for `Redis`, `MySQL`, and `MongoDB`. By default, `Redis` is included. For using the `MySQL` and `MongoDB` utility classes, you need to install the dependencies manually:
+scrapy_cffi.databases provides adapter frameworks with automatic retry and reconnection utility classes for `Redis`, `MySQL`, `PostgreSQL`, and `MongoDB`. By default, `Redis` is included. For using the SQL or MongoDB utility classes, you need to install the dependencies manually:
 ```bash
 pip install sqlalchemy[asyncio] aiomysql
+pip install sqlalchemy[asyncio] asyncpg
 pip install motor>=3.7.1
 ```
 
@@ -11,7 +12,7 @@ pip install motor>=3.7.1
 
 
 # 2.Usage
-`RedisManager` and `MongoDBManager` support seamless use of their native APIs. `SQLAlchemyMySQLManager` requires the use of the instance attributes `engine` and `session_factory`.
+`RedisManager` and `MongoDBManager` support seamless use of their native APIs. `SQLAlchemyMySQLManager` and `SQLAlchemyPostgresManager` expose SQLAlchemy async `engine` and `session_factory`, plus small convenience helpers such as `execute`, `fetchone`, `fetchall`, and `run_stmt`.
 
 Specifically, once connected, `RedisManager` provides **full compatibility with the native `redis.asyncio` API**.
 
@@ -49,7 +50,22 @@ async def main():
 asyncio.run(main())
 ```
 
-## 2.2 SQLAlchemyMySQLManager/MongoDBManager
+## 2.2 SQLAlchemyMySQLManager/SQLAlchemyPostgresManager/MongoDBManager
 Extended usage examples for MongoDB and MySQL can be found at:
 1. MongoDB: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mongodb.py
 2. MySQL: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mysql.py
+
+PostgreSQL uses the same SQLAlchemy-style helper methods as MySQL:
+
+```python
+from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
+
+manager = SQLAlchemyPostgresManager(stop_event, "postgresql+asyncpg://user:pass@localhost:5432/app")
+await manager.init()
+await manager.execute(
+    "insert into items (name, price) values (:name, :price)",
+    {"name": "demo", "price": 12},
+)
+row = await manager.fetchone("select * from items where name=:name", {"name": "demo"})
+await manager.close()
+```

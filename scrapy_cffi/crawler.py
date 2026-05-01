@@ -29,6 +29,7 @@ class Crawler:
 
         self.redisManager = None
         self.mysqlManager = None
+        self.postgresManager = None
         self.mongodbManager = None
         self.rabbitmqManager = None
         self.kafkaManager = None
@@ -89,6 +90,11 @@ class Crawler:
             from .databases.mysql import SQLAlchemyMySQLManager
             self.mysqlManager = SQLAlchemyMySQLManager.from_crawler(self)
 
+        # postgres
+        if self.settings.POSTGRES_INFO.resolved_url:
+            from .databases.postgres import SQLAlchemyPostgresManager
+            self.postgresManager = SQLAlchemyPostgresManager.from_crawler(self)
+
         # mongodb
         if self.settings.MONBODB_INFO.resolved_url:
             from .databases.mongodb import MongoDBManager
@@ -116,6 +122,7 @@ class Crawler:
                 hooks=signals_hooks(self), 
                 redisManager=self.redisManager,
                 mysqlManager=self.mysqlManager,
+                postgresManager=self.postgresManager,
                 mongodbManager=self.mongodbManager,
                 rabbitmqManager=self.rabbitmqManager,
                 kafkaManager=self.kafkaManager,
@@ -218,6 +225,9 @@ class Crawler:
 
         if self.kafkaManager:
             await self.kafkaManager.close()
+
+        if self.postgresManager:
+            await self.postgresManager.close()
 
 def cleanup_loop(loop: asyncio.AbstractEventLoop):
     pending = asyncio.all_tasks(loop=loop)

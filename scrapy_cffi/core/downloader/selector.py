@@ -2,7 +2,7 @@ from typing import Dict, Tuple
 from parsel import Selector as ParselSelector
 from typing import TYPE_CHECKING, Union, Dict, List
 from functools import cached_property
-from ...utils import extract_nested_objects, JSONScanner, ProtobufFactory
+from ...utils import extract_nested_objects, extract_json_chain, JSONScanner, ProtobufFactory
 if TYPE_CHECKING:
     from .internet import HttpResponse
 
@@ -46,6 +46,11 @@ class Selector:
     def extract_json_strong(self, key=None, strict_level=2, re_rule="") -> Union[List[Union[Dict, str]], Dict, str]:
         if isinstance(self._text, str):
             return JSONScanner(strict_level=strict_level).scan_text(text=self._text, key=key, re_rule=re_rule)
+        return []
+
+    def extract_json_chain(self, keys: List[str], strict_level=2, re_rule="") -> Union[List[Union[Dict, str]], Dict, str]:
+        if isinstance(self._text, str):
+            return extract_json_chain(text=self._text, keys=keys, strict_level=strict_level, re_rule=re_rule)
         return []
 
     def protobuf_decode(self) -> Tuple[Dict, Dict]:
