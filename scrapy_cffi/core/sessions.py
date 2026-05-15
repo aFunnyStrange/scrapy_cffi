@@ -548,6 +548,13 @@ class SessionManager:
         return ret_cookies
 
     async def close_all(self) -> None:
+        reaper_task = getattr(self, "_reaper_task", None)
+        if reaper_task and not reaper_task.done():
+            reaper_task.cancel()
+            try:
+                await reaper_task
+            except asyncio.CancelledError:
+                pass
         await asyncio.gather(*[self._safe_close(session_id) for session_id in list(self._sessions.keys())])
         self._sessions.clear()
         self._ref_counts.clear()

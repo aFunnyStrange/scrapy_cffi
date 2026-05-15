@@ -1,7 +1,7 @@
 import asyncio, time
 from ..extensions import signals, SignalInfo
 from ..utils.concurrency import safe_call, CallFunction
-from typing import TYPE_CHECKING, Callable, Optional, Set
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..settings import SettingsInfo
@@ -30,6 +30,7 @@ class TaskManager:
 
         self.signalManager = signalManager
         self.active_tasks = 1 if is_distributed else 0
+        self.active_task_names: Dict[str, int] = {}
         self.managed_tasks: Set[asyncio.Task] = set()
         self.tasks_done_event = asyncio.Event()
         self.error_event = asyncio.Event()
@@ -53,11 +54,13 @@ class TaskManager:
         
         if self.stop_event.is_set():
             return
+        callfunc_name = callfunc.get_func_name()
 
         async def wrapped():
+            task_id = id(asyncio.current_task())
             async with self.global_lock():
                 try:
-                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{callfunc.get_func_name()}')
+                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{callfunc_name}')
                     result = await callfunc.to_coro()
                     if callback:
                         await safe_call(callback, result, **callback_kwargs)
@@ -74,17 +77,31 @@ class TaskManager:
                 finally:
                     async with self.lock:
                         self.active_tasks -= 1
-                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{callfunc.get_func_name()}')
+                        self.active_task_names[callfunc_name] = self.active_task_names.get(callfunc_name, 1) - 1
+                        if self.active_task_names[callfunc_name] <= 0:
+                            self.active_task_names.pop(callfunc_name, None)
+                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{callfunc_name}')
                         if self.active_tasks <= 0:
                             self.tasks_done_event.set()
 
-        loop = asyncio.get_running_loop() # Obtain the event loop here to ensure this is called within an async context
-        task = loop.create_task(wrapped())
-        task.add_done_callback(self.managed_tasks.discard)
-        task_id = id(task)
         async with self.lock:
             self.active_tasks += 1
+            self.active_task_names[callfunc_name] = self.active_task_names.get(callfunc_name, 0) + 1
             self.tasks_done_event.clear()
+        loop = asyncio.get_running_loop() # Obtain the event loop here to ensure this is called within an async context
+        try:
+            task = loop.create_task(wrapped())
+        except Exception:
+            async with self.lock:
+                self.active_tasks -= 1
+                self.active_task_names[callfunc_name] = self.active_task_names.get(callfunc_name, 1) - 1
+                if self.active_task_names[callfunc_name] <= 0:
+                    self.active_task_names.pop(callfunc_name, None)
+                if self.active_tasks <= 0:
+                    self.tasks_done_event.set()
+            raise
+        self.managed_tasks.add(task)
+        task.add_done_callback(self.managed_tasks.discard)
         return task
 
     async def wait_until_stopped(self) -> str:
@@ -101,6 +118,13 @@ class TaskManager:
             except asyncio.CancelledError:
                 pass
         return "error" if error_task in done else "tasks_done"
+
+    async def has_active_tasks_except(self, name_prefix: str) -> bool:
+        async with self.lock:
+            for task_name, count in self.active_task_names.items():
+                if count > 0 and not task_name.startswith(name_prefix):
+                    return True
+            return False
 
     def get_task_coro_path(self, task: asyncio.Task):
         try:
@@ -128,10 +152,10 @@ class TaskManager:
 
     async def cancel_all(self):
         self.logger.info("Cancel all tasks ...")
-        # current_task = asyncio.current_task()
+        current_task = asyncio.current_task()
         # all_tasks = asyncio.all_tasks()
         # cancel_targets = [t for t in all_tasks if t is not current_task and not t.done()]
-        cancel_targets = [t for t in self.managed_tasks if not t.done()]
+        cancel_targets = [t for t in self.managed_tasks if t is not current_task and not t.done()]
         pending_names = [self.get_task_coro_path(t) for t in cancel_targets]
         self.logger.debug(f"Cancel tasks list: {pending_names}")
 
@@ -139,10 +163,14 @@ class TaskManager:
             task.cancel()
         await asyncio.sleep(0)
         self.logger.info(f"Cancelled {len(cancel_targets)} coroutine tasks")
-        for task in cancel_targets:
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                self.logger.error(f"Exception raised while cancelling task: {e}")
+        if cancel_targets:
+            done, pending = await asyncio.wait(cancel_targets, timeout=3.0)
+            for task in pending:
+                self.logger.warning(f"Task did not finish after cancellation: {self.get_task_coro_path(task)}")
+            for task in done:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    self.logger.error(f"Exception raised while cancelling task: {e}")

@@ -95,6 +95,8 @@ class Downloader:
         for t in tasks:
             try:
                 await t
+            except asyncio.CancelledError:
+                pass
             except Exception as e:
                 self.logger.debug(f"Downloader Task cancelled or failed: {e}")
 

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 None
 
 ---
+## [0.2.7] - 2026-05-15
+### Added
+- Added `extract_json_chain` for chained JSON extraction from nested or encoded JSON text.
+
+### Changed
+- Improved asyncio task and scheduler lifecycle compatibility across Python versions.
+
+---
 ## [0.2.6] - 2025-11-22
 ### Added
 - settings `SCHEDULER_LOOP_END`, Allow `Spider` to use `RedisScheduler`, `RabbitMqScheduler`.

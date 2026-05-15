@@ -110,6 +110,8 @@ class Engine:
                             await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
                 except asyncio.TimeoutError:
                     if self.scheduler.empty(spider=self.spider):
+                        if await self.taskManager.has_active_tasks_except("scheduler_loop"):
+                            continue
                         self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
                         return
                     continue

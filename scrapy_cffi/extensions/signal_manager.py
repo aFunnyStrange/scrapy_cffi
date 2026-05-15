@@ -18,6 +18,7 @@ class SignalManager:
         self._queue = asyncio.Queue(maxsize=maxsize)
         self.stop_event: asyncio.Event = stop_event
         self._run_task = None
+        self._put_tasks: Set[asyncio.Task] = set()
         self._pending_tasks: Set[asyncio.Task] = set()
         from ..utils import init_logger
         self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
@@ -42,7 +43,9 @@ class SignalManager:
     def send(self, signal: object, data: "SignalInfo"):
         if self.stop_event.is_set() or (not self._listeners[signal]):
             return
-        asyncio.create_task(self._safe_put(signal, data))
+        task = asyncio.create_task(self._safe_put(signal, data))
+        self._put_tasks.add(task)
+        task.add_done_callback(self._put_tasks.discard)
 
     async def _safe_put(self, signal, data):
         if not self._listeners[signal]:
@@ -111,7 +114,14 @@ class SignalManager:
             try:
                 await asyncio.wait_for(self._run_task, timeout=3.0)
             except asyncio.TimeoutError:
-                pass
+                self._run_task.cancel()
+                try:
+                    await self._run_task
+                except asyncio.CancelledError:
+                    pass
+
+        if self._put_tasks:
+            await asyncio.gather(*self._put_tasks, return_exceptions=True)
 
         if self._pending_tasks:
             self.logger.info(f"[SignalManager] Waiting for {len(self._pending_tasks)} pending signal callback tasks to finish")
