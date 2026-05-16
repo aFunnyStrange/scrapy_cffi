@@ -1,7 +1,6 @@
 import asyncio
 from .base import BaseSpider
 from ..core.downloader.internet.request import HttpRequest
-from ..hooks import spiders_hooks
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..crawler import Crawler
@@ -21,16 +20,6 @@ class RedisSpider(BaseSpider):
     redis_stream_mkstream = True
     redis_stream_ack = True
 
-    @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
-        return cls(
-            settings=crawler.settings,
-            run_py_dir=crawler.run_py_dir,
-            stop_event=crawler.stop_event,
-            kafkaManager=crawler.kafkaManager,
-            session_id="",
-            hooks=spiders_hooks(crawler),
-        )
 
     async def start(self, *args, **kwargs):
         while not self.stop_event.is_set():

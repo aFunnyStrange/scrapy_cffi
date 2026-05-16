@@ -1,35 +1,29 @@
-# Use official Python 3.11 slim image
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Disable writing .pyc files and enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install common system dependencies for Python packages
-# These are typical dependencies needed for:
-# - build-essential: compiling Python packages with C extensions
-# - libffi-dev: used by cryptography and other libraries
-# - curl, git, unzip: common tools often needed in Python projects
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev \
+    libssl-dev \
+    ca-certificates \
     curl \
     git \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency file first to leverage Docker cache
-COPY requirements.txt .
+COPY requirements.txt* pyproject.toml* /app/
 
-# Upgrade pip and install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi \
+    && if [ -f pyproject.toml ]; then pip install --no-cache-dir .; fi
 
-# Copy project files
 COPY . /app
 
-# Default command to run the application (can be overridden in docker-compose)
+RUN useradd -m -u 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "runner.py"]

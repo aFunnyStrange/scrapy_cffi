@@ -1,0 +1,140 @@
+version: "3.9"
+
+networks:
+  rediscluster_net:
+    driver: bridge
+
+services:
+  redis-cluster-node1:
+    image: redis:7
+    container_name: redis-cluster-node1
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7000:7000", "17000:17000"]
+    volumes:
+      - ./conf/node1.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node1_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7000", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-node2:
+    image: redis:7
+    container_name: redis-cluster-node2
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7001:7001", "17001:17001"]
+    volumes:
+      - ./conf/node2.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node2_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7001", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-node3:
+    image: redis:7
+    container_name: redis-cluster-node3
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7002:7002", "17002:17002"]
+    volumes:
+      - ./conf/node3.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node3_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7002", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-node4:
+    image: redis:7
+    container_name: redis-cluster-node4
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7003:7003", "17003:17003"]
+    volumes:
+      - ./conf/node4.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node4_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7003", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-node5:
+    image: redis:7
+    container_name: redis-cluster-node5
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7004:7004", "17004:17004"]
+    volumes:
+      - ./conf/node5.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node5_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7004", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-node6:
+    image: redis:7
+    container_name: redis-cluster-node6
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["7005:7005", "17005:17005"]
+    volumes:
+      - ./conf/node6.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_node6_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7005", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [rediscluster_net]
+
+  redis-cluster-init:
+    image: redis:7
+    container_name: redis-cluster-init
+    depends_on:
+      redis-cluster-node1:
+        condition: service_healthy
+      redis-cluster-node2:
+        condition: service_healthy
+      redis-cluster-node3:
+        condition: service_healthy
+      redis-cluster-node4:
+        condition: service_healthy
+      redis-cluster-node5:
+        condition: service_healthy
+      redis-cluster-node6:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./cluster-entrypoint.sh:/usr/local/bin/cluster-entrypoint.sh:ro
+    command: ["sh", "/usr/local/bin/cluster-entrypoint.sh"]
+    restart: "no"
+    networks: [rediscluster_net]
+
+volumes:
+  redis_node1_data:
+  redis_node2_data:
+  redis_node3_data:
+  redis_node4_data:
+  redis_node5_data:
+  redis_node6_data:

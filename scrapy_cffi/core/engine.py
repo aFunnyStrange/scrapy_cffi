@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .sessions import SessionManager, SessionWrapper, WebSocketEntry, CloseSignal
 
 class Engine:
-    def __init__(self, crawler: "Crawler", spider: "Spider"):
+    def __init__(self, crawler: "Crawler", spider: "Spider", scheduler: "Scheduler"):
         self.stop_event: asyncio.Event = crawler.stop_event
         self.taskManager: "TaskManager" = crawler.taskManager
         self.settings: "SettingsInfo" = crawler.settings
@@ -27,12 +27,17 @@ class Engine:
         self.sessions_lock: asyncio.Lock = crawler.sessions_lock
 
         self.signalManager: "SignalManager" = crawler.signalManager
-        self.scheduler: "Scheduler" = crawler.scheduler
+        self.scheduler: "Scheduler" = scheduler
         self.downloader: "Downloader" = crawler.downloader
         self.spider: "Spider" = spider
         self.spiderInterceptor_chain: "InterruptibleChainManager" = crawler.spiderInterceptor_chain
         self.downloadInterceptor_chain: "InterruptibleChainManager" = crawler.downloadInterceptor_chain
         self.pipelines_chain: "ChainManager" = crawler.pipelines_chain
+
+        base_req_limit = self.settings.MAX_CONCURRENT_REQ
+        if base_req_limit is None:
+            base_req_limit = 100
+        self.max_inflight_downloader_tasks = max(int(base_req_limit) * 2, 50)
 
         from ..utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
@@ -42,11 +47,8 @@ class Engine:
             self.logger.addHandler(kafka_handler)
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", spider: "Spider"):
-        return cls(
-            crawler=crawler,
-            spider=spider,
-        )
+    def from_crawler(cls, crawler: "Crawler", spider: "Spider", scheduler: "Scheduler"):
+        return cls(crawler=crawler, spider=spider, scheduler=scheduler)
 
     async def start(self, *args, **kwargs):
         self.signalManager.send(signal=signals.engine_started, data=SignalInfo(signal_time=time.time()))
@@ -69,9 +71,8 @@ class Engine:
 
         try:
             await self.taskManager.wait_until_stopped()
-        except KeyboardInterrupt as e:
-            async with self.taskManager.lock:
-                self.taskManager.active_tasks -= 1
+        except KeyboardInterrupt:
+            pass
 
         if self.pipelines_chain.chain_list:
             await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
@@ -87,9 +88,22 @@ class Engine:
     async def scheduler_loop(self):
         distributed_empty = False # Avoid unlimited sending
         end_count = self.settings.SCHEDULER_LOOP_END
+        is_queue_wait_spider = bool(
+            getattr(self.spider, "redis_key", None) or getattr(self.spider, "rabbitmq_queue", None)
+        )
         try:
             while not self.stop_event.is_set():
                 try:
+                    inflight_downloader = await self.taskManager.count_active_tasks_for_obj(
+                        id(self),
+                        prefixes=("process_downloader",),
+                    )
+                    if inflight_downloader >= self.max_inflight_downloader_tasks:
+                        # Backpressure for run_all_spiders: avoid one high-volume spider
+                        # flooding shared loop and starving queue-waiting spiders.
+                        await asyncio.sleep(0.01)
+                        continue
+
                     if self.scheduler.is_distributed:
                         request = await self.scheduler.get(spider=self.spider)
                         if isinstance(request, int) and (not request): # scheduler empty
@@ -100,6 +114,16 @@ class Engine:
                             if end_count is not None:
                                 end_count -= 1
                                 if end_count <= 0:
+                                    return
+                            # In run_all_spiders, a finite spider (plain Spider with start_urls)
+                            # should be allowed to finish even when another queue-waiting spider
+                            # stays alive in the same loop.
+                            if (end_count is None) and (not is_queue_wait_spider):
+                                has_local_work = await self.taskManager.has_active_tasks_for_obj(
+                                    id(self),
+                                    exclude_prefixes=("scheduler_loop",),
+                                )
+                                if not has_local_work:
                                     return
                         elif isinstance(request, Request):
                             distributed_empty = False

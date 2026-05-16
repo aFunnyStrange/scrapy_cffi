@@ -8,7 +8,6 @@ class CustomRedisSpider(RedisSpider):
     allowed_domains = ["api.ipify.org", "127.0.0.1:8002", "localhost:8765"]
     redis_key = "customRedisSpider_test"
     count = 0
-    'RPUSH customRedisSpider_test http://127.0.0.1:8002'
 
     async def parse(self, response: HttpResponse):
         print(response.session_id, response.text)

@@ -6,7 +6,7 @@ from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterce
 from .pipelines import Pipeline
 from .extensions import SignalManager
 from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory, KafkaLoggingHandler
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from .settings import SettingsInfo
     from logging import Logger
@@ -18,7 +18,7 @@ class Crawler:
         self.global_lock = None
 
         self.settings: "SettingsInfo" = None
-        self.scheduler = None
+        self.schedulers: Dict[str, object] = {}
         self.taskManager: TaskManager = None
         self.downloader = None
         self.spiderInterceptor_chain = None
@@ -41,6 +41,13 @@ class Crawler:
 
         self.spiders = None
         self.engines = None
+
+    @property
+    def scheduler(self):
+        """When exactly one spider is loaded, exposes its scheduler for legacy code paths."""
+        if len(self.schedulers) == 1:
+            return next(iter(self.schedulers.values()))
+        return None
 
     def init_output(self, class_list):
         return [get_class_name(it) for it in class_list] if isinstance(class_list, list) else [get_class_name(class_list)]
@@ -137,10 +144,11 @@ class Crawler:
             start_type = 0
         if start_type:
             self.spiders = [load_object(path=self.settings.SPIDERS_PATH)]
-            spiders_name = [spider.name for spider in self.spiders]
         else:
             self.spiders = get_all_spiders_cls(spiders_dir=self.settings.SPIDERS_PATH)
-            spiders_name = get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
+            get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
+
+        spider_cls_list = self.spiders
 
         scheduler_path = self.settings.SCHEDULER
         if scheduler_path:
@@ -148,9 +156,17 @@ class Crawler:
         else:
             from .core.scheduler import Scheduler
             scheduler_cls = Scheduler
-        self.scheduler = scheduler_cls.from_crawler(self, spiders_name)
 
-        for spider_cls in self.spiders:
+        self.schedulers.clear()
+        for spider_cls in spider_cls_list:
+            name = spider_cls.name
+            self.schedulers[name] = scheduler_cls.from_crawler(
+                self,
+                spiders_name=[name],
+                spider_classes=[spider_cls],
+            )
+
+        for spider_cls in spider_cls_list:
             has_redis_key = getattr(spider_cls, "redis_key", None)
             if has_redis_key:
                 self.taskManager = TaskManager.from_crawler(self, is_distributed=True) # Shared by all spider engines; if any exist, start one to handle blocking
@@ -161,15 +177,21 @@ class Crawler:
         robot_task = None
         if self.settings.ROBOTSTXT_OBEY:
             robot_urls = set()
-            for spider_cls in self.spiders:
+            for spider_cls in spider_cls_list:
                 scheme = getattr(spider_cls, "robot_scheme", "https").lower()
                 for domain in getattr(spider_cls, "allowed_domains", []):
                     robot_urls.add(f"{scheme}://{domain}/robots.txt")
             now_loop = asyncio.get_running_loop()
             robot_task = now_loop.create_task(self.robot.load_rules_for_hosts(robot_urls))
 
-        self.spiders = [spider.from_crawler(self) for spider in self.spiders]
-        self.engines = [Engine.from_crawler(crawler=self, spider=spider) for spider in self.spiders]
+        self.spiders = [
+            spider_cls.from_crawler(self, scheduler=self.schedulers[spider_cls.name])
+            for spider_cls in spider_cls_list
+        ]
+        self.engines = [
+            Engine.from_crawler(crawler=self, spider=spider, scheduler=self.schedulers[spider.name])
+            for spider in self.spiders
+        ]
 
         core_data = []
         for spider, engine in zip(self.spiders, self.engines):
@@ -178,7 +200,7 @@ class Crawler:
         init_data = {
             "taskManager": self.init_output(self.taskManager)[0],
             "sessions": self.init_output(self.sessions)[0],
-            "scheduler": self.init_output(self.scheduler)[0],
+            "schedulers": {n: self.init_output(s)[0] for n, s in self.schedulers.items()},
             "downloader": self.init_output(self.downloader)[0],
             "spiderInterceptor_chain": self.init_output(self.settings.SPIDER_INTERCEPTORS_PATH.value),
             "downloadInterceptor_chain": self.init_output(self.settings.DOWNLOAD_INTERCEPTORS_PATH.value),
@@ -195,6 +217,7 @@ class Crawler:
         self.sessions.start()
         if robot_task:
             await robot_task
+        # All spiders share this thread's asyncio loop; engines run concurrently via gather.
         await asyncio.gather(*[engine.start(*args, **kwargs) for engine in self.engines])
         self.stop_event.set()
         await self.sessions.close_all()
@@ -202,7 +225,6 @@ class Crawler:
 
     async def shutdown(self):
         self.stop_event.set()
-        self.taskManager.active_tasks = 0
         self.taskManager.tasks_done_event.set()
         self.taskManager.error_event.set()
 
@@ -216,9 +238,19 @@ class Crawler:
             for spider in self.spiders:
                 if getattr(spider, "redis_key", None):
                     await self.redisManager.delete(spider.redis_key)
-            await self.redisManager.delete(self.settings.QUEUE_NAME)
-            await self.redisManager.delete(self.settings._NEW_SEEN)
-            await self.redisManager.delete(self.settings._SENT_SEEN)
+                sch = self.schedulers.get(spider.name)
+                if sch is None:
+                    continue
+                if getattr(sch, "is_distributed", False):
+                    await self.redisManager.delete(sch.get_queue_key(spider))
+                df = getattr(sch, "dupefilter", None)
+                if df is not None:
+                    ns = getattr(df, "new_seen", None)
+                    if isinstance(ns, str):
+                        await self.redisManager.delete(ns)
+                    ss = getattr(df, "sent_seen", None)
+                    if isinstance(ss, str):
+                        await self.redisManager.delete(ss)
         
         if self.rabbitmqManager:
             await self.rabbitmqManager.close()

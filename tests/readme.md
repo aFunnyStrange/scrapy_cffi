@@ -1,11 +1,13 @@
-# 🧪 tests/
+# tests/
 
-This folder is intentionally kept empty in the Git repository for safety and modularity.
+Primary broker integration test entry:
 
-- **No actual test projects or cases are uploaded.**
-- You can generate a demo project using the CLI:
+- `tests/test_broker/README.md`
 
-```bash
-scrapy_cffi demo
-```
+Current organization:
+
+- `tests/test_broker`: canonical test scripts and config templates
+- `tests/test_broker/stacks`: docker stack assets used by broker tests (compose, entrypoint, cluster config)
+
+Legacy broker-specific test folders have been merged into `tests/test_broker`.
 

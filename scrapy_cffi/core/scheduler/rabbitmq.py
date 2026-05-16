@@ -1,7 +1,7 @@
 import asyncio, time
 from .redis import RedisScheduler
 from ..downloader.internet import Request
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 # from ...utils import run_with_timeout
 from ...extensions import signals, SignalInfo
 from ..sessions import SessionManager
@@ -24,10 +24,12 @@ class RabbitMqScheduler(RedisScheduler):
         signalManager: "SignalManager"=None, 
         redisManager: "RedisManager"=None, 
         rabbitmqManager: "RabbitMQManager"=None,
+        spider_classes: Optional[List[type]] = None,
         **kwargs
     ):
         super().__init__(
             spiders_name=spiders_name, 
+            spider_classes=spider_classes,
             stop_event=stop_event, 
             settings=settings, 
             sessions=sessions, 
@@ -39,9 +41,10 @@ class RabbitMqScheduler(RedisScheduler):
         self.rabbitmqManager = rabbitmqManager
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List, spider_classes: Optional[List[type]] = None):
         return cls(
-            spiders_name=spiders_name, 
+            spiders_name=spiders_name,
+            spider_classes=spider_classes,
             stop_event=crawler.stop_event,
             settings=crawler.settings,
             sessions=crawler.sessions,
@@ -77,7 +80,13 @@ class RabbitMqScheduler(RedisScheduler):
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=getattr(spider, "rabbitmq_queue", self.settings.QUEUE_NAME))
+        queue_name = getattr(spider, "rabbitmq_queue", None)
+        if not queue_name:
+            if self.settings.QUEUE_NAME:
+                queue_name = f"{self.settings.QUEUE_NAME}:{spider.name}:start"
+            else:
+                queue_name = f"{spider.name}_rabbit_start"
+        request_bytes = await self.rabbitmqManager.dequeue_request(queue_name=queue_name)
         if request_bytes is None:
             return None
         return request_bytes

@@ -1,4 +1,11 @@
 from typing import TYPE_CHECKING, cast
+
+
+async def _noop_scheduler_async(*args, **kwargs):
+    """Used when a scheduler hook is missing on a scheduler implementation."""
+    return None
+
+
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from .spiders import SpidersHooks
@@ -11,15 +18,15 @@ class Hooks:
         for name, func in funcs.items():
             setattr(self, name, func)
 
-def spiders_hooks(crawler: "Crawler") -> "SpidersHooks":
+def spiders_hooks(crawler: "Crawler", scheduler) -> "SpidersHooks":
     hooks_obj = Hooks(
         session=Hooks(
             register_sessions=crawler.sessions.register_sessions_batch,
             get_session_cookies=crawler.sessions.get_session_cookies,
         ),
         scheduler=Hooks(
-            get_start_req=getattr(crawler.scheduler, "get_start_req", lambda *a, **k: None),
-            ack_start_req=getattr(crawler.scheduler, "ack_start_req", lambda *a, **k: None),
+            get_start_req=getattr(scheduler, "get_start_req", _noop_scheduler_async),
+            ack_start_req=getattr(scheduler, "ack_start_req", _noop_scheduler_async),
         )
     )
     return cast(Hooks, hooks_obj)

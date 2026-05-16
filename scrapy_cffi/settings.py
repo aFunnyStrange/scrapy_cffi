@@ -36,7 +36,7 @@ class SettingsInfo(BaseValidatedModel):
     # _encoding_fields: ClassVar[List[str]] = ["FEED_EXPORT_ENCODING"]
 
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()
-    QUEUE_NAME: Optional[Union[str]] = "" # If set, this queue will be shared in run_all_spiders mode. Be aware of potential request race conditions when using the same scheduler.
+    QUEUE_NAME: Optional[Union[str]] = "" # Optional prefix: work queues resolve to `{QUEUE_NAME}:{spider.name}` per spider when set, else `{spider.name}_req`. Each spider mounts its own scheduler instance.
     ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
     MAX_SCHEDULER_LOOP_NUM: Optional[int] = 10
     SCHEDULER_LOOP_END: Optional[Union[int, None]] = None

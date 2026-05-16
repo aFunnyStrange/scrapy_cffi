@@ -1,5 +1,5 @@
 import asyncio, time, inspect
-from ...utils import async_context_factory, safe_call
+from ...utils import async_context_factory, safe_call, run_with_timeout
 from typing import Tuple, TYPE_CHECKING, List, Callable
 # from ...utils import run_with_timeout
 from .internet import *
@@ -60,7 +60,17 @@ class Downloader:
             )
             raw_response = None
             async with self.sem_ctx():
-                raw_response = await wrapper.do_request(session=wrapper.session, request=request)
+                # Some curl_cffi calls can occasionally hang on cancellation under heavy load.
+                # Enforce a hard upper bound here so process_downloader cannot stall indefinitely.
+                hard_timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0) + 2.0
+                raw_response = await run_with_timeout(
+                    wrapper.do_request,
+                    session=wrapper.session,
+                    request=request,
+                    stop_event=self.stop_event,
+                    timeout=hard_timeout,
+                    max_total_time=hard_timeout,
+                )
 
             if raw_response:
                 response = HttpResponse(

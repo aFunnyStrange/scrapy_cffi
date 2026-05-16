@@ -1,7 +1,7 @@
 import asyncio, time
 from . import BaseScheduler
 from ..downloader.internet import Request
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 # from ...utils import run_with_timeout
 from ...extensions import signals, SignalInfo
 from ..sessions import SessionManager
@@ -21,11 +21,13 @@ class RedisScheduler(BaseScheduler):
         sessions: "SessionManager"=None, 
         sessions_lock: asyncio.Lock=None, 
         signalManager: "SignalManager"=None, 
-        redisManager: "RedisManager"=None, 
+        redisManager: "RedisManager"=None,
+        spider_classes: Optional[List[type]] = None,
         **kwargs
     ):
         super().__init__(
             spiders_name=spiders_name, 
+            spider_classes=spider_classes,
             stop_event=stop_event, 
             settings=settings, 
             sessions=sessions, 
@@ -34,23 +36,27 @@ class RedisScheduler(BaseScheduler):
             **kwargs
         )
         self.redisManager = redisManager
-        if not self.settings.RABBITMQ_INFO.DONT_FILTER and not self.redisManager:
-            raise ValueError("used RedisScheduler must config settings.REDIS_INFO")
+        if not self.redisManager:
+            raise ValueError("RedisScheduler requires settings.REDIS_INFO to be configured")
         
+        dedup_kw = {**kwargs}
+        if self.spiders_name and len(self.spiders_name) == 1:
+            dedup_kw.setdefault("redis_namespace", self.spiders_name[0])
         if self.settings.DUPEFILTER:
             from ...utils import load_object
             dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
-            self.dupefilter = dupefilter_cls(settings=self.settings, redisManager=self.redisManager, **kwargs)
+            self.dupefilter = dupefilter_cls(settings=self.settings, redisManager=self.redisManager, **dedup_kw)
         else:
             from ...dupefilter.redis import RedisDupeFilter
-            self.dupefilter = RedisDupeFilter(settings=self.settings, redisManager=self.redisManager, **kwargs)
+            self.dupefilter = RedisDupeFilter(settings=self.settings, redisManager=self.redisManager, **dedup_kw)
 
         self.is_distributed = True
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", spiders_name: List):
+    def from_crawler(cls, crawler: "Crawler", spiders_name: List, spider_classes: Optional[List[type]] = None):
         return cls(
-            spiders_name=spiders_name, 
+            spiders_name=spiders_name,
+            spider_classes=spider_classes,
             stop_event=crawler.stop_event,
             settings=crawler.settings,
             sessions=crawler.sessions,
@@ -88,7 +94,12 @@ class RedisScheduler(BaseScheduler):
         return Request.from_bytes(request_bytes)
     
     async def get_start_req(self, spider: "Spider", **kwargs):
-        queue_key = getattr(spider, "redis_key", self.settings.QUEUE_NAME)
+        queue_key = getattr(spider, "redis_key", None)
+        if not queue_key:
+            if self.settings.QUEUE_NAME:
+                queue_key = f"{self.settings.QUEUE_NAME}:{spider.name}:start"
+            else:
+                queue_key = f"{spider.name}_redis_start"
         start_mode = getattr(spider, "redis_start_mode", "list")
         group_name = getattr(spider, "redis_group", None) or getattr(spider, "redis_xgroup", None)
         if start_mode == "stream" or group_name:

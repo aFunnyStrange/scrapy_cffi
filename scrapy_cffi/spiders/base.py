@@ -38,14 +38,19 @@ class BaseSpider(object):
                 self.ctx_dict["".join(js_file.split(".")[:-1])] = execjs.compile(open(single_js_file_path, encoding='utf-8').read())
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_crawler(cls, crawler: "Crawler", scheduler=None):
+        sch = scheduler or crawler.scheduler
+        if sch is None:
+            raise RuntimeError(
+                "Spider.from_crawler requires a scheduler; pass scheduler= explicitly when multiple spiders are mounted."
+            )
         return cls(
             settings=crawler.settings,
             run_py_dir=crawler.run_py_dir,
             stop_event=crawler.stop_event,
             kafkaManager=crawler.kafkaManager,
             session_id="",
-            hooks=spiders_hooks(crawler),
+            hooks=spiders_hooks(crawler, sch),
         )
 
     def use_execjs(self, ctx_key: str="", funcname: str="", params: tuple=()) -> str:

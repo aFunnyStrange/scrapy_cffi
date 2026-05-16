@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import random
 from functools import wraps
 from typing import TYPE_CHECKING, Union, List, Dict, Optional, Callable, Tuple
 
@@ -80,7 +79,7 @@ class KafkaManager:
 
     @auto_retry
     async def connect(self):
-        self._bootstrap_servers = random.choice(self._nodes)
+        self._bootstrap_servers = self._nodes[0] if self.mq_mode == "single" else self._nodes
         if self._producer is None:
             self._producer = AIOKafkaProducer(
                 loop=self.loop,

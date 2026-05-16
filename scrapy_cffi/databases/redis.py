@@ -71,6 +71,7 @@ class RedisManager(redis.Redis):
         self._sentinel_override_master = sentinel_override_master
         self._method_cache = {}
         self._sentinel = None
+        self._cluster_client = None
         self._stream_groups_initialized = set()
 
         if redis_mode == "single":
@@ -88,25 +89,26 @@ class RedisManager(redis.Redis):
         elif redis_mode == "cluster":
             if not isinstance(redis_url, list):
                 raise ValueError("Cluster mode requires a list of dict [{'host':..., 'port':...}] or list of URLs")
-            from redis.cluster import RedisCluster
-
-            if isinstance(redis_url[0], str):
-                from urllib.parse import urlparse
-                startup_nodes = [{"host": urlparse(u).hostname, "port": urlparse(u).port} for u in redis_url]
-            else:
-                startup_nodes = redis_url
+            from redis.asyncio.cluster import RedisCluster
+            startup_nodes = self._build_cluster_startup_nodes(redis_url)
             tmp_instance = RedisCluster(
                 startup_nodes=startup_nodes,
                 decode_responses=True,
-                skip_full_coverage_check=True
+                require_full_coverage=False,
+                address_remap=self._cluster_address_remap,
             )
+            self._cluster_client = tmp_instance
         else:
             raise ValueError(f"Unsupported redis_mode: {redis_mode}")
-
-        super().__init__(
-            connection_pool=tmp_instance.connection_pool,
-            **{k: v for k, v in kwargs.items() if k in redis.Redis.__init__.__code__.co_varnames}
-        )
+        if self.redis_mode == "cluster":
+            # Keep a lightweight base Redis instance for compatibility, while real I/O
+            # is delegated to `_cluster_client` via __getattribute__.
+            super().__init__(host="127.0.0.1", port=6379, decode_responses=True)
+        else:
+            super().__init__(
+                connection_pool=tmp_instance.connection_pool,
+                **{k: v for k, v in kwargs.items() if k in redis.Redis.__init__.__code__.co_varnames}
+            )
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -135,15 +137,47 @@ class RedisManager(redis.Redis):
                 master = self._sentinel.master_for(self._master_name)
                 self.connection_pool: "ConnectionPool" = master.connection_pool
         elif self.redis_mode == "cluster":
-            from redis.cluster import RedisCluster
-            new_instance: RedisCluster  = RedisCluster(startup_nodes=self._redis_url)
-            self.connection_pool: "ConnectionPool"  = new_instance.connection_pool
+            from redis.asyncio.cluster import RedisCluster
+            new_instance: RedisCluster = RedisCluster(
+                startup_nodes=self._build_cluster_startup_nodes(self._redis_url),
+                decode_responses=True,
+                require_full_coverage=False,
+                address_remap=self._cluster_address_remap,
+            )
+            self._cluster_client = new_instance
+
+    def _build_cluster_startup_nodes(self, redis_url):
+        from redis.asyncio.cluster import ClusterNode
+        if not redis_url:
+            raise ValueError("Redis cluster startup_nodes cannot be empty")
+        if isinstance(redis_url[0], str):
+            from urllib.parse import urlparse
+            return [
+                ClusterNode(host=urlparse(u).hostname, port=urlparse(u).port)
+                for u in redis_url
+            ]
+        if isinstance(redis_url[0], dict):
+            return [
+                ClusterNode(host=node["host"], port=int(node["port"]))
+                for node in redis_url
+            ]
+        return redis_url
+
+    def _cluster_address_remap(self, address):
+        host, port = address
+        if host in {"host.docker.internal", "localhost"}:
+            return ("127.0.0.1", port)
+        return (host, port)
 
     def __getattribute__(self, name: str):
         if name.startswith("_") or name in ("_method_cache", "_reconnect"):
             return super().__getattribute__(name)
-
-        attr = super().__getattribute__(name)
+        attr = None
+        cluster_client = super().__getattribute__("_cluster_client")
+        if cluster_client is not None and hasattr(cluster_client, name):
+            attr = getattr(cluster_client, name)
+        else:
+            attr = super().__getattribute__(name)
 
         if not callable(attr) or not inspect.iscoroutinefunction(attr):
             return attr
@@ -245,8 +279,7 @@ class RedisManager(redis.Redis):
         result = await self.blpop(queue_key, timeout=timeout)
         if result:
             _, request = result
-            if decode_responses:
-                request: bytes
+            if decode_responses and isinstance(request, bytes):
                 request = request.decode('utf-8')
             return request
         return None

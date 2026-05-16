@@ -9,7 +9,24 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         if env_file.exists():
             return env_to_settings(env_file, SettingsInfo)
 
+    # Optional flags from scrapy_cffi.toml (written by `scrapy-cffi demo -r/-m/-k`)
+    try:
+        import toml
+        cfg_path = get_run_py_dir() / "scrapy_cffi.toml"
+        if cfg_path.exists():
+            cfg = toml.load(cfg_path)
+            d = cfg.get("default") or {}
+            if "use_redis" in d:
+                used_redis = bool(d["use_redis"])
+            if "use_rabbitmq" in d:
+                used_rabbitmq = bool(d["use_rabbitmq"])
+            if "use_kafka" in d:
+                used_kafka = bool(d["use_kafka"])
+    except Exception:
+        pass
+
     settings = SettingsInfo()
+    settings.ROBOTSTXT_OBEY = False  # Demo server randomizes robots.txt and can introduce noisy nondeterminism.
     settings.TIMEOUT = 30
     settings.SPIDERS_PATH = spider_path
     settings.EXTENSIONS_PATH = "extensions.CustomExtension"
@@ -21,8 +38,9 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
     settings.JS_PATH = str(get_run_py_dir() / "js_path") # can be a custom path string, or True to use the default: get_run_py_dir() / "js_path"
 
     if sys.platform.startswith("win"):
-        settings.MAX_GLOBAL_CONCURRENT_TASKS = None
-        settings.MAX_CONCURRENT_REQ = None
+        # Keep bounded defaults for run_all_spiders stability on Windows.
+        settings.MAX_GLOBAL_CONCURRENT_TASKS = 200
+        settings.MAX_CONCURRENT_REQ = 50
 
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.BloomDupeFilter" # In-memory Bloom filter deduplication
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisBloomDupeFilter" # Enable Redis Bloom filter deduplication
@@ -31,7 +49,7 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         settings.SCHEDULER_PERSIST = True
         settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Used for request deduplication
-        settings.RABBITMQ_INFO.URL = "amqp://guest:guest@localhost"
+        settings.RABBITMQ_INFO.URL = "amqp://guest:guest@127.0.0.1:5672"
         # settings.SCHEDULER_LOOP_END = 5
         settings.MAX_SCHEDULER_LOOP_NUM = 1 # One crawler, run_all_spiders, aio_pika does not fully support a large number of concurrent robust connections.
     elif used_redis:

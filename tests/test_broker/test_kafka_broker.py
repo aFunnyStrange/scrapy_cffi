@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional, Union
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scrapy_cffi.mq.kafka import KafkaManager  # noqa: E402
+
+
+def kafka_single_bootstrap() -> str:
+    return os.environ.get("SCRAPY_CFFI_KAFKA", "127.0.0.1:9092")
+
+
+def kafka_cluster_bootstrap() -> List[str]:
+    raw = os.environ.get("SCRAPY_CFFI_KAFKA_CLUSTER", "").strip()
+    if raw:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return ["127.0.0.1:9094", "127.0.0.1:9095", "127.0.0.1:9096"]
+
+
+async def run_kafka_flow(bootstrap: Union[str, List[str]], replication_factor: int) -> None:
+    topic = "broker_crud_topic"
+    group = f"broker-crud-{int(time.time() * 1000)}"
+    done_event = asyncio.Event()
+    stop_event = asyncio.Event()
+    received: List[str] = []
+
+    manager = KafkaManager(
+        stop_event=stop_event,
+        kafka_url=bootstrap,
+        consumer_group=group,
+    )
+    await manager.connect()
+    await manager.ensure_topic(topic, num_partitions=3, replication_factor=replication_factor)
+
+    async def on_message(msg: bytes) -> None:
+        received.append(msg.decode("utf-8"))
+        if len(received) >= 4:
+            done_event.set()
+
+    await manager.register_consumer(topic, on_message, auto_offset_reset="earliest")
+    await asyncio.sleep(0.8)
+
+    # Event-driven CRUD semantics for append-only logs
+    for op in ("create", "read", "update", "delete"):
+        payload = f'{{"op":"{op}","id":"1"}}'.encode("utf-8")
+        await manager.produce(topic, payload)
+
+    await asyncio.wait_for(done_event.wait(), timeout=20)
+    assert any('"create"' in m for m in received), f"Create event missing: {received!r}"
+    assert any('"read"' in m for m in received), f"Read event missing: {received!r}"
+    assert any('"update"' in m for m in received), f"Update event missing: {received!r}"
+    assert any('"delete"' in m for m in received), f"Delete event missing: {received!r}"
+
+    stop_event.set()
+    await manager.close()
+    print("crud events ok")
+
+
+async def test_single() -> None:
+    await run_kafka_flow(kafka_single_bootstrap(), replication_factor=1)
+
+
+async def test_cluster() -> None:
+    await run_kafka_flow(kafka_cluster_bootstrap(), replication_factor=3)
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    parser = argparse.ArgumentParser(description="Kafka broker tests")
+    parser.add_argument("mode", nargs="?", default="single", choices=("single", "cluster", "all"))
+    args = parser.parse_args(argv)
+
+    async def run() -> None:
+        if args.mode == "single":
+            await test_single()
+        elif args.mode == "cluster":
+            await test_cluster()
+        else:
+            await test_single()
+            await test_cluster()
+
+    asyncio.run(run())
+
+
+if __name__ == "__main__":
+    main()

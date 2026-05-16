@@ -9,10 +9,13 @@ if TYPE_CHECKING:
     from ..cpy.cpy_resources.bloom.fallback import BloomFilterPy
 
 class RedisDupeFilter(MemoryDupeFilter):
-    def __init__(self, settings: "SettingsInfo"=None, redisManager: RedisManager=None, **kwargs):
+    def __init__(self, settings: "SettingsInfo"=None, redisManager: RedisManager=None, redis_namespace: str = "", **kwargs):
         super().__init__(settings=settings, **kwargs)
-        self.new_seen = self.settings._NEW_SEEN # Requests marked as seen but not yet sent
-        self.sent_seen = self.settings._SENT_SEEN # Requests that have been seen and already sent
+        suffix = str(redis_namespace) if redis_namespace else ""
+        base_new = self.settings._NEW_SEEN
+        base_sent = self.settings._SENT_SEEN
+        self.new_seen = f"{base_new}:{suffix}" if suffix else base_new
+        self.sent_seen = f"{base_sent}:{suffix}" if suffix else base_sent
 
         self.redisManager = redisManager
         if self.redisManager.redis_mode == "cluster":
@@ -50,8 +53,8 @@ class RedisDupeFilter(MemoryDupeFilter):
             return await self.redisManager.sadd(self.sent_seen, self.get_fingerprint(request=request))
         
 class RedisBloomDupeFilter(RedisDupeFilter):
-    def __init__(self, settings: "SettingsInfo"=None, redisManager: RedisManager=None, **kwargs):
-        super().__init__(settings=settings, redisManager=redisManager, **kwargs)
+    def __init__(self, settings: "SettingsInfo"=None, redisManager: RedisManager=None, redis_namespace: str = "", **kwargs):
+        super().__init__(settings=settings, redisManager=redisManager, redis_namespace=redis_namespace, **kwargs)
         import bloom
         self.bloomFilter: "BloomFilterPy" = bloom.BloomFilter(size=self.settings.BLOOM_INFO.SIZE, expected=self.settings.BLOOM_INFO.EXPECTED, hash_count=self.settings.BLOOM_INFO.HASH_COUNT)
 

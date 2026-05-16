@@ -86,7 +86,6 @@ if __name__ == "__main__":
     FDUtil.print_fd_info()
 
     if platform.system().startswith("win"):
-        # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     per_conn, safe_max = asyncio.run(measure_connection_memory())

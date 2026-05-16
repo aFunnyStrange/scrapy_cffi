@@ -88,13 +88,25 @@ class RabbitMQManager:
         )
 
     async def connect(self):
-        self._mq_url = random.choice(self._mq_nodes)
-        self._connection = await aio_pika.connect_robust(self._mq_url, loop=self.loop)
-        self._channel = await self._connection.channel()
-        await self._channel.set_qos(prefetch_count=self.prefetch_count)
-        self._exchange = await self._channel.declare_exchange(
-            self.exchange_name, type=self.exchange_type, durable=self.persist
-        )
+        last_exc = None
+        for node_url in random.sample(self._mq_nodes, k=len(self._mq_nodes)):
+            try:
+                self._mq_url = node_url
+                self._connection = await aio_pika.connect_robust(self._mq_url, loop=self.loop)
+                self._channel = await self._connection.channel()
+                await self._channel.set_qos(prefetch_count=self.prefetch_count)
+                self._exchange = await self._channel.declare_exchange(
+                    self.exchange_name, type=self.exchange_type, durable=self.persist
+                )
+                return
+            except (AMQPConnectionError, ChannelClosed) as exc:
+                last_exc = exc
+                self._connection = None
+                self._channel = None
+                self._exchange = None
+                continue
+        if last_exc:
+            raise last_exc
 
     def __getattribute__(self, name: str):
         if name.startswith("_") or name in ("_method_cache", "connect", "close"):
@@ -137,6 +149,9 @@ class RabbitMQManager:
         if not self._exchange:
             await self.connect()
         routing_key = routing_key or queue_name
+        # Binds the queue to the exchange before publishing; otherwise the broker drops
+        # messages when no queue is bound yet (e.g. first scheduled request before any consumer).
+        await self.declare_queue(queue_name, routing_key=routing_key)
         async with self._lock:
             await self._exchange.publish(
                 aio_pika.Message(
@@ -161,15 +176,19 @@ class RabbitMQManager:
             await self.connect()
         queue = await self.declare_queue(queue_name)
         try:
-            async with self._lock:
-                message: aio_pika.IncomingMessage = await asyncio.wait_for(
-                    queue.get(timeout=timeout),
-                    timeout=timeout
-                )
-                if message:
-                    async with message.process():
-                        return message.body
-                return None
+            # NOTE:
+            # queue.get() can wait for a long time on empty queues.
+            # If we hold the manager-wide lock here, one empty queue can block
+            # all other spider queues (push/pop) in run_all_spiders mode.
+            # Keep publish serialized, but do not serialize long-lived dequeue waits.
+            message: aio_pika.IncomingMessage = await asyncio.wait_for(
+                queue.get(timeout=timeout),
+                timeout=timeout
+            )
+            if message:
+                async with message.process():
+                    return message.body
+            return None
         except asyncio.TimeoutError:
             return None
         except QueueEmpty:

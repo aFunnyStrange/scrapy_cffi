@@ -5,8 +5,7 @@ import scrapy_cffi
 from settings import create_settings
 from typing import Tuple
 if sys.platform.startswith("win"):
-    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from scrapy_cffi.utils import setup_uvloop_once, get_or_create_loop
 setup_uvloop_once()
 
@@ -104,13 +103,6 @@ if __name__ == "__main__":
     finally:
         scrapy_cffi.cleanup_loop(loop=loop)
 
-
-    # ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-    # Ordinary user (internal automatic new loop)
-    import threading
-    t = threading.Thread(target=main)
-    t.start()
-    t.join()
-    t = threading.Thread(target=main_all)
-    t.start()
-    t.join()
+    # To use the synchronous helpers instead: uncomment in your own copy.
+    # import threading
+    # threading.Thread(target=main).start()

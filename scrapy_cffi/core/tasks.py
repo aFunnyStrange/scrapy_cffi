@@ -126,6 +126,41 @@ class TaskManager:
                     return True
             return False
 
+    async def has_active_tasks_for_obj(
+        self,
+        obj_id: int,
+        exclude_prefixes: tuple[str, ...] = (),
+    ) -> bool:
+        scope = f"[{obj_id}]"
+        async with self.lock:
+            for task_name, count in self.active_task_names.items():
+                if count <= 0:
+                    continue
+                if scope not in task_name:
+                    continue
+                if exclude_prefixes and any(task_name.startswith(p) for p in exclude_prefixes):
+                    continue
+                return True
+            return False
+
+    async def count_active_tasks_for_obj(
+        self,
+        obj_id: int,
+        prefixes: tuple[str, ...] = (),
+    ) -> int:
+        scope = f"[{obj_id}]"
+        total = 0
+        async with self.lock:
+            for task_name, count in self.active_task_names.items():
+                if count <= 0:
+                    continue
+                if scope not in task_name:
+                    continue
+                if prefixes and (not any(task_name.startswith(p) for p in prefixes)):
+                    continue
+                total += count
+        return total
+
     def get_task_coro_path(self, task: asyncio.Task):
         try:
             coro = task.get_coro()
