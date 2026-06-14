@@ -76,6 +76,17 @@ class RedisScheduler(BaseScheduler):
         )
     
     async def put(self, request: "Request", spider: "Spider", **kwargs):
+        # Ingress / start_urls: explicit tasks (redis RPUSH, spider.start), not link discoveries
+        if request.dont_filter or request.meta.get("is_start_url"):
+            res = await self.redisManager.rpush(self.get_queue_key(spider=spider), request.to_bytes())
+            if res:
+                emit_request_scheduled(self.signalManager, request)
+                return True
+            async with self.sessions_lock:
+                self.sessions.release(session_id=request.session_id)
+            emit_request_dropped(self.signalManager, request, f"insert redis error: {request.url}")
+            return False
+
         is_seen = await self.dupefilter.request_seen(request=request, spider=spider)
         if is_seen:
             async with self.sessions_lock:

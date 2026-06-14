@@ -60,6 +60,16 @@ class RabbitMqScheduler(RedisScheduler):
         )
     
     async def put(self, request: "Request", spider: "Spider", **kwargs):
+        if request.dont_filter or request.meta.get("is_start_url"):
+            res = await self.rabbitmqManager.rpush(self.get_queue_key(spider=spider), request.to_bytes())
+            if res:
+                emit_request_scheduled(self.signalManager, request)
+                return True
+            async with self.sessions_lock:
+                self.sessions.release(session_id=request.session_id)
+            emit_request_dropped(self.signalManager, request, f"insert rabbitmq error: {request.url}")
+            return False
+
         is_seen = await self.dupefilter.request_seen(request=request, spider=spider)
         if is_seen:
             async with self.sessions_lock:
@@ -74,7 +84,7 @@ class RabbitMqScheduler(RedisScheduler):
             else:
                 async with self.sessions_lock:
                     self.sessions.release(session_id=request.session_id)
-                emit_request_dropped(self.signalManager, request, f"insert redis error: {request.url}")
+                emit_request_dropped(self.signalManager, request, f"insert rabbitmq error: {request.url}")
                 return False
 
     async def get(self, spider: "Spider"=None, **kwargs):

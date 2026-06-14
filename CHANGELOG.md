@@ -4,10 +4,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.1** release: [docs/RELEASE-0.3.1.md](docs/RELEASE-0.3.1.md)
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.2** release: [docs/RELEASE-0.3.2.md](docs/RELEASE-0.3.2.md) · **0.3.1** tools: [docs/RELEASE-0.3.1.md](docs/RELEASE-0.3.1.md)
 
 ## [Unreleased]
 None
+
+---
+## [0.3.2] - 2026-05-29
+### Added
+- `scrapy-cffi cinstall` — install user-built ctypes modules into a per-user system store (`SCRAPY_CFFI_CPY_DIR`); `--init`, `--list`, `--path`, `--remove`.
+- `startproject` scaffolds `cpy_resources/bloom/` (`wrapper.py`, `fallback.py`, empty `build/`); wheels ship no prebuilt native libs — see `cpy/cpy_resources/bloom/BUILD.md`.
+- `DedupKeyRouter.cleanup_keys()` and `RedisDupeFilter.dedup_cleanup_keys()` — shutdown cleanup for single-node and cluster dedup keys.
+- `utils/domain.py` — Scrapy-style hostname-only `allowed_domains` matching (ports ignored).
+- [docs/usage/15-deduplication.md](docs/usage/15-deduplication.md) — Bloom / Redis dedup, jump-hash routing, when not to add a dedup service.
+- Unit tests: domain filter, dedup routing, per-spider Redis dedup isolation, scheduler smoke (memory / Redis / Rabbit / Kafka init).
+
+### Changed
+- Per-spider dedup isolation: schedulers pass `redis_namespace=spider.name` into `RedisDupeFilter`.
+- `RedisScheduler` / `RabbitMqScheduler.put` skip dedup for `dont_filter` or `meta["is_start_url"]` (ingress / start URLs).
+- Demo and project templates: `allowed_domains` use hostnames only; Redis demo sets `SCHEDULER_PERSIST = False` (Rabbit demo keeps `True`).
+- Lazy submodule imports for `scrapy_cffi.crawler`, `databases`, and `mq` so optional deps do not break unrelated modes.
+
+### Fixed
+- Dedup Redis keys were not deleted on shutdown (Ctrl+C or normal exit) after the `DedupKeyRouter` refactor — cleanup referenced removed `new_seen` / `sent_seen` attributes on `RedisDupeFilter`.
+- `RedisDupeFilter.mark_sent` cluster shard key selection.
+- Circular imports on crawler startup (extensions, downloader, runner type hints).
+- `KafkaManager.__init__` no longer requires a running asyncio event loop.
+- Python 3.9-compatible type hints in Redis dupefilter and ingress modules.
+- Demo runner stability (domain filter, stale spider files, pipeline imports).
 
 ---
 ## [0.3.1] - 2026-05-29

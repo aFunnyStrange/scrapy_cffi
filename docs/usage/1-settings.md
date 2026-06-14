@@ -414,11 +414,13 @@ This configuration is used to define parameters for the `DUPEFILTER` when using 
 ### 2.5.4 SCHEDULER_PERSIST
 - **Type**: Optional[bool]
 - **Default**: False
-- **Description**: Whether to persist scheduler state. If False, Redis data will be cleared automatically when the program ends. 
+- **Description**: Whether to persist scheduler state. If **False**, Redis data (ingress queue, work queue, dedup keys) is cleared when the crawler shuts down — including **Ctrl+C** via `runner.py` → `crawler.shutdown()`.
 
 **Notes**:
 In **cluster mode**, due to the nature of **jump hash operations** across nodes, clearing Redis data cannot be perfectly precise even if `SCHEDULER_PERSIST` is `False`.
 To mitigate this, you can use `DEDUP_TTL` to enable **TTL-based automatic expiration** in Redis.
+
+Since **0.3.2**, dedup key deletion uses `RedisDupeFilter.dedup_cleanup_keys()` (backed by `DedupKeyRouter.cleanup_keys()`). See [15-deduplication.md](./15-deduplication.md).
 
 ---
 

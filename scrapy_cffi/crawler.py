@@ -260,12 +260,16 @@ class Crawler:
                     await self.redisManager.delete(sch.get_queue_key(spider))
                 df = getattr(sch, "dupefilter", None)
                 if df is not None:
-                    ns = getattr(df, "new_seen", None)
-                    if isinstance(ns, str):
-                        await self.redisManager.delete(ns)
-                    ss = getattr(df, "sent_seen", None)
-                    if isinstance(ss, str):
-                        await self.redisManager.delete(ss)
+                    keys_to_delete: list[str] = []
+                    if hasattr(df, "dedup_cleanup_keys"):
+                        keys_to_delete = df.dedup_cleanup_keys()
+                    else:
+                        for attr in ("new_seen", "sent_seen"):
+                            val = getattr(df, attr, None)
+                            if isinstance(val, str):
+                                keys_to_delete.append(val)
+                    for key in keys_to_delete:
+                        await self.redisManager.delete(key)
         
         if self.rabbitmqManager:
             await self.rabbitmqManager.close()

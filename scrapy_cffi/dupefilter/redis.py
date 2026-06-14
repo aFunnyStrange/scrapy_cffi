@@ -21,6 +21,9 @@ class RedisDupeFilter(MemoryDupeFilter):
             namespace=redis_namespace,
         )
 
+    def dedup_cleanup_keys(self) -> list[str]:
+        return self._key_router.cleanup_keys()
+
     async def request_seen(self, request: "Request", spider: "Spider") -> bool:
         if request.dont_filter:
             return False

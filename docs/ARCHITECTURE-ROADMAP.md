@@ -90,5 +90,6 @@ See [docs/usage/13-standalone-tools.md](usage/13-standalone-tools.md).
 
 ## References
 
-- Release notes: [RELEASE-0.3.0.md](RELEASE-0.3.0.md)
+- Release notes: [RELEASE-0.3.2.md](RELEASE-0.3.2.md) · [RELEASE-0.3.1.md](RELEASE-0.3.1.md)
+- Dedup architecture: [usage/15-deduplication.md](usage/15-deduplication.md)
 - Changelog: [CHANGELOG.md](../CHANGELOG.md)

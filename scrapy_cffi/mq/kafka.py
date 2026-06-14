@@ -47,7 +47,13 @@ class KafkaManager:
         persistent_time: int = 7*24*60*60*1000
     ):
         self.stop_event = stop_event or asyncio.Event()
-        self.loop = loop or asyncio.get_running_loop()
+        if loop is not None:
+            self.loop = loop
+        else:
+            try:
+                self.loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self.loop = None
         self.consumer_group = consumer_group
         self.persistent_time = persistent_time
 
@@ -86,6 +92,8 @@ class KafkaManager:
 
     @auto_retry
     async def connect(self):
+        if self.loop is None:
+            self.loop = asyncio.get_running_loop()
         self._bootstrap_servers = self._nodes[0] if self.mq_mode == "single" else self._nodes
         if self._producer is None:
             self._producer = AIOKafkaProducer(

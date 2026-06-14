@@ -34,3 +34,5 @@ pip install "scrapy_cffi[media]"   # optional MIME/image/video helpers
 ```
 
 Stay on 0.2.7 for pre-AIGC baseline: [CHANGELOG.md](../CHANGELOG.md) section `[0.3.0]`.
+
+**Next:** [0.3.2 — dedup cleanup & cinstall](RELEASE-0.3.2.md).

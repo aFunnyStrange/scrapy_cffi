@@ -28,6 +28,10 @@ Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra` →
 | ---- | ------ |
 | [`test_redis_ingress.py`](test_redis_ingress.py) | `REDIS_STREAM_INFO` / spider attr merge |
 | [`test_dupefilter_fingerprint.py`](test_dupefilter_fingerprint.py) | URL query param order in dedup fingerprint |
+| [`test_domain_filter.py`](test_domain_filter.py) | Hostname-only `allowed_domains` |
+| [`test_dedup_routing.py`](test_dedup_routing.py) | `DedupKeyRouter` jump-hash keys |
+| [`test_redis_dedup_isolation.py`](test_redis_dedup_isolation.py) | Per-spider namespace, start-url dedup skip, cleanup keys |
+| [`test_scheduler_smoke.py`](test_scheduler_smoke.py) | Memory / Redis / Rabbit / Kafka scheduler init |
 
 ## Other
 
@@ -35,4 +39,4 @@ Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra` →
 - [`blackboxprotobuf/`](blackboxprotobuf/) — protobuf helper tests
 - [`unstable_workflows/`](unstable_workflows/) — release/changelog CI scripts
 
-Docs index: [`docs/usage/`](../docs/usage/) · [13-standalone-tools.md](../docs/usage/13-standalone-tools.md) · [14-multi-spider-resources.md](../docs/usage/14-multi-spider-resources.md).
+Docs index: [`docs/usage/`](../docs/usage/) · [13-standalone-tools.md](../docs/usage/13-standalone-tools.md) · [14-multi-spider-resources.md](../docs/usage/14-multi-spider-resources.md) · [15-deduplication.md](../docs/usage/15-deduplication.md) · [RELEASE-0.3.2.md](../docs/RELEASE-0.3.2.md).

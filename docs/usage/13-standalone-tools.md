@@ -85,6 +85,8 @@ from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
 
 See [14-multi-spider-resources.md](./14-multi-spider-resources.md) for key ownership.
 
+Dedup routing and shutdown cleanup: [15-deduplication.md](./15-deduplication.md).
+
 ---
 
 ## Tier-0: message queues

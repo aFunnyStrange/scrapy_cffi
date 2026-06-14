@@ -57,6 +57,28 @@ class MySpider(Spider):
 
 Bloom tuning: `settings.BLOOM_INFO` (`SIZE`, `EXPECTED`, `HASH_COUNT`).
 
+## Shutdown cleanup (`SCHEDULER_PERSIST`)
+
+When `SCHEDULER_PERSIST` is **False** (default), `Crawler.shutdown()` deletes:
+
+- Spider ingress key (`redis_key`) and distributed work queue
+- Dedup keys from `RedisDupeFilter.dedup_cleanup_keys()` → `DedupKeyRouter.cleanup_keys()`
+
+This runs on normal exit and on **Ctrl+C** (`KeyboardInterrupt` in `runner.py`).
+
+| Mode | Keys removed |
+| ---- | ------------ |
+| Single / sentinel | `{FILTER_KEY}_new_seen[:namespace]`, `{FILTER_KEY}_sent_seen[:namespace]` |
+| Cluster | Same bases with `:{host:port}` suffix per startup node |
+
+**Notes**
+
+- **Cluster**: jump-hash spreads fingerprints across shard suffixes; cleanup deletes all known node suffix keys. Residual keys are possible — use `DEDUP_TTL` as a safety net.
+- **Rabbit demo** sets `SCHEDULER_PERSIST = True` so dedup keys survive across runs (intentional).
+- **Re-run still deduping?** Keys from a pre-0.3.2 run may remain; delete manually or set `SCHEDULER_PERSIST = False` and exit cleanly once.
+
+Ingress / `start_urls` requests carry `meta["is_start_url"]` and bypass dedup in `RedisScheduler` / `RabbitMqScheduler.put`.
+
 ## Standalone tool use
 
 ```python

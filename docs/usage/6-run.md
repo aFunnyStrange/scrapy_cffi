@@ -71,3 +71,5 @@ For extremely high concurrency workloads, consider deploying the framework in **
 **Multiple crawlers on one loop:** `run_spiders` / `run_spiders_sync` — see [14-multi-spider-resources.md](./14-multi-spider-resources.md).
 
 **Standalone tools (no crawl loop):** [13-standalone-tools.md](./13-standalone-tools.md).
+
+**Deduplication (Redis / Bloom / cluster routing):** [15-deduplication.md](./15-deduplication.md).

@@ -82,6 +82,16 @@ class DedupKeyRouter:
             )
         return DedupKeys(new_seen=self._base_new, sent_seen=self._base_sent)
 
+    def cleanup_keys(self) -> List[str]:
+        """Redis keys to delete on shutdown when SCHEDULER_PERSIST is False."""
+        if self.is_cluster:
+            out: List[str] = []
+            for node in self._cluster_nodes:
+                out.append(f"{self._base_new}:{node}")
+                out.append(f"{self._base_sent}:{node}")
+            return out
+        return [self._base_new, self._base_sent]
+
 
 __all__ = [
     "DedupKeys",

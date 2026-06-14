@@ -41,6 +41,8 @@ _LAZY_SETTINGS = {
 
 _LAZY_SUBMODULES = {
     "crawler",
+    "mq",
+    "databases",
 }
 
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from ..models.redis_stream import RedisIngressMode, RedisStreamConsumerInfo
 
@@ -127,7 +127,7 @@ def resolve_redis_ingress(spider: "Spider", settings: "SettingsInfo") -> RedisIn
 async def dequeue_start_request(
     redis_manager: "RedisManager",
     config: RedisIngressConfig,
-) -> Optional[bytes | "RedisStreamMessage"]:
+) -> Optional[Union[bytes, "RedisStreamMessage"]]:
     if config.is_stream:
         if not config.group_name:
             raise ValueError("Redis stream ingress requires group_name")

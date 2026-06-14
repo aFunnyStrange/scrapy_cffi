@@ -140,4 +140,5 @@ redis-cli RPUSH demo:alpha:req "$(python -c 'import pickle,base64; ...')"
 - [2-spiders.md](./2-spiders.md) — RedisSpider / Stream
 - [1-settings.md](./1-settings.md) — `REDIS_STREAM_INFO`, `QUEUE_NAME`
 - [13-standalone-tools.md](./13-standalone-tools.md) — factories without Crawler
+- [15-deduplication.md](./15-deduplication.md) — jump-hash, shutdown cleanup, per-spider namespaces
 - [ARCHITECTURE-ROADMAP.md](../ARCHITECTURE-ROADMAP.md) — full decoupling plan

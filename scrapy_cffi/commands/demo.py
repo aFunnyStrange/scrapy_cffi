@@ -110,8 +110,16 @@ def update_spiders_path(
     use_redis: bool,
     use_rabbitmq: bool,
 ):
+    spider_dir.mkdir(parents=True, exist_ok=True)
+    keep = set(demo_spider_files)
+    for py_file in spider_dir.glob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        if py_file.stem not in keep:
+            py_file.unlink()
+
+    init_lines = []
     for spider_name in demo_spider_files:
         cls_name = spider_name[0].upper() + spider_name[1:] if spider_name else spider_name
-        from .genspider import update_spiders_init
-
-        update_spiders_init(project_path=project_path, class_name=cls_name, spider_name=spider_name)
+        init_lines.append(f"from .{spider_name} import {cls_name}\n")
+    write_utf8_file(spider_dir / "__init__.py", "".join(init_lines))
