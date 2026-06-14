@@ -1,6 +1,7 @@
 import asyncio
 from .base import BaseSpider
 from ..core.downloader.internet.request import HttpRequest
+from ..databases.redis_ingress import resolve_redis_ingress
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..crawler import Crawler
@@ -20,8 +21,12 @@ class RedisSpider(BaseSpider):
     redis_stream_mkstream = True
     redis_stream_ack = True
 
+    def get_redis_ingress_config(self):
+        """Resolved ingress config (spider attrs + settings.REDIS_STREAM_INFO)."""
+        return resolve_redis_ingress(spider=self, settings=self.settings)
 
     async def start(self, *args, **kwargs):
+        ingress = self.get_redis_ingress_config()
         while not self.stop_event.is_set():
             get_req_task = asyncio.create_task(self.hooks.scheduler.get_start_req(spider=self))
             stop_task = asyncio.create_task(self.stop_event.wait())
@@ -47,7 +52,7 @@ class RedisSpider(BaseSpider):
                 request = await self.make_request_from_data(data)
                 if request:
                     yield request
-                if stream_message and self.redis_stream_ack:
+                if stream_message and ingress.auto_ack:
                     await self.hooks.scheduler.ack_start_req(spider=self, message=stream_message)
 
     # By default, only a URL is expected. If data is in JSON format, this method should be overridden in subclasses.

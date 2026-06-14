@@ -1,10 +1,14 @@
 # Broker Integration Tests
 
-Unified broker tests for `scrapy_cffi` modules:
+Unified broker tests for `scrapy_cffi` modules (since **0.3.0**):
 
 - Redis: `single` / `sentinel` / `cluster` (real CRUD)
 - RabbitMQ: `single` / `cluster` (queue CRUD-style flow)
 - Kafka: `single` / `cluster` (event-based CRUD semantics)
+
+Related docs: [`docs/usage/11-mq.md`](../../docs/usage/11-mq.md) · [`docs/usage/1-settings.md`](../../docs/usage/1-settings.md) (broker + `REDIS_STREAM_INFO`).
+
+To scaffold your own compose files (baseline + optional topology subdirs), use `scrapy-cffi geninfra` — see [`docs/usage/0-start.md`](../../docs/usage/0-start.md#5geninfra).
 
 All commands below use Linux shell style (`bash`).
 
@@ -61,6 +65,8 @@ See:
 - `tests/test_broker/docker-compose.single.example.yml`
 
 These provide framework connection templates for single/sentinel/cluster and a single-node local compose baseline.
+
+Map values into `settings.REDIS_INFO`, `settings.RABBITMQ_INFO`, and `settings.KAFKA_INFO`. For RedisSpider stream ingress (optional), see `settings.REDIS_STREAM_INFO` in docs.
 
 ## 4) Local simulation vs production
 

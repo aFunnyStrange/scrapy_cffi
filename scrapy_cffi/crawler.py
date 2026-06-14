@@ -96,11 +96,13 @@ class Crawler:
         if self.settings.MYSQL_INFO.resolved_url:
             from .databases.mysql import SQLAlchemyMySQLManager
             self.mysqlManager = SQLAlchemyMySQLManager.from_crawler(self)
+            await self.mysqlManager.init()
 
         # postgres
         if self.settings.POSTGRES_INFO.resolved_url:
             from .databases.postgres import SQLAlchemyPostgresManager
             self.postgresManager = SQLAlchemyPostgresManager.from_crawler(self)
+            await self.postgresManager.init()
 
         # mongodb
         if self.settings.MONBODB_INFO.resolved_url:
@@ -257,6 +259,9 @@ class Crawler:
 
         if self.kafkaManager:
             await self.kafkaManager.close()
+
+        if self.mysqlManager:
+            await self.mysqlManager.close()
 
         if self.postgresManager:
             await self.postgresManager.close()

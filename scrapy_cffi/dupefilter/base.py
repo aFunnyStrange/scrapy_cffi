@@ -1,4 +1,5 @@
 import asyncio, json
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from ..core.downloader.internet import Request, HttpRequest, WebSocketRequest
 from ..utils import do_sha1
 from typing import TYPE_CHECKING
@@ -6,6 +7,18 @@ if TYPE_CHECKING:
     from ..spiders import Spider
     from ..settings import SettingsInfo
     from ..cpy.cpy_resources.bloom.fallback import BloomFilterPy
+
+def _canonical_request_url(url: str) -> str:
+    """
+    Normalize URL query string for deduplication.
+    Params may already be joined into url without stable key order; sort pairs.
+    """
+    parsed = urlparse(url)
+    if not parsed.query:
+        return url
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    canonical_query = urlencode(sorted(pairs))
+    return urlunparse(parsed._replace(query=canonical_query))
 
 class BaseFingerprint:
     def __init__(self, settings: "SettingsInfo"=None, **kwargs):
@@ -22,7 +35,9 @@ class BaseFingerprint:
             has_header_key =  request.find_header_key(key=header_key)
             if has_header_key:
                 include_headers[has_header_key.lower()] = request.headers[has_header_key]
-        parts.append(f'{request.url}|{json.dumps(include_headers, separators=(",", ":"), sort_keys=True)}'.encode('latin-1'))
+        parts.append(
+            f'{_canonical_request_url(request.url)}|{json.dumps(include_headers, separators=(",", ":"), sort_keys=True)}'.encode('latin-1')
+        )
         if isinstance(request, HttpRequest):
             parts.append(f'{request.method}|'.encode('latin-1'))
             if isinstance(request.data, bytes):

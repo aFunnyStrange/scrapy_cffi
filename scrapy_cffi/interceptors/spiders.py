@@ -165,7 +165,7 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
 
     def is_allow(self, url, allow_domains):
         parsed = urlparse(url)
-        domain = parsed.netloc.lower()
+        domain = parsed.hostname.lower()
         if not domain:
             return False
         domain = domain.lower()

@@ -16,11 +16,15 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **HTTP & WebSocket support**: built-in asynchronous clients
 
-- **Flexible DB integration**: Redis, MySQL, MongoDB with async retry & reconnect
+- **Flexible DB integration**: Redis, MySQL, **PostgreSQL**, MongoDB with async retry & reconnect
 
-- **Message queue support**: RabbitMQ & Kafka
+- **Message queue support**: RabbitMQ & Kafka (single / cluster)
 
-- **Configurable deployment**: settings system supporting .env files, single-instance, cluster mode, and sentinel mode
+- **Configurable deployment**: settings system supporting `.env`, single-instance, **sentinel**, and **cluster** mode
+
+- **`scrapy-cffi geninfra`**: generate local Docker Compose templates for Redis / RabbitMQ / Kafka topologies
+
+- **Redis Stream ingress**: `RedisSpider` consumer groups (`XREADGROUP` / `XACK`), configurable via spider attrs or `settings.REDIS_STREAM_INFO`
 
 - **Lightweight middleware & interceptor system** for easy extensions
 
@@ -33,10 +37,19 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 ---
 
 ## 📦 Installation
+
+> **Note (≥ 0.3.0):** Core framework changes from 0.3.0 onward are developed with AIGC-assisted workflows. For the latest features and fixes before they land on PyPI, install from GitHub or source.
+
 #### From PyPI
 
 ```bash
 pip install scrapy_cffi
+```
+
+#### From GitHub (latest main)
+
+```bash
+python -m pip install "scrapy_cffi @ git+https://github.com/aFunnyStrange/scrapy_cffi.git"
 ```
 
 ---
@@ -80,9 +93,16 @@ python runner.py
 
 - Configure databases, message queues, and concurrency limits in one place
 
-- Seamless integration with async Redis/MySQL/MongoDB managers
+- Seamless integration with async Redis / MySQL / PostgreSQL / MongoDB managers
 
-Example `settings.py` snippet:
+Generate local infra templates (optional):
+
+```bash
+scrapy-cffi geninfra
+scrapy-cffi geninfra --redis cluster --rabbitmq cluster --kafka cluster
+```
+
+Example `settings.py` snippet (Redis Sentinel):
 
 ```python
 settings.REDIS_INFO.MODE = "sentinel"
@@ -94,10 +114,25 @@ settings.REDIS_INFO.MASTER_NAME = "<master_name>"
 settings.REDIS_INFO.SENTINEL_OVERRIDE_MASTER = ("master_host", "int(master_port)")
 ```
 
+Optional Redis Stream consumer-group defaults (spider attrs override):
+
+```python
+from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+
+settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
+    MODE=RedisIngressMode.STREAM,
+    STREAM_KEY="tasks:ingress",
+    GROUP_NAME="scrapy-workers",
+)
+```
+
 ---
 
 ## 📖 Documentation
-Full technical documentation and module-level guides are available in the [`docs/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory.
+
+Full technical documentation and module-level guides are available in the [`docs/usage/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory.
+
+Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md).
 
 ---
 

@@ -437,6 +437,8 @@ This TTL applies **only to deduplication keys**; it does **not** affect request 
 - **Default**: []
 - **Description**: A list of header field names whose values will be included in the deduplication fingerprint. This affects how requests are considered unique, without modifying the actual request headers.
 
+**URL query normalization (≥ 0.3.0):** Request fingerprints also canonicalize the URL query string — query parameters are parsed and re-encoded in sorted `(key, value)` order. Two requests that differ only by parameter order (e.g. `?b=2&a=1` vs `?a=1&b=2`) produce the same fingerprint.
+
 ---
 
 ### 2.5.7 FILTER_KEY
@@ -682,23 +684,89 @@ This setting determines how other fields (`SENTINELS`, `MASTER_NAME`, `CLUSTER_N
 
 ---
 
-### 2.9.3 MysqlInfo
-#### 2.9.3.1 DRIVER
+### 2.9.3 REDIS_STREAM_INFO
+- **Type**: Optional[`RedisStreamConsumerInfo`]
+- **Default**: `None`
+- **Description**: Project-wide defaults for `RedisSpider` start-request ingress (Redis list `BLPOP` or Stream consumer group `XREADGROUP`). Spider class attributes override these values when set.
+
+**Resolution order:** spider attribute → `REDIS_STREAM_INFO` → framework fallback (`QUEUE_NAME:{spider.name}:start` or `{spider.name}_redis_start`).
+
+#### 2.9.3.1 MODE
+- **Type**: `RedisIngressMode`
+- **Default**: `list`
+- **Description**: `list` — consume `STREAM_KEY` with `BLPOP`; `stream` — consume via consumer group (`GROUP_NAME` required).
+
+#### 2.9.3.2 STREAM_KEY
+- **Type**: Optional[str]
+- **Default**: `None`
+- **Description**: Redis list or stream key. Maps to spider `redis_key` when not set on the spider.
+
+#### 2.9.3.3 GROUP_NAME
+- **Type**: Optional[str]
+- **Default**: `None`
+- **Description**: Stream consumer group (`XGROUP CREATE`). Required when `MODE=stream`. Maps to spider `redis_group` / `redis_xgroup`.
+
+#### 2.9.3.4 CONSUMER_NAME
+- **Type**: Optional[str]
+- **Default**: `None`
+- **Description**: Consumer name within the group. Falls back to `spider.name` when unset.
+
+#### 2.9.3.5 FIELD
+- **Type**: str
+- **Default**: `"data"`
+- **Description**: Stream field name read from each message (e.g. `XADD key * data "https://..."`).
+
+#### 2.9.3.6 COUNT / BLOCK_MS / GROUP_START_ID / READ_ID / MKSTREAM / AUTO_ACK
+- **Defaults**: `1`, `2000`, `"0"`, `">"`, `True`, `True`
+- **Description**: Passed through to `XREADGROUP` / group creation. `AUTO_ACK=True` triggers `XACK` after a start request is yielded.
+
+Example:
+```python
+from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+
+settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
+    MODE=RedisIngressMode.STREAM,
+    STREAM_KEY="tasks:ingress",
+    GROUP_NAME="scrapy-workers",
+    BLOCK_MS=5000,
+)
+```
+
+See [2-spiders.md](./2-spiders.md#222-redis-stream--xgroup) for spider-level attributes.
+
+---
+
+### 2.9.4 SqlAlchemyEngineInfo (MySQL / PostgreSQL pool)
+Shared pool options inherited by `MysqlInfo` and `PostgresInfo`:
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| ECHO | bool | False | SQLAlchemy engine echo |
+| POOL_PRE_PING | bool | True | Test connections before checkout |
+| POOL_SIZE | int | 5 | Connection pool size |
+| MAX_OVERFLOW | int | 10 | Extra connections beyond pool size |
+
+When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawler calls `init()` on the corresponding manager at startup.
+
+---
+
+### 2.9.5 MysqlInfo
+#### 2.9.5.1 DRIVER
 - **Type**: str
 - **Default**: "mysql+asyncmy"
 - **Description**: The default driver prefix for integration with the `SQLAlchemyMySQLManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] aiomysql`). If you are using a custom MySQL manager, you may override this field to adapt the driver.
 
 ---
 
-### 2.9.4 PostgresInfo
-#### 2.9.4.1 DRIVER
+### 2.9.6 PostgresInfo
+#### 2.9.6.1 DRIVER
 - **Type**: str
 - **Default**: "postgresql+asyncpg"
 - **Description**: The default driver prefix for integration with the `SQLAlchemyPostgresManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] asyncpg`). If you are using a custom PostgreSQL manager, you may override this field to adapt the driver.
 
 ---
 
-### 2.9.5 MongodbInfo
+### 2.9.7 MongodbInfo
 > All configuration fields are the same as in **BaseDBInfo**.
 
 ---

@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 None
 
 ---
+## [0.3.0] - 2026-05-29
+### Added
+- `scrapy-cffi geninfra` — generate Redis / RabbitMQ / Kafka topology Docker Compose templates under `infra/`.
+- Broker integration tests consolidated under `tests/test_broker` (single, sentinel, cluster CRUD smoke tests).
+- Redis Stream consumer-group ingress for `RedisSpider` (`redis_start_mode`, `redis_group`, `XACK` after scheduling).
+- `settings.REDIS_STREAM_INFO` and `RedisStreamConsumerInfo` — project-wide stream/list ingress defaults decoupled from spider class attributes.
+- `redis_ingress.resolve_redis_ingress()` — merge spider attrs, settings defaults, and framework fallbacks.
+- `SQLAlchemyPostgresManager` with async SQLAlchemy helpers (`execute`, `fetchone`, `fetchall`, `run_stmt`).
+- Shared `BaseSQLAlchemyManager` for MySQL/PostgreSQL; pool options on `SqlAlchemyEngineInfo` (`ECHO`, `POOL_PRE_PING`, `POOL_SIZE`, `MAX_OVERFLOW`).
+- README: direct install from GitHub (`pip install "scrapy_cffi @ git+https://github.com/aFunnyStrange/scrapy_cffi.git"`).
+
+### Changed
+- **From 0.3.0**, core framework evolution is AIGC-assisted; prefer GitHub/source install for latest changes before PyPI catches up.
+- Redis / RabbitMQ / Kafka broker adapters refactored for sentinel, cluster, and multi-node failover.
+- `RedisManager` cluster mode (`RedisCluster`, `address_remap`, async cluster client).
+- `RedisScheduler` / `RedisSpider` delegate start-request dequeue and ack to `redis_ingress`.
+- Crawler eagerly `init()` / `close()` MySQL and PostgreSQL managers when `resolved_url` is configured.
+- Demo templates, `docker-compose.yml`, and `docs/usage/11-mq.md` updated for broker topologies.
+- Request deduplication fingerprint canonicalizes URL query parameters (sorted key/value pairs).
+
+### Fixed
+- `RedisScheduler` no longer checks `RABBITMQ_INFO` by mistake.
+- Kafka cluster compose: healthcheck port and `depends_on` deadlock on multi-broker stacks.
+- RabbitMQ cluster connect iterates all configured nodes.
+- Robots.txt allow-domain checks use `urlparse().hostname` instead of `netloc` (port-safe matching).
+- Redis cluster `dequeue_request` decode when payload is already `str`.
+
+### Removed
+- Legacy standalone broker test dirs `tests/test_redis`, `tests/test_rabbitmq`, `tests/test_kafka` (assets migrated to `tests/test_broker`).
+
+---
 ## [0.2.7] - 2026-05-15
 ### Added
 - Added `extract_json_chain` for chained JSON extraction from nested or encoded JSON text.

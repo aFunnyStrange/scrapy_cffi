@@ -112,6 +112,10 @@ def run(
         "Default output is a complete single-node stack in `docker-compose.yml`.\n"
         "For non-single topologies, optional per-service templates are generated in subdirectories.\n"
         "Fill `topology.example.toml` and adjust compose files for your environment.\n\n"
+        "Docs: [docs/usage/11-mq.md](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/usage/11-mq.md) · "
+        "Broker tests: [tests/test_broker/README.md](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_broker/README.md)\n\n"
+        "**Note:** Local multi-container compose simulates cluster/sentinel on one host; "
+        "production multi-host orchestration is still your responsibility.\n\n"
         + "\n".join(summary_lines)
         + "\n"
     )

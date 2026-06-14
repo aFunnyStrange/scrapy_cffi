@@ -51,7 +51,7 @@ The default error handler. If a request has an errback set, this method can be u
 
 ---
 
-`scrapy_cffi` provides two spider base classes: `Spider`, `RedisSpider` and `RabbitmqSpider`, consistent with Scrapy's design — one class per spider.
+`scrapy_cffi` provides three spider base classes: `Spider`, `RedisSpider`, and `RabbitmqSpider`, consistent with Scrapy's design — one class per spider.
 
 
 
@@ -75,16 +75,56 @@ By default, `RedisSpider` consumes `redis_key` as a Redis list with `BLPOP`. To 
 class DemoRedisStreamSpider(RedisSpider):
     name = "demoRedisStreamSpider"
     redis_key = "demo:stream"
-    redis_start_mode = "stream"
-    redis_group = "demo-group"
-    redis_consumer = "consumer-1"  # optional; defaults to spider.name
-    redis_stream_field = "data"    # XADD demo:stream * data "https://example.com"
+    redis_start_mode = "stream"      # "list" (default) or "stream"
+    redis_group = "demo-group"       # required for stream mode; alias: redis_xgroup
+    redis_consumer = "consumer-1"    # optional; defaults to spider.name; alias: redis_xconsumer
+    redis_stream_field = "data"      # XADD demo:stream * data "https://example.com"
+    redis_stream_count = 1           # XREADGROUP COUNT
+    redis_stream_block_ms = 2000     # block timeout (ms)
+    redis_stream_group_start_id = "0"
+    redis_stream_read_id = ">"
+    redis_stream_mkstream = True     # XGROUP CREATE MKSTREAM
+    redis_stream_ack = True          # XACK after yielding start request
 ```
 
-`redis_xgroup` and `redis_xconsumer` are also supported as aliases. The stream message is acknowledged with `XACK` after it is converted into a start request and yielded.
+| Attribute | Description |
+| --------- | ----------- |
+| `redis_start_mode` | `list` or `stream` |
+| `redis_group` / `redis_xgroup` | Consumer group name (required for stream) |
+| `redis_consumer` / `redis_xconsumer` | Consumer name within the group |
+| `redis_stream_*` | Fine-grained stream read / ack options |
+
+`RedisScheduler.get_start_req()` and ack logic delegate to `scrapy_cffi.databases.redis_ingress` so the same rules apply whether ingress is configured on the spider or in settings.
+
+`redis_xgroup` and `redis_xconsumer` are also supported as aliases. The stream message is acknowledged with `XACK` after it is converted into a start request and yielded (when `redis_stream_ack` / `AUTO_ACK` is true).
+
+### 2.2.3 settings.REDIS_STREAM_INFO (project-wide defaults)
+Spider attributes still override these values. Use this when several spiders share the same stream key, consumer group, or tuning knobs:
+
+```python
+from scrapy_cffi.settings import SettingsInfo
+from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+
+settings = SettingsInfo()
+settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
+    MODE=RedisIngressMode.STREAM,
+    STREAM_KEY="tasks:ingress",
+    GROUP_NAME="scrapy-workers",
+    CONSUMER_NAME=None,  # falls back to spider.name per instance
+    FIELD="data",
+    BLOCK_MS=5000,
+    AUTO_ACK=True,
+)
+
+class MinimalRedisSpider(RedisSpider):
+    name = "worker"
+    # redis_key / redis_group can be omitted when covered by REDIS_STREAM_INFO
+```
+
+Resolution order: **spider attribute → `REDIS_STREAM_INFO` → framework default** (`QUEUE_NAME` or `{spider.name}_redis_start`).
 
 ## 2.3 RabbitmqSpider
-### 2.2.1 rabbitmq_queue
+### 2.3.1 rabbitmq_queue
 - **Type**: str
 - **Description**: The name of the rabbitmq queue from which tasks (URLs) are pulled and scheduled.
 

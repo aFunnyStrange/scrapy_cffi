@@ -85,7 +85,7 @@ class RobotsManager:
         tasks = []
         async with self._lock:
             for url in robot_urls:
-                domain = urlparse(url).netloc
+                domain = urlparse(url).hostname
                 if domain not in self._rules_cache:
                     tasks.append(self._load_single(url, domain))
         await asyncio.gather(*tasks)
@@ -121,6 +121,6 @@ class RobotsManager:
             self._rules_cache[domain] = rules
 
     def is_allowed(self, url: str) -> bool:
-        domain = urlparse(url).netloc
+        domain = urlparse(url).hostname
         rules: RobotsTxtRules = self._rules_cache.get(domain)
         return rules.is_allowed(url) if rules else True

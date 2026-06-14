@@ -6,6 +6,7 @@ pip install sqlalchemy[asyncio] asyncpg
 pip install motor>=3.7.1
 ```
 
+Optional PostgreSQL smoke test: `tests/test_postgres/test_postgres_manager.py` (requires running Postgres + `asyncpg`).
 
 ---
 
@@ -50,12 +51,46 @@ async def main():
 asyncio.run(main())
 ```
 
-## 2.2 SQLAlchemyMySQLManager/SQLAlchemyPostgresManager/MongoDBManager
-Extended usage examples for MongoDB and MySQL can be found at:
+### 2.1.1 Redis Stream ingress (RedisSpider)
+For `RedisSpider` start URLs, the framework supports list (`BLPOP`) and Stream consumer-group (`XREADGROUP`) modes. Configuration can live on the spider **or** in `settings.REDIS_STREAM_INFO`; resolution is handled by `scrapy_cffi.databases.redis_ingress`.
+
+Low-level helpers on `RedisManager`:
+- `dequeue_stream_request(...)` — read one message from a consumer group
+- `ack_stream_request(message, group_name)` — `XACK`
+
+See [2-spiders.md](./2-spiders.md#22-redisspider) and [1-settings.md](./1-settings.md#293-redis_stream_info).
+
+## 2.2 SQLAlchemyMySQLManager / SQLAlchemyPostgresManager
+Both managers share `BaseSQLAlchemyManager` (retry, reconnect, pool). Configure connection and pool options via `MYSQL_INFO` / `POSTGRES_INFO` in settings — the crawler calls `init()` automatically when `resolved_url` is set.
+
+```python
+from scrapy_cffi.settings import SettingsInfo
+from scrapy_cffi.models import PostgresInfo
+
+settings = SettingsInfo()
+settings.POSTGRES_INFO = PostgresInfo(
+    HOST="127.0.0.1",
+    PORT=5432,
+    USERNAME="postgres",
+    PASSWORD="secret",
+    DB="app",
+    ECHO=False,
+    POOL_PRE_PING=True,
+    POOL_SIZE=5,
+    MAX_OVERFLOW=10,
+)
+# Or pass a full URL:
+# settings.POSTGRES_INFO.URL = "postgresql+asyncpg://user:pass@localhost:5432/app"
+```
+
+In a spider or pipeline, use `crawler.postgresManager` / `crawler.mysqlManager` after startup. Both managers extend `BaseSQLAlchemyManager` (shared retry/reconnect/session helpers).
+
+Extended usage examples:
 1. MongoDB: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mongodb.py
 2. MySQL: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mysql.py
+3. PostgreSQL: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_postgres/test_postgres_manager.py
 
-PostgreSQL uses the same SQLAlchemy-style helper methods as MySQL:
+Standalone manager usage (PostgreSQL):
 
 ```python
 from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager

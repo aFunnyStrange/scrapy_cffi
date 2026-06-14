@@ -55,6 +55,13 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
     elif used_redis:
         settings.SCHEDULER = "scrapy_cffi.scheduler.RedisScheduler" # Starting the Redis scheduler requires configuring Redis information
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
+        # Optional: shared Redis Stream consumer-group defaults for RedisSpider (spider attrs override)
+        # from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+        # settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
+        #     MODE=RedisIngressMode.STREAM,
+        #     STREAM_KEY="demo:stream",
+        #     GROUP_NAME="demo-group",
+        # )
         # settings.SCHEDULER_LOOP_END = 5
 
     if used_kafka:

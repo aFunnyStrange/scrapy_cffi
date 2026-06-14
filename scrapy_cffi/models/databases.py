@@ -2,6 +2,8 @@ from pydantic import model_validator, Field
 from enum import Enum
 from typing import Optional, Union, List, Tuple
 from .base import StrictValidatedModel
+from .redis_stream import RedisIngressMode, RedisStreamConsumerInfo
+
 
 class BaseDBInfo(StrictValidatedModel):
     URL: Optional[str] = None
@@ -12,21 +14,16 @@ class BaseDBInfo(StrictValidatedModel):
     DB: Optional[Union[str, int]] = None
 
     @property
-    def resolved_url(self) -> str:
+    def resolved_url(self) -> Optional[str]:
         return self.URL if self.URL else None
 
-class RedisInfo(BaseDBInfo):
-    @model_validator(mode="after")
-    def assemble_url(self) -> "RedisInfo":
-        if not self.URL and self.HOST and self.PORT:
-            auth_part = ""
-            if self.USERNAME and self.PASSWORD:
-                auth_part = f"{self.USERNAME}:{self.PASSWORD}@"
-            elif self.PASSWORD:
-                auth_part = f":{self.PASSWORD}@"
-            db_part = f"/{self.DB}" if self.DB is not None else ""
-            self.URL = f"redis://{auth_part}{self.HOST}:{self.PORT}{db_part}"
-        return self
+
+class SqlAlchemyEngineInfo(BaseDBInfo):
+    ECHO: bool = False
+    POOL_PRE_PING: bool = True
+    POOL_SIZE: int = 5
+    MAX_OVERFLOW: int = 10
+
 
 class RedisMode(str, Enum):
     SINGLE = "single"
@@ -65,7 +62,7 @@ class RedisInfo(BaseDBInfo):
             return self.CLUSTER_NODES
         return None
 
-class MysqlInfo(BaseDBInfo):
+class MysqlInfo(SqlAlchemyEngineInfo):
     DRIVER: str = "mysql+asyncmy" # default driver
 
     @model_validator(mode="after")
@@ -80,7 +77,7 @@ class MysqlInfo(BaseDBInfo):
             self.URL = f"{self.DRIVER}://{auth_part}{self.HOST}:{self.PORT}{db_part}"
         return self
 
-class PostgresInfo(BaseDBInfo):
+class PostgresInfo(SqlAlchemyEngineInfo):
     DRIVER: str = "postgresql+asyncpg"
 
     @model_validator(mode="after")
@@ -109,7 +106,12 @@ class MongodbInfo(BaseDBInfo):
         return self
 
 __all__ = [
+    "BaseDBInfo",
+    "SqlAlchemyEngineInfo",
     "RedisInfo",
+    "RedisMode",
+    "RedisIngressMode",
+    "RedisStreamConsumerInfo",
     "MysqlInfo",
     "PostgresInfo",
     "MongodbInfo",

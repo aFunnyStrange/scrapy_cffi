@@ -32,6 +32,8 @@ ja3: Optional[str] = None
 akamai: Optional[str] = None
 ```
 
+`params` are merged into `url` at construction time (`url?key=value&...`). For deduplication, query parameters are canonicalized (sorted by key/value) when building the fingerprint, so parameter order does not affect duplicate detection.
+
 Additional Framework-specific Parameters:
 | Attribute | Description |
 | --------- | ----------- |

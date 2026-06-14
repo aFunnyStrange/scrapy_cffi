@@ -1,5 +1,15 @@
 from .models import BaseValidatedModel, StrictValidatedModel
-from .models.api import ComponentInfo, RedisInfo, MysqlInfo, PostgresInfo, MongodbInfo, RabbitMQInfo, KafkaInfo, CPYExtensionsConfig
+from .models.api import (
+    ComponentInfo,
+    RedisInfo,
+    RedisStreamConsumerInfo,
+    MysqlInfo,
+    PostgresInfo,
+    MongodbInfo,
+    RabbitMQInfo,
+    KafkaInfo,
+    CPYExtensionsConfig,
+)
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
 
@@ -79,6 +89,7 @@ class SettingsInfo(BaseValidatedModel):
     LOG_INFO: Optional[LogInfo] = LogInfo()
 
     REDIS_INFO: Optional[RedisInfo] = RedisInfo()
+    REDIS_STREAM_INFO: Optional[RedisStreamConsumerInfo] = None
     MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
     POSTGRES_INFO: Optional[PostgresInfo] = PostgresInfo()
     POSTGRESS_INFO: Optional[PostgresInfo] = None # Typo-compatible alias for POSTGRES_INFO.
