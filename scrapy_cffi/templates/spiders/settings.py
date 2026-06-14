@@ -69,12 +69,11 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
 
     # settings.LOG_INFO.LOG_FILE = "demo.log"
 
-    # Register a C extension module
-    # settings.CPY_EXTENSIONS.DIR = "cpy_extensions"
+    # Optional: project cpy_resources/ is created by startproject (default DIR name)
     # from scrapy_cffi.models import CPYExtension
     # settings.CPY_EXTENSIONS.RESOURCES = [
     #     CPYExtension(module_name="bloom")
-    # ] # Usage after injected: import bloom
+    # ] # After load: import bloom
 
     # settings.LOG_INFO.LOG_ENABLED = False # Disable logging entirely
     return settings

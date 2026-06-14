@@ -1,5 +1,5 @@
 import argparse
-from . import startproject, genspider, demo, geninfra
+from . import startproject, genspider, demo, geninfra, cinstall
 
 def main():
     parser = argparse.ArgumentParser(prog="scrapy_cffi", description="scrapy_cffi CLI tool")
@@ -53,6 +53,51 @@ def main():
     gp.add_argument("name", help="Spider name")
     gp.add_argument("domain", help="Target domain")
 
+    # cinstall — system-level ctypes C extension modules
+    ci = subparsers.add_parser(
+        "cinstall",
+        help="Install user-built C extension modules to the system cpy store",
+    )
+    ci.add_argument(
+        "module",
+        nargs="?",
+        help="Module folder name (e.g. bloom). Omit with --list / --path / --init.",
+    )
+    ci.add_argument(
+        "--source",
+        help="Source module directory (default: ./cpy_resources/<module> or framework template).",
+    )
+    ci.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing install or scaffold.",
+    )
+    ci.add_argument(
+        "--list",
+        action="store_true",
+        help="List modules installed in the system cpy store.",
+    )
+    ci.add_argument(
+        "--path",
+        action="store_true",
+        help="Print system cpy root directory and exit.",
+    )
+    ci.add_argument(
+        "--remove",
+        metavar="MODULE",
+        help="Remove a module from the system cpy store.",
+    )
+    ci.add_argument(
+        "--init",
+        metavar="MODULE",
+        help="Scaffold ./cpy_resources/<MODULE> from framework templates for local build.",
+    )
+    ci.add_argument(
+        "--require-binary",
+        action="store_true",
+        help="Fail unless build/ contains a native .dll/.so/.dylib library.",
+    )
+
     # demo project
     demo_p = subparsers.add_parser("demo", help="Create a demo project")
     demo_p.add_argument("-r", "--redis", action="store_true", help="Use RedisSpider")
@@ -79,6 +124,17 @@ def main():
             kafka_topology=args.kafka,
             generate_all=args.all,
             clean=args.clean,
+        )
+    elif args.command == "cinstall":
+        cinstall.run(
+            args.module,
+            source=args.source,
+            force=args.force,
+            list_modules=args.list,
+            show_path=args.path,
+            remove=args.remove,
+            init=args.init,
+            require_binary=args.require_binary,
         )
     elif args.command == "genspider":
         genspider.run(args.name, args.domain, args.redis, args.rabbitmq, args.kafka)

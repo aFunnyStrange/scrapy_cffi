@@ -21,6 +21,7 @@ import inspect, asyncio
 from typing import TYPE_CHECKING, Union, Tuple, List, Dict, Optional
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from ..models.databases import RedisInfo
     from redis.asyncio.client import Redis
     from redis.asyncio.connection import ConnectionPool
 
@@ -111,14 +112,23 @@ class RedisManager(redis.Redis):
             )
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_redis_info(cls, stop_event: asyncio.Event, info: "RedisInfo"):
+        from ..models.databases import RedisMode
+
+        if not info.resolved_url:
+            raise ValueError("RedisManager.from_redis_info requires a configured REDIS_INFO URL or nodes")
+        mode = info.MODE if isinstance(info.MODE, str) else info.MODE.value
         return cls(
-            stop_event=crawler.stop_event,
-            redis_mode=crawler.settings.REDIS_INFO.MODE,
-            redis_url=crawler.settings.REDIS_INFO.resolved_url,
-            master_name=crawler.settings.REDIS_INFO.MASTER_NAME,
-            sentinel_override_master=crawler.settings.REDIS_INFO.SENTINEL_OVERRIDE_MASTER,
+            stop_event=stop_event,
+            redis_mode=mode,
+            redis_url=info.resolved_url,
+            master_name=info.MASTER_NAME,
+            sentinel_override_master=info.SENTINEL_OVERRIDE_MASTER,
         )
+
+    @classmethod
+    def from_crawler(cls, crawler: "Crawler"):
+        return cls.from_redis_info(crawler.stop_event, crawler.settings.REDIS_INFO)
 
     async def _reconnect(self):
         if self.stop_event.is_set():

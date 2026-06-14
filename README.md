@@ -132,7 +132,7 @@ settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
 
 Full technical documentation and module-level guides are available in the [`docs/usage/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory.
 
-Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md).
+Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md) · Architecture: [`docs/ARCHITECTURE-ROADMAP.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/ARCHITECTURE-ROADMAP.md) · **0.3.1 tools**: [`docs/RELEASE-0.3.1.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.3.1.md).
 
 ---
 

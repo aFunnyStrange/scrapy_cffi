@@ -1,5 +1,4 @@
 import asyncio, random
-from urllib.parse import urlparse
 from typing import Union, AsyncGenerator
 from collections.abc import AsyncIterable, Iterable
 from .base import _InnerSpiderInterceptor
@@ -12,7 +11,7 @@ from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..settings import SettingsInfo
-    from ..utils import RobotsManager
+    from ..utils.robot import RobotsManager
     from ..item import Item
     from ..hooks.interceptors import InterceptorsHooks
     from ..core.sessions import SessionWrapper, WebSocketEntry
@@ -38,10 +37,10 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         **kwargs
     ):
         super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if self.kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
@@ -145,10 +144,10 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
     ):
         super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
         self.robot = robot
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if self.kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
@@ -164,16 +163,9 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
         )
 
     def is_allow(self, url, allow_domains):
-        parsed = urlparse(url)
-        domain = parsed.hostname.lower()
-        if not domain:
-            return False
-        domain = domain.lower()
-        for allowed in allow_domains:
-            allowed = allowed.lower()
-            if domain == allowed or domain.endswith('.' + allowed):
-                return True
-        return False
+        from ..utils.domain import url_is_from_allowed_domains
+
+        return url_is_from_allowed_domains(url, allow_domains)
 
     async def process_spider_output(self, response: Response, result: Union[Request, "Item", dict, None], spider: Spider):
         """

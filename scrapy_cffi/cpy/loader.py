@@ -3,13 +3,15 @@ from pathlib import Path
 import importlib.util
 from types import ModuleType
 from typing import Optional, TYPE_CHECKING, List
+from .paths import get_system_cpy_root, get_framework_cpy_root
 if TYPE_CHECKING:
     from ..models.api import CPYExtension
 
 class CExtensionLoader:
     def __init__(self, resource_dir: Optional[Path] = None):
         self.user_base = (Path(sys.argv[0]).parent / resource_dir) if resource_dir else None
-        self.framework_base = Path(__file__).parent / "cpy_resources"
+        self.system_base = get_system_cpy_root()
+        self.framework_base = get_framework_cpy_root()
 
     def _load_py_module(self, path: Path, module_name: str) -> ModuleType:
         spec = importlib.util.spec_from_file_location(module_name, path)
@@ -49,6 +51,8 @@ class CExtensionLoader:
 
         if self.user_base:
             paths_to_try.append(self.user_base / module_folder)
+        if self.system_base:
+            paths_to_try.append(self.system_base / module_folder)
         if self.framework_base:
             paths_to_try.append(self.framework_base / module_folder)
 

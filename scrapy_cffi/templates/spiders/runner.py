@@ -3,7 +3,10 @@ import asyncio
 import sys
 import scrapy_cffi
 from settings import create_settings
-from typing import Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
+
+if TYPE_CHECKING:
+    from scrapy_cffi import Crawler
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 from scrapy_cffi.utils import setup_uvloop_once, get_or_create_loop
@@ -31,7 +34,7 @@ def main_all(*args, **kwargs):
     scrapy_cffi.run_all_spiders_sync(settings=settings, *args, **kwargs)
 
 # Advanced Users
-async def advance_main(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler, asyncio.Task]:
+async def advance_main(*args, **kwargs) -> Tuple["Crawler", asyncio.Task]:
     settings = create_settings(spider_path="spiders.CustomSpider")
 
     # compatible scrapy settings.py
@@ -41,7 +44,7 @@ async def advance_main(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler, as
     crawler, engine_task = await scrapy_cffi.run_spider(settings=settings, new_loop=False, *args, **kwargs)
     return crawler, engine_task
 
-async def advance_main_all(*args, **kwargs) -> Tuple[scrapy_cffi.crawler.Crawler, asyncio.Task]:
+async def advance_main_all(*args, **kwargs) -> Tuple["Crawler", asyncio.Task]:
     from scrapy_cffi.utils import get_run_py_dir
     spider_path = str(get_run_py_dir() / "spiders") # must be a directory when mode is 'run_all_spiders', since all spider files will be loaded from it
     settings = create_settings(spider_path=spider_path)
@@ -75,7 +78,7 @@ if __name__ == "__main__":
     shutdown_event = asyncio.Event()
     setup_signal_handlers(loop, shutdown_event)
 
-    crawler: scrapy_cffi.crawler.Crawler = None
+    crawler: Optional["Crawler"] = None
 
     async def demo_main():
         global crawler

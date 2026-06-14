@@ -18,6 +18,7 @@ from tenacity import retry, wait_fixed, retry_if_exception_type
 
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from ..models.mq import RabbitMQInfo
 
 def auto_retry(func):
     @wraps(func)
@@ -77,13 +78,32 @@ class RabbitMQManager:
         self._method_cache: Dict[str, callable] = {}
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_rabbitmq_info(
+        cls,
+        stop_event: asyncio.Event,
+        info: "RabbitMQInfo",
+        *,
+        persist: bool = False,
+    ):
+        if not info.resolved_url:
+            raise ValueError("RabbitMQManager.from_rabbitmq_info requires RABBITMQ_INFO URL or cluster nodes")
+        exchange_type = info.EXCHANGE_TYPE
+        if isinstance(exchange_type, str):
+            exchange_type = ExchangeType(exchange_type)
         return cls(
-            stop_event=crawler.stop_event,
-            rabbitmq_url=crawler.settings.RABBITMQ_INFO.resolved_url,
-            exchange_name=crawler.settings.RABBITMQ_INFO.EXCHANGE_NAME,
-            exchange_type=crawler.settings.RABBITMQ_INFO.EXCHANGE_TYPE,
-            prefetch_count=crawler.settings.RABBITMQ_INFO.PREFETCH_COUNT,
+            stop_event=stop_event,
+            rabbitmq_url=info.resolved_url,
+            exchange_name=info.EXCHANGE_NAME,
+            exchange_type=exchange_type,
+            prefetch_count=info.PREFETCH_COUNT,
+            persist=persist,
+        )
+
+    @classmethod
+    def from_crawler(cls, crawler: "Crawler"):
+        return cls.from_rabbitmq_info(
+            crawler.stop_event,
+            crawler.settings.RABBITMQ_INFO,
             persist=crawler.settings.SCHEDULER_PERSIST,
         )
 

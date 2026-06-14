@@ -31,6 +31,8 @@ pip install -e .
 scrapy-cffi startproject <project_name>
 ```
 
+Creates the usual project layout plus **`cpy_resources/`** with a `bloom/` skeleton (`wrapper.py`, `fallback.py`, empty `build/`). Native libraries are not included — build locally or run `scrapy-cffi cinstall bloom` after compiling. See [12-cpython.md](./12-cpython.md).
+
 ---
 
 
@@ -103,7 +105,29 @@ Local multi-port compose files **simulate** cluster/sentinel topologies for deve
 
 See also: [11-mq.md](./11-mq.md) for broker settings and integration tests.
 
-# 6.extra
+# 6.cinstall
+Install **user-compiled** ctypes modules into a per-user system directory so every project can load them without copying binaries into each repo.
+
+PyPI packages ship Python wrappers and pure-Python fallbacks only — **not** OS-specific `.dll` / `.so` files.
+
+```bash
+# Copy framework template into the current project
+scrapy-cffi cinstall --init bloom
+
+# After building libbloom.* into cpy_resources/bloom/build/
+scrapy-cffi cinstall bloom
+scrapy-cffi cinstall bloom --source ./cpy_resources/bloom --require-binary --force
+
+scrapy-cffi cinstall --list
+scrapy-cffi cinstall --path
+scrapy-cffi cinstall --remove bloom
+```
+
+Environment: `SCRAPY_CFFI_CPY_DIR` overrides the default system store path.
+
+Details: [12-cpython.md](./12-cpython.md).
+
+# 7.extra
 In real-world development, spiders are usually integrated with backend systems. `scrapy_cffi` only provides the core crawling system, while additional components such as message queues (MQ) and task schedulers (e.g., Celery) should be configured by users according to their own requirements.
 
 **⚠️ Important Note:**

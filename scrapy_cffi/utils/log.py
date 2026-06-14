@@ -34,7 +34,7 @@ def init_logger(log_info: "LogInfo", logger_name: str) -> logging.Logger:
     with_stream = log_info.LOG_WITH_STREAM
 
     if log_formatter_cls_path:
-        from ..utils import load_object
+        from .common import load_object
         log_formatter_cls = load_object(log_formatter_cls_path)
     elif log_short_names:
         log_formatter_cls = ShortNameFormatter
@@ -88,7 +88,7 @@ def start_multiprocess_log_listener(
     log_formatter_cls_path = log_info.LOG_FORMATTER
 
     if log_formatter_cls_path:
-        from ..utils import load_object
+        from .common import load_object
         log_formatter_cls = load_object(log_formatter_cls_path)
     elif log_short_names:
         log_formatter_cls = ShortNameFormatter

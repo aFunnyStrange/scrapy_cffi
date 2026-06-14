@@ -11,6 +11,7 @@ except ImportError as e:
     ) from e
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from ..models.databases import MongodbInfo
 
 RETRYABLE_EXCEPTIONS = (ConnectionError, TimeoutError)
 
@@ -64,12 +65,20 @@ class MongoDBManager:
         self.db = None
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler") -> "MongoDBManager":
+    def from_mongodb_info(cls, stop_event: asyncio.Event, info: "MongodbInfo"):
+        if not info.resolved_url:
+            raise ValueError("MongoDBManager.from_mongodb_info requires MONBODB_INFO.resolved_url")
+        if not info.DB:
+            raise ValueError("MongoDBManager requires DB name on MongodbInfo")
         return cls(
-            stop_event=crawler.stop_event,
-            mongo_uri=crawler.settings.MONBODB_INFO.resolved_url,
-            db_name=crawler.settings.MONBODB_INFO.DB,
+            stop_event=stop_event,
+            mongo_uri=info.resolved_url,
+            db_name=str(info.DB),
         )
+
+    @classmethod
+    def from_crawler(cls, crawler: "Crawler") -> "MongoDBManager":
+        return cls.from_mongodb_info(crawler.stop_event, crawler.settings.MONBODB_INFO)
 
     async def _reconnect(self):
         if self.client:

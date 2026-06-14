@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from curl_cffi.const import CurlWsFlag
 from pydantic import Field, field_validator
 from .base import StrictValidatedModel
-from ..utils import ProtobufFactory
+from ..utils.protobuf import ProtobufFactory
 
 class WebSocketMsg(StrictValidatedModel):
     data: Any = Field(default=b"")

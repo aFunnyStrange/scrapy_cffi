@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy_cffi"
-version = "0.3.0"
+version = "0.3.1"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = "BSD-3-Clause"
@@ -26,8 +26,7 @@ dependencies = [
     "dotenv"
 ]
 [project.optional-dependencies]
-windows = ["python-magic-bin"]
-unix = ["python-magic"]
+media = ["filetype", "Pillow", "hachoir"]
 
 [project.urls]
 Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"
@@ -44,6 +43,7 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "scrapy_cffi" = ["templates/*"]
+"scrapy_cffi.cpy" = ["cpy_resources/**/*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.py[cod]"]

@@ -5,7 +5,16 @@ from .interceptors import ChainManager, InterruptibleChainManager
 from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterceptor
 from .pipelines import Pipeline
 from .extensions import SignalManager
-from .utils import load_object, get_class_name, get_all_spiders_cls, get_all_spiders_name, RobotsManager, get_run_py_dir, async_context_factory, KafkaLoggingHandler
+from .utils.common import (
+    load_object,
+    get_class_name,
+    get_all_spiders_cls,
+    get_all_spiders_name,
+    get_run_py_dir,
+    async_context_factory,
+)
+from .utils.robot import RobotsManager
+from .settings import merge_spider_settings
 from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from .settings import SettingsInfo
@@ -72,7 +81,7 @@ class Crawler:
         )
 
         # if not logger: # To ensure log stability, it is no longer enabled
-        from .utils import init_logger
+        from .utils.log import init_logger, KafkaLoggingHandler
         logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         self.logger = logger
         # kafka
@@ -162,10 +171,12 @@ class Crawler:
         self.schedulers.clear()
         for spider_cls in spider_cls_list:
             name = spider_cls.name
+            spider_settings = merge_spider_settings(self.settings, spider_cls)
             self.schedulers[name] = scheduler_cls.from_crawler(
                 self,
                 spiders_name=[name],
                 spider_classes=[spider_cls],
+                settings=spider_settings,
             )
 
         for spider_cls in spider_cls_list:
@@ -182,7 +193,9 @@ class Crawler:
             for spider_cls in spider_cls_list:
                 scheme = getattr(spider_cls, "robot_scheme", "https").lower()
                 for domain in getattr(spider_cls, "allowed_domains", []):
-                    robot_urls.add(f"{scheme}://{domain}/robots.txt")
+                    from .utils.domain import robots_txt_url
+
+                    robot_urls.add(robots_txt_url(scheme, domain))
             now_loop = asyncio.get_running_loop()
             robot_task = now_loop.create_task(self.robot.load_rules_for_hosts(robot_urls))
 
@@ -266,72 +279,4 @@ class Crawler:
         if self.postgresManager:
             await self.postgresManager.close()
 
-def cleanup_loop(loop: asyncio.AbstractEventLoop):
-    pending = asyncio.all_tasks(loop=loop)
-    for task in pending:
-        task.cancel()
-        try:
-            loop.run_until_complete(task)
-        except asyncio.CancelledError:
-            pass
-    loop.close()
-
-# One spider corresponds to one engine
-async def run_base(start_type, settings: "SettingsInfo", new_loop=False, *args, **kwargs):
-    if new_loop: # Suitable for running in an independent thread or synchronous start, use with caution to avoid cross event loop operations
-        now_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(now_loop)
-    else: # Suitable for calling within an existing asynchronous environment (default)
-        now_loop = asyncio.get_running_loop()
-    crawler = Crawler()
-    robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
-    engine_task = now_loop.create_task(crawler.start_engines(robot_task=robot_task, *args, **kwargs))
-    return crawler, engine_task
-
-def run_sync_base(start_type, settings: "SettingsInfo", new_loop=True, *args, **kwargs):
-    if new_loop:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.get_running_loop()
-    crawler: Crawler = None
-
-    async def main():
-        nonlocal crawler
-        crawler = Crawler()
-        robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
-        await crawler.start_engines(robot_task, *args, **kwargs)
-        crawler.stop_event.set()
-        await crawler.shutdown()
-
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt detected, shutting down...")
-        if crawler:
-            loop.run_until_complete(crawler.shutdown())
-    finally:
-        cleanup_loop(loop=loop)
-
-# Run a single spider, where one set of components corresponds to one spider
-async def run_spider(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
-    return await run_base(start_type=1, settings=settings, new_loop=new_loop, *args, **kwargs)
-
-# Run all spiders, where one set of components corresponds to multiple spiders
-async def run_all_spiders(settings: "SettingsInfo", new_loop=False, *args, **kwargs):
-    return await run_base(start_type=0, settings=settings, new_loop=new_loop, *args, **kwargs)
-
-def run_spider_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
-    return run_sync_base(start_type=1, settings=settings, new_loop=new_loop, *args, **kwargs)
-
-def run_all_spiders_sync(settings: "SettingsInfo", new_loop=True, *args, **kwargs):
-    return run_sync_base(start_type=0, settings=settings, new_loop=new_loop, *args, **kwargs)
-
-__all__ = [
-    "Crawler",
-    "cleanup_loop",
-    "run_spider",
-    "run_all_spiders",
-    "run_spider_sync",
-    "run_all_spiders_sync",
-]
+__all__ = ["Crawler"]

@@ -54,11 +54,11 @@ class BaseSQLAlchemyManager:
         self.session_factory = None
 
     @classmethod
-    def from_db_info(cls, crawler: "Crawler", info: "SqlAlchemyEngineInfo"):
+    def from_db_info(cls, stop_event: asyncio.Event, info: "SqlAlchemyEngineInfo"):
         if not info.resolved_url:
             raise ValueError(f"{cls.__name__} requires a configured database URL")
         return cls(
-            stop_event=crawler.stop_event,
+            stop_event=stop_event,
             db_url=info.resolved_url,
             engine_kwargs=build_engine_kwargs(info),
         )

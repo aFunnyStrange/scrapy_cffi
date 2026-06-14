@@ -1,4 +1,3 @@
-from scrapy_cffi.databases import RedisManager
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.pipelines import Pipeline
 

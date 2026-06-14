@@ -5,7 +5,7 @@ Each spider class includes several built-in attributes by default:
 | --------- | ----------- |
 | name | A unique identifier for the current spider, typically used to trace the source of produced items. |
 | robot_scheme | Protocol used for requesting `robots.txt` when obeying robots rules (`http` or `https`). |
-| allowed_domains | List of allowed domain names. **Note: initial requests will NOT be restricted by `allowed_domains`.** |
+| allowed_domains | Hostnames only (ports ignored), Scrapy-style — e.g. `127.0.0.1` matches any port on that host. **Initial requests are not restricted.** |
 | settings | The `SettingsInfo` object passed in at spider startup. |
 | run_py_dir | A `Path` object representing the directory path of the executing `.py` script. |
 | session_id | Defaults to an empty string; used to assign a specific session ID per spider. |

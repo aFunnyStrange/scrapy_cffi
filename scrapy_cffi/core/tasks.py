@@ -21,10 +21,10 @@ class TaskManager:
         self.stop_event = stop_event
         self.global_lock = global_lock
 
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
         if kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(settings)
             self.logger.addHandler(kafka_handler)
 

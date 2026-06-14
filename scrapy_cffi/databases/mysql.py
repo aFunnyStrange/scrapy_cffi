@@ -28,4 +28,4 @@ class SQLAlchemyMySQLManager(BaseSQLAlchemyManager):
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
-        return cls.from_db_info(crawler, crawler.settings.MYSQL_INFO)
+        return cls.from_db_info(crawler.stop_event, crawler.settings.MYSQL_INFO)

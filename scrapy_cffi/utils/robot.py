@@ -67,10 +67,10 @@ class RobotsManager:
     def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo", kafkaManager: "KafkaManager"=None):
         self.stop_event = stop_event
         self.settings = settings
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
         self._rules_cache = {}

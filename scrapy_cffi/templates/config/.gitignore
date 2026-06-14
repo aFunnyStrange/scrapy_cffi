@@ -22,6 +22,10 @@ dist/
 *.egg-info/
 .eggs/
 
+# Compiled ctypes libs (keep build/.gitkeep)
+cpy_resources/*/build/*
+!cpy_resources/*/build/.gitkeep
+
 .ipynb_checkpoints/
 
 *.http

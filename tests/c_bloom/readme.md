@@ -1,7 +1,21 @@
 # C Bloom filter (`tests/c_bloom`)
 
-Due to potential differences in `Python.h` across different Python versions, for cross-platform compatibility it is generally recommended to compile shared libraries (`.dll` / `.pyd` / `.so`) and interface with them using `ctypes` or `cffi`, rather than directly relying on `Python.h`.
+Reference C sources for the optional `bloom` ctypes module shipped under `scrapy_cffi/cpy/cpy_resources/bloom/`.
 
-The framework ships a Python fallback Bloom filter; the C sources here are for optional native builds and benchmarks.
+The PyPI package does **not** include prebuilt `.dll` / `.so` / `.dylib` files. Build locally, then install:
 
-See also: [`tests/readme.md`](../readme.md) · Bloom settings `BLOOM_INFO` in [`docs/usage/1-settings.md`](../../docs/usage/1-settings.md).
+```bash
+# Scaffold module layout into your project
+scrapy-cffi cinstall --init bloom
+
+# After compiling into cpy_resources/bloom/build/libbloom.*
+scrapy-cffi cinstall bloom --require-binary
+```
+
+System store path: `scrapy-cffi cinstall --path` (override with `SCRAPY_CFFI_CPY_DIR`).
+
+See also: [`scrapy_cffi/cpy/cpy_resources/bloom/BUILD.md`](../../scrapy_cffi/cpy/cpy_resources/bloom/BUILD.md) · [`docs/usage/12-cpython.md`](../../docs/usage/12-cpython.md).
+
+Due to potential differences in `Python.h` across Python versions, cross-platform builds use **shared libraries + ctypes** (not `.pyd` / `Python.h` bindings).
+
+The framework always provides `fallback.py` (pure Python Bloom) when no native library is present.

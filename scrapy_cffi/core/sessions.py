@@ -10,7 +10,9 @@ from curl_cffi import requests
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
 from .downloader.internet import MediaRequest
-from ..utils import create_uniqueId, run_with_timeout, safe_call
+from ..utils.algorithm import create_uniqueId
+from ..utils.common import run_with_timeout
+from ..utils.concurrency import safe_call
 if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
@@ -233,10 +235,10 @@ class SessionWrapper:
     def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo"=None, cookies: Dict=None, kafkaManager: "KafkaManager" = None):
         self.stop_event = stop_event
         self.settings = settings
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
@@ -389,10 +391,10 @@ class SessionManager:
 
         # A deduplication set to prevent the same session_id from being added multiple times to the close queue.
         self._pending_close_set: Set[str] = set()
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if self.kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 

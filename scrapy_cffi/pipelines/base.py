@@ -36,10 +36,10 @@ class Pipeline:
         self.rabbitmqManager = rabbitmqManager
         self.kafkaManager = kafkaManager
         self.hooks = hooks
-        from ..utils import init_logger
+        from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if kafkaManager:
-            from ..utils import KafkaLoggingHandler
+            from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 

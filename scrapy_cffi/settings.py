@@ -145,8 +145,25 @@ class SettingsInfo(BaseValidatedModel):
         self._new_seen  = f'{self.FILTER_KEY}_new_seen'
         self._sent_seeen = f'{self.FILTER_KEY}_sent_seen'
         return self
-    
+
+
+def merge_spider_settings(base: "SettingsInfo", spider_cls: type) -> "SettingsInfo":
+    """
+    Apply spider class ``settings_overlay`` on a copy of base settings.
+    Used when multiple spiders share one Crawler but need per-spider tuning.
+    """
+    overlay = getattr(spider_cls, "settings_overlay", None) or {}
+    if not overlay:
+        return base
+    data = base.model_dump()
+    for key, value in overlay.items():
+        if key not in data and not hasattr(base, key):
+            raise AttributeError(f"settings_overlay key {key!r} is not a SettingsInfo field")
+        data[key] = value
+    return SettingsInfo.model_validate(data)
+
 __all__ = [
     "LogInfo",
-    "SettingsInfo"
+    "SettingsInfo",
+    "merge_spider_settings",
 ]

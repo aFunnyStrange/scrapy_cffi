@@ -5,7 +5,7 @@ from scrapy_cffi.internet import *
 class CustomRedisSpider(RedisSpider):
     name = "customRedisSpider"
     robot_scheme = "http"
-    allowed_domains = ["api.ipify.org", "127.0.0.1:8002", "localhost:8765"]
+    allowed_domains = ["api.ipify.org", "127.0.0.1", "localhost"]
     redis_key = "customRedisSpider_test"
     count = 0
 

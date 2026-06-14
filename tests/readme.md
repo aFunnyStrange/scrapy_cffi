@@ -35,4 +35,4 @@ Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra` →
 - [`blackboxprotobuf/`](blackboxprotobuf/) — protobuf helper tests
 - [`unstable_workflows/`](unstable_workflows/) — release/changelog CI scripts
 
-Docs index: [`docs/usage/`](../docs/usage/).
+Docs index: [`docs/usage/`](../docs/usage/) · [13-standalone-tools.md](../docs/usage/13-standalone-tools.md) · [14-multi-spider-resources.md](../docs/usage/14-multi-spider-resources.md).

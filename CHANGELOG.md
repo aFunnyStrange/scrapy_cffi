@@ -4,8 +4,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.1** release: [docs/RELEASE-0.3.1.md](docs/RELEASE-0.3.1.md)
+
 ## [Unreleased]
 None
+
+---
+## [0.3.1] - 2026-05-29
+### Added
+- Architecture roadmap [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md); [docs/usage/13-standalone-tools.md](docs/usage/13-standalone-tools.md); [docs/usage/14-multi-spider-resources.md](docs/usage/14-multi-spider-resources.md).
+- `scrapy_cffi.runner` — `run_spider*`, `run_spiders`, `run_spiders_sync`, `SpiderRunConfig`; root package lazy-imports runner APIs.
+- `scrapy_cffi.tools` lazy namespace for databases / mq / fingerprint / settings.
+- Manager factories: `from_redis_info`, `from_db_info`, `from_mongodb_info`, `from_rabbitmq_info`, `from_kafka_info`.
+- `merge_spider_settings`, spider `settings_overlay` for per-spider settings on one Crawler.
+- `dupefilter/fingerprint.py`; scheduler signal helpers in `core/scheduler/_signals.py`.
+- `mq/__init__.py`; expanded `databases/__init__.py` exports.
+- Optional extra `scrapy_cffi[media]` (`filetype`, `Pillow`, `hachoir`).
+
+### Changed
+- `utils` package: lazy barrel via `__getattr__`; recommended imports are submodules (`utils.algorithm`, `utils.media`, …).
+- Framework internals import utils submodules directly (avoid eager barrel load on crawler startup).
+- Media MIME sniffing uses `filetype` (cross-platform).
+
+### Removed
+- Optional extras `scrapy_cffi[windows]` and `scrapy_cffi[unix]` (`python-magic`). Use `scrapy_cffi[media]` instead.
 
 ---
 ## [0.3.0] - 2026-05-29

@@ -4,15 +4,19 @@ from pathlib import Path
 from typing import Union
 
 dir = Path(__file__).parent
-if os.name.lower() == "nt":
-    # Windows
-    lib = CDLL(str(dir / "build" / "libbloom.dll"))
-elif sys.platform == "darwin":
-    # macOS
-    lib = CDLL(str(dir / "build" / "libbloom.dylib"))
-else:
-    # Linux / Unix
-    lib = CDLL(str(dir / "build" / "libbloom.so"))
+
+def _load_native_lib():
+    if os.name.lower() == "nt":
+        lib_path = dir / "build" / "libbloom.dll"
+    elif sys.platform == "darwin":
+        lib_path = dir / "build" / "libbloom.dylib"
+    else:
+        lib_path = dir / "build" / "libbloom.so"
+    if not lib_path.is_file():
+        raise OSError(f"Native bloom library not found: {lib_path}")
+    return CDLL(str(lib_path))
+
+lib = _load_native_lib()
 
 lib.bloom_init.restype = c_void_p
 lib.bloom_init.argtypes = [c_size_t, c_size_t, c_size_t]

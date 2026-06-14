@@ -1,12 +1,12 @@
 import tempfile, os
+from typing import Union
+
 try:
-    import magic
+    import filetype
 except ImportError as e:
     raise ImportError(
-        "Missing magic dependencies. "
-        "Please install one of the following according to your platform:\n"
-        "  Windows: pip install scrapy_cffi[windows]\n"
-        "  Linux/macOS: pip install scrapy_cffi[unix]"
+        "Missing filetype dependency for MIME sniffing. "
+        "Install with: pip install filetype  or  pip install scrapy_cffi[media]"
     ) from e
 
 try:
@@ -25,19 +25,20 @@ except ImportError as e:
         "Missing hachoir dependencies. "
         "Please install: pip install hachoir"
     ) from e
-from typing import Union
+
 
 def guess_content_type(byte_data: bytes) -> str:
+    """Guess MIME type from magic bytes (cross-platform via filetype)."""
     try:
-        max_byte_index = 2048
-        if len(byte_data) < max_byte_index:
-            max_byte_index = len(byte_data)
-        mime = magic.Magic(mime=True)
-        mime_type = mime.from_buffer(byte_data[:max_byte_index])
-        return mime_type
+        sample = byte_data[:2048]
+        kind = filetype.guess(sample)
+        if kind is not None:
+            return kind.mime
+        return "application/octet-stream"
     except Exception as e:
         return f"Failed to guess: {e}"
-    
+
+
 def get_image_info_from_bytes(image_bytes: bytes) -> Union[dict, str]:
     try:
         from PIL import Image
@@ -52,7 +53,8 @@ def get_image_info_from_bytes(image_bytes: bytes) -> Union[dict, str]:
             return image_info
     except Exception as e:
         return f"Failed to read image: {e}"
-    
+
+
 def get_video_info_from_bytes(video_bytes: bytes) -> Union[dict, str]:
     import subprocess, json
     try:
@@ -72,12 +74,12 @@ def get_video_info_from_bytes(video_bytes: bytes) -> Union[dict, str]:
             "-print_format", "json",
             "-show_streams",
             "-show_format",
-            "-"
+            "-",
         ]
         result = subprocess.run(cmd, input=video_bytes, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             return f"ffprobe failed: {result.stderr.decode('utf-8')}"
-        
+
         info = json.loads(result.stdout)
         video_stream = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)
         if not video_stream:
@@ -90,7 +92,8 @@ def get_video_info_from_bytes(video_bytes: bytes) -> Union[dict, str]:
         return {"width": width, "height": height, "duration": duration}
     except Exception as e:
         return f"Failed to read video: {e}"
-    
+
+
 def get_image_info_from_tempfile(image_bytes: bytes) -> Union[dict, str]:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
         temp.write(image_bytes)
@@ -113,10 +116,12 @@ def get_image_info_from_tempfile(image_bytes: bytes) -> Union[dict, str]:
         except Exception as e:
             print(f"Failed to delete temporary file: {e}")
 
+
 def get_video_info_from_tempfile(video_bytes: bytes) -> Union[dict, str]:
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp:
         temp.write(video_bytes)
         temp_path = temp.name
+    parser = None
     try:
         parser = createParser(temp_path)
         if not parser:
@@ -124,13 +129,13 @@ def get_video_info_from_tempfile(video_bytes: bytes) -> Union[dict, str]:
         metadata = extractMetadata(parser)
         if not metadata:
             return "Failed to extract video metadata"
-        
+
         video_info = {}
         if metadata.has("duration"):
             video_info["duration"] = metadata.get("duration").total_seconds()
         else:
             return "Failed to get video duration"
-        
+
         if metadata.has("width") and metadata.has("height"):
             video_info["width"] = metadata.get("width")
             video_info["height"] = metadata.get("height")

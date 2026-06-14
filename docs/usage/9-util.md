@@ -1,5 +1,19 @@
 # 1.Introduction
-`scrapy_cffi.utils` provides a set of commonly used utility functions covering multiple areas, mainly focusing on **Concurrency**, **Logging**, **Media**, **JsonLoad**, **Protobuf**, **ScrapyRunner**, **fd** and **envConfig** processing.
+`scrapy_cffi.utils` provides utility submodules for **Concurrency**, **Logging**, **Media**, **JsonLoad**, **Protobuf**, **ScrapyRunner**, **fd** and **envConfig**.
+
+**Import paths (recommended since 0.3.x):**
+
+| Need | Import |
+| ---- | ------ |
+| Hash / ids | `from scrapy_cffi.utils.algorithm import do_sha1` |
+| JSON extract | `from scrapy_cffi.utils.jsonLoad import extract_json_chain` |
+| MIME sniff | `from scrapy_cffi.utils.media import guess_content_type` |
+| .env ↔ settings | `from scrapy_cffi.utils.envConfig import settings_to_env` |
+| FD limits | `from scrapy_cffi.utils.fd import FDUtil` |
+
+Legacy barrel `from scrapy_cffi.utils import do_sha1` still works — symbols load **lazily** (one submodule at a time). Prefer submodule paths in tools/scripts to avoid pulling `robot` / `common` when unused.
+
+Optional media deps: `pip install scrapy_cffi[media]` (`filetype`, `Pillow`, `hachoir`).
 
 
 ---
@@ -159,24 +173,26 @@ logger.info("Child process logger ready")
 
 
 # 4.Media
-Import from `scrapy_cffi.utils.media`
+Import from `scrapy_cffi.utils.media` (requires `pip install scrapy_cffi[media]` or `pip install filetype Pillow hachoir`).
+
 All functions operate directly on byte streams provided as input.
 
 ## 4.1 guess_content_type
 **Purpose**: Detect the MIME type from raw byte content.
 
 **Requirements**:
-- `python-magic` (Unix)
-- `python-magic-bin` (Windows)
+- `filetype` (cross-platform; replaces platform-specific `python-magic`)
 
 **Parameters**:
 - `byte_data: bytes` – raw byte content.
 
 **Returns**:
-- `str` – detected MIME type. With error message if failed.
+- `str` – detected MIME type, or `application/octet-stream` when unknown. Error message string on failure.
 
 **Example Usage**:
 ```python
+from scrapy_cffi.utils.media import guess_content_type
+
 mime_type = guess_content_type(file_bytes)
 print(mime_type)  # e.g., "image/png" or "video/mp4"
 ```
@@ -292,15 +308,16 @@ print(info["width"], info["height"], info["duration"])
 
 **Dependencies & Installation**:
 ```text
-# Python magic library for MIME detection:
-Windows: pip install scrapy_cffi[windows]
-Linux/macOS: pip install scrapy_cffi[unix]
+# MIME detection (cross-platform):
+pip install scrapy_cffi[media]
+# or: pip install filetype
 
 # Pillow for image processing:
 pip install Pillow
 
 # Hachoir for video metadata extraction:
 pip install hachoir
+```
 
 # FFmpeg (ffprobe) for video byte stream parsing:
 Linux: sudo apt install ffmpeg

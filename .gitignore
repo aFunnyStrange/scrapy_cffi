@@ -6,8 +6,8 @@ __pycache__/
 # Distribution / packaging
 *.egg-info/
 build/
-!scrapy_cffi/cpy/cpy_resources/bloom/build/
-!scrapy_cffi/cpy/cpy_resources/bloom/build/**
+scrapy_cffi/cpy/cpy_resources/*/build/*
+!scrapy_cffi/cpy/cpy_resources/*/build/.gitkeep
 dist/
 .eggs/
 *.manifest

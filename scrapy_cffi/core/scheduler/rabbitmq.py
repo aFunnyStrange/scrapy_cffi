@@ -1,9 +1,8 @@
-import asyncio, time
+import asyncio
 from .redis import RedisScheduler
 from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List, Optional
-# from ...utils import run_with_timeout
-from ...extensions import signals, SignalInfo
+from ._signals import emit_request_dropped, emit_request_scheduled
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
@@ -41,17 +40,23 @@ class RabbitMqScheduler(RedisScheduler):
         self.rabbitmqManager = rabbitmqManager
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", spiders_name: List, spider_classes: Optional[List[type]] = None):
+    def from_crawler(
+        cls,
+        crawler: "Crawler",
+        spiders_name: List,
+        spider_classes: Optional[List[type]] = None,
+        settings: Optional["SettingsInfo"] = None,
+    ):
         return cls(
             spiders_name=spiders_name,
             spider_classes=spider_classes,
             stop_event=crawler.stop_event,
-            settings=crawler.settings,
+            settings=settings or crawler.settings,
             sessions=crawler.sessions,
             sessions_lock=crawler.sessions_lock,
             signalManager=crawler.signalManager,
             redisManager=crawler.redisManager,
-            rabbitmqManager=crawler.rabbitmqManager
+            rabbitmqManager=crawler.rabbitmqManager,
         )
     
     async def put(self, request: "Request", spider: "Spider", **kwargs):
@@ -59,17 +64,17 @@ class RabbitMqScheduler(RedisScheduler):
         if is_seen:
             async with self.sessions_lock:
                 self.sessions.release(session_id=request.session_id)
-            self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
+            emit_request_dropped(self.signalManager, request, f"filter: {request.url}")
             return False
         else:
             res = await self.rabbitmqManager.rpush(self.get_queue_key(spider=spider), request.to_bytes())
             if res:
-                self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
+                emit_request_scheduled(self.signalManager, request)
                 return True
             else:
                 async with self.sessions_lock:
                     self.sessions.release(session_id=request.session_id)
-                self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"insert redis error: {request.url}"))
+                emit_request_dropped(self.signalManager, request, f"insert redis error: {request.url}")
                 return False
 
     async def get(self, spider: "Spider"=None, **kwargs):

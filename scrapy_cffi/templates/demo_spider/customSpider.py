@@ -9,7 +9,7 @@ from items.item import CustomItem
 class CustomSpider(Spider):
     name = "customSpider"
     robot_scheme = "http"
-    allowed_domains = ["api.ipify.org", "127.0.0.1:8002", "localhost:8765"]
+    allowed_domains = ["api.ipify.org", "127.0.0.1", "localhost"]
     start_urls = ["http://127.0.0.1:8002"]
     count = 0
 

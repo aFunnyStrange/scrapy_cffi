@@ -1,6 +1,6 @@
 from .base import Extension
-from .signal_manager import SignalManager
 from .singal_info import SignalInfo
+from .signal_manager import SignalManager
 
 __all__ = [
     "Extension",

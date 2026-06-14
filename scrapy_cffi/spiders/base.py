@@ -2,6 +2,7 @@ import asyncio, json
 from pathlib import Path
 from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
+from ..settings import merge_spider_settings
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..core.downloader.internet.response import HttpResponse
@@ -15,6 +16,7 @@ class BaseSpider(object):
     name = "cffiSpider"
     robot_scheme = "https"
     allowed_domains = []
+    settings_overlay = {}  # class-level overrides merged into Crawler.settings per spider
 
     def __init__(self, settings=None, run_py_dir="", stop_event=None, kafkaManager=None, session_id="", hooks=None, *args, **kwargs):
         self.settings: "SettingsInfo" = settings
@@ -44,8 +46,9 @@ class BaseSpider(object):
             raise RuntimeError(
                 "Spider.from_crawler requires a scheduler; pass scheduler= explicitly when multiple spiders are mounted."
             )
+        settings = merge_spider_settings(crawler.settings, cls)
         return cls(
-            settings=crawler.settings,
+            settings=settings,
             run_py_dir=crawler.run_py_dir,
             stop_event=crawler.stop_event,
             kafkaManager=crawler.kafkaManager,

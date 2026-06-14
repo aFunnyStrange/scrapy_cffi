@@ -1,10 +1,24 @@
 # 1.Introduction
 `scrapy_cffi` provides support for loading C extensions. Users only need to configure the relevant information in `SettingsInfo`, and the framework will automatically load all registered C extensions.
 
-**Loading order**:
-```pgsql
-User-level C extension → User-level fallback → Framework-level C extension → Framework-level fallback → Ignore if all fail
+**Loading order** (per module directory):
+
+```text
+Project cpy_resources/<module>  →  System cpy store  →  Framework cpy/cpy_resources/<module>
 ```
+
+Within each directory: `wrapper.py` (ctypes) first, then `fallback.py` if the native library is missing.
+
+**System cpy store** — install user-built binaries once for all projects:
+
+```bash
+scrapy-cffi cinstall --init bloom          # scaffold ./cpy_resources/bloom
+scrapy-cffi cinstall bloom --require-binary  # copy to system store after build
+scrapy-cffi cinstall --list
+scrapy-cffi cinstall --path                  # e.g. ~/.local/share/scrapy_cffi/cpy_resources
+```
+
+Override location: `SCRAPY_CFFI_CPY_DIR`. Framework wheels ship **no prebuilt** native libs (only `wrapper.py` / `fallback.py` / stubs); see `cpy/cpy_resources/bloom/BUILD.md`.
 
 On Windows, C extensions can also be compiled as `.pyd` files. However, `.pyd` is tightly bound to both the OS and the Python version, and requires `#include <Python.h>` in the C source. This makes cross-platform C code more difficult to maintain. Moreover, `.pyd` files can be imported directly in Python without additional configuration, but for consistency and cross-platform support, the framework standardizes all C extension loading via **ctypes**.
 

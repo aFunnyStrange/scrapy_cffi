@@ -1,6 +1,7 @@
 import toml
 from pathlib import Path
 from ._template_build import copytree_merge_text_safe, read_text_template, write_utf8_file
+from ..cpy.scaffold import scaffold_project_cpy_resources
 
 
 def run(project_name, is_demo=False):
@@ -18,6 +19,7 @@ def run(project_name, is_demo=False):
         skip_files={"push_rabbitmq_demo.py"},
     )
     copytree_merge_text_safe(template_dir / "js_path", target / "js_path")
+    scaffold_project_cpy_resources(target)
 
     for docker_file in ["Dockerfile", "docker-compose.yml", ".gitignore", ".dockerignore"]:
         docker_path = template_dir / "config" / docker_file
@@ -36,3 +38,4 @@ def run(project_name, is_demo=False):
         print(f"Project '{project_name}' created.")
         print(f"\tcd {project_name}")
         print(f"\tscrapy-cffi genspider <spider_name> <domain>")
+        print(f"\tcpy_resources/ — optional native modules (see cpy_resources/README.md)")

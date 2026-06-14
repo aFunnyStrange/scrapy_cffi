@@ -1,8 +1,7 @@
-import asyncio, time
+import asyncio
 from ..downloader.internet import Request
 from typing import TYPE_CHECKING, List, Dict, Optional
-# from ...utils import run_with_timeout
-from ...extensions import signals, SignalInfo
+from ._signals import emit_request_dropped, emit_request_scheduled
 from ..sessions import SessionManager
 if TYPE_CHECKING:
     from ...crawler import Crawler
@@ -33,15 +32,21 @@ class BaseScheduler:
         self.is_distributed = False
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler", spiders_name: List, spider_classes: Optional[List[type]] = None):
+    def from_crawler(
+        cls,
+        crawler: "Crawler",
+        spiders_name: List,
+        spider_classes: Optional[List[type]] = None,
+        settings: Optional["SettingsInfo"] = None,
+    ):
         return cls(
             spiders_name=spiders_name,
             spider_classes=spider_classes,
             stop_event=crawler.stop_event,
-            settings=crawler.settings,
+            settings=settings or crawler.settings,
             sessions=crawler.sessions,
             sessions_lock=crawler.sessions_lock,
-            signalManager=crawler.signalManager
+            signalManager=crawler.signalManager,
         )
     
     @staticmethod
@@ -110,19 +115,19 @@ class Scheduler(BaseScheduler):
         # Requests with dont_filter=True or WebSocket requests signaling connection end should not be deduplicated
         if request.dont_filter:
             await self._queue_map[self.get_queue_key(spider=spider)].put(request)
-            self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
+            emit_request_scheduled(self.signalManager, request)
             return True
         else:
             async with self.dupefilter.lock:
                 is_seen = await self.dupefilter.request_seen(request=request)
                 if not is_seen:
                     await self._queue_map[self.get_queue_key(spider=spider)].put(request)
-                    self.signalManager.send(signal=signals.request_scheduled, data=SignalInfo(signal_time=time.time(), request=request))
+                    emit_request_scheduled(self.signalManager, request)
                     return True
                 else:
                     async with self.sessions_lock:
                         self.sessions.release(session_id=request.session_id)
-                    self.signalManager.send(signal=signals.request_dropped, data=SignalInfo(signal_time=time.time(), request=request, reason=f"filter: {request.url}"))
+                    emit_request_dropped(self.signalManager, request, f"filter: {request.url}")
                     return False
 
     async def put_is_req(self, request: "Request", spider: "Spider", **kwargs):

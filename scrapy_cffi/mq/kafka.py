@@ -16,6 +16,7 @@ from tenacity import retry, wait_fixed, retry_if_exception_type
 
 if TYPE_CHECKING:
     from ..crawler import Crawler
+    from ..models.mq import KafkaInfo
 
 def auto_retry(func):
     @wraps(func)
@@ -69,13 +70,19 @@ class KafkaManager:
         self._method_cache: Dict[str, callable] = {}
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_kafka_info(cls, stop_event: asyncio.Event, info: "KafkaInfo"):
+        if not info.resolved_url:
+            raise ValueError("KafkaManager.from_kafka_info requires KAFKA_INFO URL or cluster nodes")
         return cls(
-            stop_event=crawler.stop_event,
-            kafka_url=crawler.settings.KAFKA_INFO.resolved_url,
-            consumer_group=crawler.settings.KAFKA_INFO.CONSUMER_GROUP,
-            persistent_time=crawler.settings.KAFKA_INFO.PERSISTENT_TIME,
+            stop_event=stop_event,
+            kafka_url=info.resolved_url,
+            consumer_group=info.CONSUMER_GROUP,
+            persistent_time=info.PERSISTENT_TIME,
         )
+
+    @classmethod
+    def from_crawler(cls, crawler: "Crawler"):
+        return cls.from_kafka_info(crawler.stop_event, crawler.settings.KAFKA_INFO)
 
     @auto_retry
     async def connect(self):

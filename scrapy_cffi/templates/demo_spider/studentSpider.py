@@ -6,7 +6,7 @@ from copy import deepcopy
 class StudentSpider(Spider):
     name = "student"
     robot_scheme = "http"
-    allowed_domains = ["127.0.0.1:8002", "127.0.0.1:8765"]
+    allowed_domains = ["127.0.0.1", "localhost"]
 
     school_id = int(random.random() * 100)
     count = 0
