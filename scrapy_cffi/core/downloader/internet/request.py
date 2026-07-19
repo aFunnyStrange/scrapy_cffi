@@ -1,10 +1,11 @@
 import json as jsonlib
-import gzip, base64, warnings
+import base64, warnings
 from curl_cffi.const import CurlWsFlag
 from urllib.parse import urlencode
 from typing import Optional, Union, Dict, Tuple, List
 from ....models.api import WebSocketMsg
 from ....utils import ProtobufFactory
+from ....utils.state_codec import decode_state, encode_state
 from .registry import register_request_class, get_request_class
 
 class Request(object):
@@ -112,12 +113,11 @@ class Request(object):
     def to_bytes(self) -> bytes:
         d = self.to_dict()
         d["class"] = self.__class__.__name__
-        json_bytes = jsonlib.dumps(d, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        return gzip.compress(json_bytes)
+        return encode_state(d)
 
     @classmethod
     def from_bytes(cls, b: bytes) -> "Request":
-        d = jsonlib.loads(gzip.decompress(b).decode("utf-8"))
+        d = decode_state(b)
         cls_name = d.pop("class", None)
         actual_cls: Union[HttpRequest, WebSocketRequest] = get_request_class(cls_name)
         return actual_cls._from_dict(d)

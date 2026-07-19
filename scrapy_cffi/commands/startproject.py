@@ -21,7 +21,13 @@ def run(project_name, is_demo=False):
     copytree_merge_text_safe(template_dir / "js_path", target / "js_path")
     scaffold_project_cpy_resources(target)
 
-    for docker_file in ["Dockerfile", "docker-compose.yml", ".gitignore", ".dockerignore"]:
+    for docker_file in [
+        "Dockerfile",
+        "docker-compose.yml",
+        "requirements.txt",
+        ".gitignore",
+        ".dockerignore",
+    ]:
         docker_path = template_dir / "config" / docker_file
         target_path = target / docker_file
         write_utf8_file(target_path, read_text_template(docker_path))

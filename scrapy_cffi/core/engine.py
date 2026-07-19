@@ -39,6 +39,13 @@ class Engine:
             base_req_limit = 100
         self.max_inflight_downloader_tasks = max(int(base_req_limit) * 2, 50)
 
+        # Select the hot scheduling path once. The loop no longer branches on
+        # scheduler.is_distributed for every dequeued request.
+        if self.scheduler.is_distributed:
+            self.scheduler_loop = self._distributed_scheduler_loop
+        else:
+            self.scheduler_loop = self._local_scheduler_loop
+
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if crawler.kafkaManager:
@@ -85,77 +92,104 @@ class Engine:
                 callfunc=CallFunction(func=self.get_spider_output, output=output, mark_as_start=True)
             )
 
-    async def scheduler_loop(self):
+    async def _at_downloader_limit(self) -> bool:
+        inflight = await self.taskManager.count_active_tasks_for_obj(
+            id(self),
+            prefixes=("process_downloader",),
+        )
+        if inflight < self.max_inflight_downloader_tasks:
+            return False
+        await asyncio.sleep(0.01)
+        return True
+
+    async def _distributed_scheduler_loop(self):
         distributed_empty = False # Avoid unlimited sending
         end_count = self.settings.SCHEDULER_LOOP_END
         is_queue_wait_spider = bool(
-            getattr(self.spider, "redis_key", None) or getattr(self.spider, "rabbitmq_queue", None)
+            getattr(self.spider, "wait_for_start_requests", False)
         )
         try:
             while not self.stop_event.is_set():
-                try:
-                    inflight_downloader = await self.taskManager.count_active_tasks_for_obj(
-                        id(self),
-                        prefixes=("process_downloader",),
-                    )
-                    if inflight_downloader >= self.max_inflight_downloader_tasks:
-                        # Backpressure for run_all_spiders: avoid one high-volume spider
-                        # flooding shared loop and starving queue-waiting spiders.
-                        await asyncio.sleep(0.01)
-                        continue
-
-                    if self.scheduler.is_distributed:
-                        request = await self.scheduler.get(spider=self.spider)
-                        if isinstance(request, int) and (not request): # scheduler empty
-                            if not distributed_empty:
-                                self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                            distributed_empty = True
-                            
-                            if end_count is not None:
-                                end_count -= 1
-                                if end_count <= 0:
-                                    return
-                            # In run_all_spiders, a finite spider (plain Spider with start_urls)
-                            # should be allowed to finish even when another queue-waiting spider
-                            # stays alive in the same loop.
-                            if (end_count is None) and (not is_queue_wait_spider):
-                                has_local_work = await self.taskManager.has_active_tasks_for_obj(
-                                    id(self),
-                                    exclude_prefixes=("scheduler_loop",),
-                                )
-                                if not has_local_work:
-                                    return
-                        elif isinstance(request, Request):
-                            distributed_empty = False
-                            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-                    else:
-                        request = await asyncio.wait_for(self.scheduler.get(spider=self.spider), timeout=1.0)
-                        if isinstance(request, Request):
-                            await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-                except asyncio.TimeoutError:
-                    if self.scheduler.empty(spider=self.spider):
-                        if await self.taskManager.has_active_tasks_except("scheduler_loop"):
-                            continue
-                        self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                        return
+                if await self._at_downloader_limit():
                     continue
+                request = await self.scheduler.get(spider=self.spider)
+                if isinstance(request, int) and (not request): # scheduler empty
+                    if not distributed_empty:
+                        self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
+                    distributed_empty = True
+                    if end_count is not None:
+                        end_count -= 1
+                        if end_count <= 0:
+                            return
+                    if (end_count is None) and (not is_queue_wait_spider):
+                        has_local_work = await self.taskManager.has_active_tasks_for_obj(
+                            id(self),
+                            exclude_prefixes=("_distributed_scheduler_loop",),
+                        )
+                        if not has_local_work:
+                            return
+                elif isinstance(request, Request):
+                    distributed_empty = False
+                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
         except asyncio.CancelledError:
             raise
 
-    async def get_spider_output(self, output, response=None, mark_as_start=False):
-        async for single_result in _ensure_asyncgen(output):
-            if isinstance(single_result, Request) and mark_as_start:
-                single_result.meta["is_start_url"] = True
-            async for item in self.spiderInterceptor_chain.process_spider_output_chain(
-                response=response,
-                result=single_result,
-                spider=self.spider
-            ):
-                await self.taskManager.create(callfunc=CallFunction(func=self.manager_spiderinterceptors_result, spiderinterceptors_result=item))
+    async def _local_scheduler_loop(self):
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    if await self._at_downloader_limit():
+                        continue
+                    request = await asyncio.wait_for(
+                        self.scheduler.get(spider=self.spider),
+                        timeout=1.0,
+                    )
+                    if isinstance(request, Request):
+                        await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
+                except asyncio.TimeoutError:
+                    if not self.scheduler.empty(spider=self.spider):
+                        continue
+                    has_local_work = await self.taskManager.has_active_tasks_for_obj(
+                        id(self),
+                        exclude_prefixes=("_local_scheduler_loop",),
+                    )
+                    if has_local_work:
+                        continue
+                    self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
+                    return
+        except asyncio.CancelledError:
+            raise
 
-    async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult):
+    async def get_spider_output(self, output, response=None, mark_as_start=False, source_request=None):
+        completed = False
+        try:
+            async for single_result in _ensure_asyncgen(output):
+                if isinstance(single_result, Request) and mark_as_start:
+                    single_result.meta["is_start_url"] = True
+                async for item in self.spiderInterceptor_chain.process_spider_output_chain(
+                    response=response,
+                    result=single_result,
+                    spider=self.spider
+                ):
+                    if source_request is not None:
+                        # Broker acknowledgement must happen after every child
+                        # request/item has actually crossed its next boundary.
+                        await self.manager_spiderinterceptors_result(item, wait_for_boundary=True)
+                    else:
+                        await self.taskManager.create(callfunc=CallFunction(func=self.manager_spiderinterceptors_result, spiderinterceptors_result=item))
+            completed = True
+        finally:
+            if completed and source_request is not None:
+                complete = getattr(self.scheduler, "complete_request", None)
+                if complete:
+                    await complete(source_request, self.spider)
+
+    async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult, wait_for_boundary=False):
         if spiderinterceptors_result.next == ChainNextEnum.RESCHEDULE:
-            await self.taskManager.create(callfunc=CallFunction(func=self.enqueue_request, request=spiderinterceptors_result.request))
+            if wait_for_boundary:
+                await self.enqueue_request(request=spiderinterceptors_result.request)
+            else:
+                await self.taskManager.create(callfunc=CallFunction(func=self.enqueue_request, request=spiderinterceptors_result.request))
         elif spiderinterceptors_result.next == ChainNextEnum.SPIDER:
             await self.process_response(response=spiderinterceptors_result.response, request=spiderinterceptors_result.request)
         elif spiderinterceptors_result.next == ChainNextEnum.PIPELINE:
@@ -244,6 +278,9 @@ class Engine:
         if isinstance(response, BaseException):
             output = self.get_backFunc(backFunc=request.errback, response=response, fill_text=f"Response error {str(response)} with no errback provided, ignoring this request")
             if not output:
+                complete = getattr(self.scheduler, "complete_request", None)
+                if complete:
+                    await complete(request, self.spider)
                 return
         elif isinstance(response, Response):
             await self.scheduler.put_is_req(request=request, spider=self.spider)
@@ -251,7 +288,7 @@ class Engine:
         else:
             return
         if not self.stop_event.is_set():
-            await self.taskManager.create(callfunc=CallFunction(func=self.get_spider_output, output=output, response=response))
+            await self.taskManager.create(callfunc=CallFunction(func=self.get_spider_output, output=output, response=response, source_request=request))
 
     # manager callback
     def get_backFunc(self, backFunc=None, response: Union[Response, BaseException]=None, fill_text=""):

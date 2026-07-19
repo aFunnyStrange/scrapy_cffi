@@ -14,7 +14,7 @@ FieldDefDict = TypedDict(
         "type": str,
         "message_type_name": str,
         "message_typedef": TypeDefDict,
-        "alt_typedefs": Dict[str, str | TypeDefDict],
+        "alt_typedefs": Dict[str, Union[str, TypeDefDict]],
         "example_value_ignored": Any,
         "seen_repeated": bool,
         "field_order": List[str],

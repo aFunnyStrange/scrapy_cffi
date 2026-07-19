@@ -6,6 +6,7 @@
 # Safe async cleanup: Uses a background task (_reaper_loop) to close sessions when no longer needed.
 
 import asyncio, hashlib, random
+from http.cookiejar import Cookie
 from curl_cffi import requests
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
@@ -13,6 +14,7 @@ from .downloader.internet import MediaRequest
 from ..utils.algorithm import create_uniqueId
 from ..utils.common import run_with_timeout
 from ..utils.concurrency import safe_call
+from ..utils.state_codec import decode_state, encode_state
 if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
@@ -353,6 +355,38 @@ class SessionWrapper:
         for ck, val in cookies_dict.items():
             self.session.cookies.set(ck, val)
 
+    def export_cookies(self) -> List[Dict]:
+        """Return the complete cookie jar as JSON-safe records."""
+        return [
+            {
+                "version": cookie.version,
+                "name": cookie.name,
+                "value": cookie.value,
+                "port": cookie.port,
+                "port_specified": cookie.port_specified,
+                "domain": cookie.domain,
+                "domain_specified": cookie.domain_specified,
+                "domain_initial_dot": cookie.domain_initial_dot,
+                "path": cookie.path,
+                "path_specified": cookie.path_specified,
+                "secure": cookie.secure,
+                "expires": cookie.expires,
+                "discard": cookie.discard,
+                "comment": cookie.comment,
+                "comment_url": cookie.comment_url,
+                "rest": getattr(cookie, "_rest", {}),
+                "rfc2109": cookie.rfc2109,
+            }
+            for cookie in self.session.cookies.jar
+        ]
+
+    def import_cookies(self, cookies: List[Dict], replace: bool = True) -> None:
+        """Restore cookie records without losing domain/path/expiry metadata."""
+        if replace:
+            self.session.cookies.clear()
+        for data in cookies:
+            self.session.cookies.jar.set_cookie(Cookie(**data))
+
     async def session_close(self):
         await self.session.close()
 
@@ -391,6 +425,8 @@ class SessionManager:
 
         # A deduplication set to prevent the same session_id from being added multiple times to the close queue.
         self._pending_close_set: Set[str] = set()
+        self._restored_session_fields: Set[tuple[str, str]] = set()
+        self._frozen = False
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if self.kafkaManager:
@@ -527,6 +563,8 @@ class SessionManager:
             raise
 
     async def _safe_close(self, session_id: str):
+        if self._frozen:
+            return
         if self.is_default_session(session_id) or (not session_id):
             return
         wrapper = self._sessions.pop(session_id, None)
@@ -549,6 +587,66 @@ class SessionManager:
                 ret_cookies = {session_id: wrapper.session.cookies.get_dict()}
         return ret_cookies
 
+    @staticmethod
+    def _state_field(session_id: str) -> str:
+        return "D" if not session_id else f"S:{session_id}"
+
+    async def persist_session(self, redis_manager, state_key: str, session_id: str) -> bool:
+        """Persist one logical session into a Redis Hash field."""
+        field = self._state_field(session_id)
+        if session_id in self._group_sessions:
+            members = {}
+            for member_id in self._group_sessions[session_id]:
+                wrapper = self._sessions.get(member_id)
+                if wrapper:
+                    members[member_id] = wrapper.export_cookies()
+            state = {"kind": "group", "members": members}
+        else:
+            actual_id = session_id or self._default_session_id
+            wrapper = self._sessions.get(actual_id)
+            if not wrapper:
+                return False
+            state = {"kind": "session", "cookies": wrapper.export_cookies()}
+
+        await redis_manager.hset(state_key, field, encode_state(state))
+        self._restored_session_fields.add((state_key, field))
+        return True
+
+    async def persist_all(self, redis_manager, state_key: str) -> int:
+        """Snapshot all live sessions, used for a graceful persistent shutdown."""
+        logical_ids = set(self._sessions)
+        logical_ids.discard(self._default_session_id)
+        logical_ids.update(self._group_sessions)
+        logical_ids.add("")
+        persisted = 0
+        for session_id in logical_ids:
+            persisted += int(await self.persist_session(redis_manager, state_key, session_id))
+        return persisted
+
+    async def restore_session(self, redis_manager, state_key: str, session_id: str) -> bool:
+        """Lazily restore only the session referenced by a dequeued request."""
+        field = self._state_field(session_id)
+        marker = (state_key, field)
+        if marker in self._restored_session_fields:
+            return False
+        payload = await redis_manager.hget(state_key, field)
+        self._restored_session_fields.add(marker)
+        if payload is None:
+            return False
+
+        state = decode_state(payload)
+        if state["kind"] == "group":
+            member_ids = []
+            for member_id, cookies in state["members"].items():
+                wrapper = self.get_or_create_session(member_id)
+                wrapper.import_cookies(cookies)
+                member_ids.append(member_id)
+            self._group_sessions[session_id] = member_ids
+        else:
+            wrapper = self.get_or_create_session(session_id)
+            wrapper.import_cookies(state["cookies"])
+        return True
+
     async def close_all(self) -> None:
         reaper_task = getattr(self, "_reaper_task", None)
         if reaper_task and not reaper_task.done():
@@ -557,6 +655,7 @@ class SessionManager:
                 await reaper_task
             except asyncio.CancelledError:
                 pass
+        self._frozen = False
         await asyncio.gather(*[self._safe_close(session_id) for session_id in list(self._sessions.keys())])
         self._sessions.clear()
         self._ref_counts.clear()

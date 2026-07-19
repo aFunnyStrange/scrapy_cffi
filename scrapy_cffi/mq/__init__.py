@@ -14,6 +14,7 @@ from typing import Any
 _LAZY_EXPORTS = {
     "RabbitMQManager": (".rabbitmq", "RabbitMQManager"),
     "KafkaManager": (".kafka", "KafkaManager"),
+    "KafkaMessage": (".kafka", "KafkaMessage"),
 }
 
 __all__ = sorted(_LAZY_EXPORTS)

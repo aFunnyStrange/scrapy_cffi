@@ -74,6 +74,7 @@ class SettingsInfo(BaseValidatedModel):
     DUPEFILTER: Optional[str] = None
     BLOOM_INFO: Optional[BloomInfo] = BloomInfo()
     SCHEDULER_PERSIST: Optional[bool] = False
+    SCHEDULER_SESSION_KEY: Optional[str] = None # Redis Hash key for compressed session cookies; defaults to `{queue_key}:sessions`.
     DEDUP_TTL: Optional[int] = 0
     INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
     FILTER_KEY: Optional[str] = "cffiFilter"

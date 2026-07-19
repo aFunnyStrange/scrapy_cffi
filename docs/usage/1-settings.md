@@ -414,6 +414,10 @@ This configuration is used to define parameters for the `DUPEFILTER` when using 
 ### 2.5.4 SCHEDULER_PERSIST
 - **Type**: Optional[bool]
 - **Default**: False
+- **Persistent sessions**: When enabled, session cookies survive a restart. They are stored in a Redis Hash (one field per `session_id`) as compact JSON with adaptive zlib compression, and restored lazily when a queued request is dequeued. Request queue payloads use the same compact, versioned codec. Binary payloads are stored directly without outer Base64 encoding, which avoids its memory overhead.
+- **State size boundary**: A single decoded request/session state is limited to 16 MiB. Oversized states and compressed payloads that expand beyond this limit are rejected so Redis/MQ messages cannot exhaust crawler memory; large files belong in object/file storage and the queue should contain only their references.
+- **Session Hash key**: Defaults to `{scheduler_queue_key}:sessions`. Set `SCHEDULER_SESSION_KEY` to use an explicit key.
+- **Ctrl+C ordering**: Active tasks are cancelled while broker writes are still available. Unfinished Redis/RabbitMQ work and start requests are returned to their queues; Kafka offsets remain uncommitted. Session cookies are then snapshotted before the global stop event disables Redis writes.
 - **Description**: Whether to persist scheduler state. If **False**, Redis data (ingress queue, work queue, dedup keys) is cleared when the crawler shuts down — including **Ctrl+C** via `runner.py` → `crawler.shutdown()`.
 
 **Notes**:
@@ -421,6 +425,11 @@ In **cluster mode**, due to the nature of **jump hash operations** across nodes,
 To mitigate this, you can use `DEDUP_TTL` to enable **TTL-based automatic expiration** in Redis.
 
 Since **0.3.2**, dedup key deletion uses `RedisDupeFilter.dedup_cleanup_keys()` (backed by `DedupKeyRouter.cleanup_keys()`). See [15-deduplication.md](./15-deduplication.md).
+
+#### 2.5.4.1 SCHEDULER_SESSION_KEY
+- **Type**: Optional[str]
+- **Default**: None
+- **Description**: Optional Redis Hash key for persisted session cookies. Leave unset to isolate session state automatically per scheduler queue.
 
 ---
 
@@ -648,6 +657,7 @@ Basic configuration items for all databases.
 
 **Notes**: 
 This setting determines how other fields (`SENTINELS`, `MASTER_NAME`, `CLUSTER_NODES`) are interpreted.
+When constructed from `.env`/structured configuration, a non-empty `SENTINELS` or `CLUSTER_NODES` list automatically selects Sentinel or Cluster mode. Explicit `MODE` remains supported.
 
 ---
 
@@ -672,17 +682,26 @@ This setting determines how other fields (`SENTINELS`, `MASTER_NAME`, `CLUSTER_N
 ---
 
 #### 2.9.2.4 CLUSTER_NODES
-- **Type**: Optional[List[dict]]
+- **Type**: Optional[List[Union[dict, str]]]
 - **Default**: []
 - **Description**: Required when `MODE` is `CLUSTER`. Configures all startup nodes for the Redis cluster.
 - **Format Example**: 
 ```python
 [
-    {"host": "127.0.0.1", "port": 7000},
-    {"host": "127.0.0.2", "port": 7001}
+    "redis-cluster-01.internal:6379",
+    "redis-cluster-02.internal:6379",
+    {"host": "redis-cluster-03.internal", "port": 6379},
 ]
 ```
 - **Behavior**: The framework uses these nodes to initialize the cluster client and automatically discovers other nodes.
+
+#### 2.9.2.5 Production connection options
+
+- `USERNAME` / `PASSWORD`: Redis ACL credentials, applied in single, Sentinel, and Cluster modes.
+- `SENTINEL_USERNAME` / `SENTINEL_PASSWORD`: separate Sentinel control-plane credentials.
+- `CONNECT_TIMEOUT` / `SOCKET_TIMEOUT`: connection and command timeouts.
+- `SSL` / `SSL_CERT_REQS`: TLS connection controls.
+- `CLUSTER_ADDRESS_REMAP`: optional `{advertised_host: reachable_host}` mapping for networks where Redis advertises private names. Normal production DNS requires no mapping.
 
 ---
 
@@ -835,6 +854,8 @@ Provides the list of all cluster node URLs, e.g.:
 ["amqp://user:pass@host1:5672/vhost", "amqp://user:pass@host2:5672/vhost", ...]
 ```
 
+A non-empty list automatically selects cluster mode. Production RabbitMQ nodes should use authenticated `amqp://` or TLS `amqps://` URLs; the built-in `guest` account is only for local simulation. `CONNECTION_TIMEOUT` and `HEARTBEAT` control failover responsiveness.
+
 
 ---
 
@@ -894,7 +915,18 @@ Provides the list of all cluster node URLs, e.g.:
 #### 2.10.3.2 PERSISTENT_TIME
 - **Type**: Optional[str]
 - **Default**: 7*24*60*60*1000 (7 days in milliseconds)
-- **Description**: The message retention time in Kafka topics. After this period, old messages are subject to deletion according to Kafka’s cleanup policy.
+- **Description**: The message retention time in Kafka topics. After this period, old messages are subject to deletion according to Kafka cleanup policy.
+
+#### 2.10.3.3 Request queue options
+- `NUM_PARTITIONS` (default `3`): partitions created for Kafka topics.
+- `REPLICATION_FACTOR` (default inferred): `1` for a single endpoint, otherwise the number of configured cluster bootstrap nodes unless explicitly set.
+- `AUTO_OFFSET_RESET` (default `"earliest"`): initial position when a consumer group has no committed offset.
+
+Production client security fields are passed to every Kafka producer, consumer, and admin connection: `CLIENT_ID`, `REQUEST_TIMEOUT_MS`, `SECURITY_PROTOCOL`, `SASL_MECHANISM`, `SASL_USERNAME`, `SASL_PASSWORD`, `SSL_CAFILE`, `SSL_CERTFILE`, and `SSL_KEYFILE`.
+
+For Kafka, `HOST` + `PORT` resolves to the native `host:port` bootstrap format (without an AMQP/URL scheme). `URL="host:port"` and `CLUSTER_NODES=["host1:port", ...]` are also supported.
+
+`KafkaSpider` uses separate start/work topics and manual offset commits. With `SCHEDULER_PERSIST=True`, Redis dedup/session state is also retained; unfinished Kafka records remain uncommitted and replay after Ctrl+C.
 
 ---
 

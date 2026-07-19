@@ -45,7 +45,12 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.BloomDupeFilter" # In-memory Bloom filter deduplication
     # settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisBloomDupeFilter" # Enable Redis Bloom filter deduplication
 
-    if used_rabbitmq:
+    if used_kafka:
+        settings.SCHEDULER_PERSIST = True
+        settings.SCHEDULER = "scrapy_cffi.scheduler.KafkaScheduler"
+        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Deduplication and persisted session cookies
+        settings.KAFKA_INFO.URL = "localhost:9092"
+    elif used_rabbitmq:
         settings.SCHEDULER_PERSIST = True
         settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Used for request deduplication
@@ -64,9 +69,6 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         #     GROUP_NAME="demo-group",
         # )
         # settings.SCHEDULER_LOOP_END = 5
-
-    if used_kafka:
-        settings.KAFKA_INFO.URL = "localhost:9092"
 
     # settings.LOG_INFO.LOG_FILE = "demo.log"
 

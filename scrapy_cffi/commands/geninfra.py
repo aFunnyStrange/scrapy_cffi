@@ -11,6 +11,19 @@ GENERATED_DIRS = {
     "kafka-cluster",
 }
 GENERATED_FILES = {
+    # Legacy geninfra versions copied these application-image files.
+    ".dockerignore",
+    "Dockerfile",
+    ".env.example",
+    ".gitignore",
+    "docker-compose.yml",
+    "destroy.ps1",
+    "destroy.sh",
+    "init.ps1",
+    "init.sh",
+    "reset.ps1",
+    "reset.sh",
+    "production-endpoints.example.toml",
     "topology.example.toml",
     "README.md",
 }
@@ -23,20 +36,20 @@ def _clean_generated(target: Path) -> None:
 
     removed = []
     for name in GENERATED_DIRS:
-        p = target / name
-        if p.exists():
-            shutil.rmtree(p)
-            removed.append(str(p.name))
+        path = target / name
+        if path.exists():
+            shutil.rmtree(path)
+            removed.append(str(path.name))
 
     for name in GENERATED_FILES:
-        p = target / name
-        if p.exists():
-            p.unlink()
-            removed.append(str(p.name))
+        path = target / name
+        if path.exists():
+            path.unlink()
+            removed.append(str(path.name))
 
-    # Remove empty root dir if it was created only for infra templates
+    # Preserve .env because it may contain developer-owned credentials/ports.
     try:
-        if target.is_dir() and (not any(target.iterdir())):
+        if target.is_dir() and not any(target.iterdir()):
             target.rmdir()
             removed.append("<output-dir>")
     except OSError:
@@ -65,57 +78,79 @@ def run(
 
     target.mkdir(parents=True, exist_ok=True)
 
-    # Always generate a complete single-node baseline stack first.
-    for docker_file in ["Dockerfile", "docker-compose.yml", ".gitignore", ".dockerignore"]:
-        src = template_dir / "config" / docker_file
-        dst = target / docker_file
-        write_utf8_file(dst, read_text_template(src))
+    infra_files = (
+        ".env.example",
+        ".gitignore",
+        "docker-compose.yml",
+        "destroy.ps1",
+        "destroy.sh",
+        "init.ps1",
+        "init.sh",
+        "reset.ps1",
+        "reset.sh",
+    )
+    for infra_file in infra_files:
+        source = template_dir / "infra" / infra_file
+        destination = target / infra_file
+        write_utf8_file(destination, read_text_template(source))
+        if destination.suffix == ".sh":
+            destination.chmod(0o755)
 
     if generate_all:
-        # --all means: generate all core infra in single-node baseline mode.
-        redis_modes = ()
-        rabbit_modes = ()
-        kafka_modes = ()
-        redis_topology = "single"
-        rabbitmq_topology = "single"
-        kafka_topology = "single"
+        redis_modes = ("sentinel", "cluster")
+        rabbit_modes = ("cluster",)
+        kafka_modes = ("cluster",)
     else:
-        redis_modes = tuple(m for m in (redis_topology,) if m != "single")
-        rabbit_modes = tuple(m for m in (rabbitmq_topology,) if m != "single")
-        kafka_modes = tuple(m for m in (kafka_topology,) if m != "single")
+        redis_modes = tuple(mode for mode in (redis_topology,) if mode != "single")
+        rabbit_modes = tuple(mode for mode in (rabbitmq_topology,) if mode != "single")
+        kafka_modes = tuple(mode for mode in (kafka_topology,) if mode != "single")
 
-    summary_lines = ["- Base single-node stack generated: `docker-compose.yml` + `Dockerfile`"]
+    summary_lines = [
+        "- Single-node dev services: Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, Kafka",
+        "- Initialize: `./init.sh` or `./init.ps1`",
+        "- Reset all generated-stack data: `./reset.sh` or `./reset.ps1`",
+        "- Destroy the selected project-local stack: `./destroy.sh` or `./destroy.ps1`",
+        "- Docker topologies are local simulations only; production uses real infrastructure addresses",
+    ]
     for mode in redis_modes:
-        src = template_dir / "topologies" / f"redis-{mode}"
-        dst = target / f"redis-{mode}"
-        copytree_merge_text_safe(src, dst)
-        summary_lines.append(f"- Redis override template: `{dst.name}`")
+        source = template_dir / "topologies" / f"redis-{mode}"
+        destination = target / f"redis-{mode}"
+        copytree_merge_text_safe(source, destination)
+        summary_lines.append(f"- Redis override template: `{destination.name}`")
 
     for mode in rabbit_modes:
-        src = template_dir / "topologies" / f"rabbitmq-{mode}"
-        dst = target / f"rabbitmq-{mode}"
-        copytree_merge_text_safe(src, dst)
-        summary_lines.append(f"- RabbitMQ override template: `{dst.name}`")
+        source = template_dir / "topologies" / f"rabbitmq-{mode}"
+        destination = target / f"rabbitmq-{mode}"
+        copytree_merge_text_safe(source, destination)
+        summary_lines.append(f"- RabbitMQ override template: `{destination.name}`")
 
     for mode in kafka_modes:
-        src = template_dir / "topologies" / f"kafka-{mode}"
-        dst = target / f"kafka-{mode}"
-        copytree_merge_text_safe(src, dst)
-        summary_lines.append(f"- Kafka override template: `{dst.name}`")
+        source = template_dir / "topologies" / f"kafka-{mode}"
+        destination = target / f"kafka-{mode}"
+        copytree_merge_text_safe(source, destination)
+        summary_lines.append(f"- Kafka override template: `{destination.name}`")
 
-    profile_toml = template_dir / "topologies" / "topology.example.toml"
-    write_utf8_file(target / "topology.example.toml", read_text_template(profile_toml))
+    profile_toml = template_dir / "topologies" / "production-endpoints.example.toml"
+    write_utf8_file(
+        target / "production-endpoints.example.toml",
+        read_text_template(profile_toml),
+    )
 
     readme = (
         "# Infra templates\n\n"
         "Generated by `scrapy-cffi geninfra`.\n"
-        "Default output is a complete single-node stack in `docker-compose.yml`.\n"
+        "This directory is an independent local-development stack; it is not part of the crawler image.\n"
+        "The default `docker-compose.yml` provides Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka.\n"
+        "Run `./init.sh` (Linux/macOS) or `./init.ps1` (PowerShell) to initialize it.\n"
+        "Reset deletes only volumes owned by the current crawler project and selected topology, then recreates it.\n"
+        "Choose a local topology with `--topology`; reset recreates it, while destroy removes it without restart.\n"
+        "Compose project names include the crawler project directory and topology to prevent cross-project pollution.\n"
         "For non-single topologies, optional per-service templates are generated in subdirectories.\n"
-        "Fill `topology.example.toml` and adjust compose files for your environment.\n\n"
+        "`production-endpoints.example.toml` is a settings reference for real machine endpoints, not a Docker deployment file.\n\n"
         "Docs: [docs/usage/11-mq.md](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/usage/11-mq.md) · "
         "Broker tests: [tests/test_broker/README.md](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_broker/README.md)\n\n"
-        "**Note:** Local multi-container compose simulates cluster/sentinel on one host; "
-        "production multi-host orchestration is still your responsibility.\n\n"
+        "**Production boundary:** never deploy these data services with the crawler. "
+        "Containerize only the crawler and configure real database/MQ machine addresses in settings.\n\n"
         + "\n".join(summary_lines)
         + "\n"
     )

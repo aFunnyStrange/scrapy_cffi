@@ -55,7 +55,10 @@ def resolve_redis_ingress(spider: "Spider", settings: "SettingsInfo") -> RedisIn
     mode_raw = _pick_spider_value(spider, "redis_start_mode")
     if mode_raw is None and stream_defaults:
         mode_raw = stream_defaults.MODE
-    mode = RedisIngressMode(str(mode_raw or RedisIngressMode.LIST))
+    if isinstance(mode_raw, RedisIngressMode):
+        mode = mode_raw
+    else:
+        mode = RedisIngressMode(str(mode_raw or RedisIngressMode.LIST.value))
 
     group_name = _pick_spider_value(spider, "redis_group", "redis_xgroup")
     if group_name is None and stream_defaults:

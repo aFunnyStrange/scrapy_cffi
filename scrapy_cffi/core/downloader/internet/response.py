@@ -8,7 +8,7 @@ class Response(object):
     def __init__(self,
         session_id="",
         raw_response: CffiResponse=None,
-        meta={},
+        meta=None,
         dont_filter=None,
         callback=None,
         errback=None,
@@ -18,7 +18,7 @@ class Response(object):
     ) -> None:
         self.session_id = session_id
         self.raw_response = raw_response
-        self.meta = meta
+        self.meta = meta or {}
         self.dont_filter = dont_filter
         self.callback = callback
         self.errback = errback
@@ -30,7 +30,7 @@ class HttpResponse(Response):
     def __init__(self, 
         session_id="",
         raw_response: CffiResponse=None,
-        meta={},
+        meta=None,
         dont_filter=None,
         callback=None,
         errback=None,
@@ -97,7 +97,7 @@ class WebSocketResponse(Response):
         session_id="",
         websocket_id="",
         msg=b'',
-        meta={},
+        meta=None,
         callback=None,
         errback=None,
         desc_text="",

@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.2** release: [docs/RELEASE-0.3.2.md](docs/RELEASE-0.3.2.md) · **0.3.1** tools: [docs/RELEASE-0.3.1.md](docs/RELEASE-0.3.1.md)
 
 ## [Unreleased]
-None
+### Added
+- `KafkaSpider` / `KafkaScheduler` with separate start and work topics, compressed request payloads, Redis-backed dedup/session state, and manual contiguous offset commits.
+- Persistent Session Cookie Hash state and adaptive request-state compression.
+- Independent `geninfra` development stack for Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka, with PowerShell/shell `init`, `reset`, and `destroy` scripts.
+- `geninfra --all` local simulations for Redis Sentinel/Cluster, RabbitMQ Cluster, and Kafka Cluster. Compose project names derive from crawler project + topology, isolating containers, networks, and volumes across projects.
+- `production-endpoints.example.toml` and production connection settings for real infrastructure hosts: Redis ACL/Sentinel auth/TLS/timeouts/address remap, RabbitMQ timeout/heartbeat, and Kafka SASL/TLS/client timeout.
+
+### Changed
+- Project Docker Compose now contains only the crawler application and no longer owns or waits for database/MQ containers.
+- Docker infrastructure templates are explicitly development-only. Production containerizes the crawler application and connects directly to databases/MQ on real machines or native clusters.
+- Redis and MQ node lists infer Sentinel/cluster mode; Kafka replication defaults to the configured bootstrap-node count for constructed cluster settings.
+- Local Kafka Compose and broker-test stacks use the official Apache Kafka KRaft image; obsolete Bitnami/ZooKeeper instructions were removed.
+
+### Removed
+- The obsolete demo README and monolithic project Compose database/MQ definitions. Generated demos now use the topology-aware local-infra guide.
+
+### Fixed
+- Ctrl+C now cancels active work before broker shutdown, requeues unfinished Redis/RabbitMQ requests, leaves Kafka offsets uncommitted, and snapshots Session cookies before Redis writes are disabled.
+- `KafkaInfo(HOST=..., PORT=...)` now produces a native `host:port` bootstrap endpoint instead of inheriting the AMQP URL scheme.
+- Package metadata now declares the actual Python 3.9 minimum, uses the `python-dotenv` distribution name, and avoids Python 3.10-only union annotations.
+- Response/exception interceptor chains now continue correctly on `None` and preserve exceptions after every interceptor declines to handle them.
+- Redis start-request polling no longer leaks one pending stop task per message; synchronous runners now execute crawler shutdown even when an engine raises, and repeated Kafka shutdown clears closed client state.
+- Redis Sentinel now uses the asyncio client, Redis Cluster reconnects invalidate bound-method caches, and RabbitMQ reconnects discard Queue objects owned by the previous channel.
+- MongoDB is initialized before first use; crawler shutdown now closes MongoDB and Redis clients, while Redis no longer swallows `KeyboardInterrupt` during retries.
+- Response objects no longer share a mutable default `meta` dictionary across requests.
+- Scheduler state decoding uses bounded streaming decompression and rejects logical payloads above 16 MiB, preventing oversized broker messages or compression bombs from exhausting crawler memory.
 
 ---
 ## [0.3.2] - 2026-05-29

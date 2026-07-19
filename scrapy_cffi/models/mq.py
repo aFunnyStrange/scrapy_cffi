@@ -1,6 +1,6 @@
 from pydantic import Field, model_validator
 from enum import Enum
-from typing import Optional, Union, List
+from typing import Any, Optional, Union, List
 from .base import StrictValidatedModel
 
 class MQMode(str, Enum):
@@ -26,6 +26,8 @@ class BaseMQInfo(StrictValidatedModel):
             elif self.PASSWORD:
                 auth_part = f":{self.PASSWORD}@"
             self.URL = f"{self.DRIVER}://{auth_part}{self.HOST}:{self.PORT}"
+        if self.CLUSTER_NODES:
+            object.__setattr__(self, "MODE", MQMode.CLUSTER)
         return self
 
     @property
@@ -42,6 +44,8 @@ class RabbitMQInfo(BaseMQInfo):
     EXCHANGE_TYPE: Optional[str] = "direct"
     PREFETCH_COUNT: Optional[int] = 10
     DONT_FILTER: Optional[bool] = False
+    CONNECTION_TIMEOUT: float = 10.0
+    HEARTBEAT: int = 60
 
     @model_validator(mode="after")
     def assemble_url(self) -> "RabbitMQInfo":
@@ -53,8 +57,44 @@ class RabbitMQInfo(BaseMQInfo):
         return self
 
 class KafkaInfo(BaseMQInfo):
+    DRIVER: Optional[str] = None
     CONSUMER_GROUP: Optional[str] = "scrapy_cffi"
     PERSISTENT_TIME: Optional[int] = 7*24*60*60*1000
+    NUM_PARTITIONS: Optional[int] = 3
+    REPLICATION_FACTOR: Optional[int] = None
+    AUTO_OFFSET_RESET: Optional[str] = "earliest"
+    CLIENT_ID: Optional[str] = "scrapy_cffi"
+    REQUEST_TIMEOUT_MS: int = 40000
+    SECURITY_PROTOCOL: str = "PLAINTEXT"
+    SASL_MECHANISM: Optional[str] = None
+    SASL_USERNAME: Optional[str] = None
+    SASL_PASSWORD: Optional[str] = None
+    SSL_CAFILE: Optional[str] = None
+    SSL_CERTFILE: Optional[str] = None
+    SSL_KEYFILE: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_bootstrap_server(cls, data: Any) -> Any:
+        if isinstance(data, dict) and not data.get("URL") and data.get("HOST") and data.get("PORT"):
+            data = dict(data)
+            data["URL"] = f"{data['HOST']}:{data['PORT']}"
+        return data
+
+    @model_validator(mode="after")
+    def normalize_cluster(self) -> "KafkaInfo":
+        super().assemble_url()
+        if self.REPLICATION_FACTOR is None:
+            object.__setattr__(
+                self,
+                "REPLICATION_FACTOR",
+                len(self.CLUSTER_NODES) if self.CLUSTER_NODES else 1,
+            )
+        if self.REPLICATION_FACTOR < 1:
+            raise ValueError("Kafka REPLICATION_FACTOR must be at least 1")
+        if self.CLUSTER_NODES and self.REPLICATION_FACTOR > len(self.CLUSTER_NODES):
+            raise ValueError("Kafka REPLICATION_FACTOR cannot exceed configured CLUSTER_NODES")
+        return self
 
 __all__ = [
     "RabbitMQInfo",

@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 class RedisSpider(BaseSpider):
     name = "redisSpider"
+    wait_for_start_requests = True
     redis_key = "redis_key"
     redis_start_mode = "list"       # list or stream
     redis_group = None              # stream consumer group name; redis_xgroup is also supported
@@ -34,12 +35,11 @@ class RedisSpider(BaseSpider):
                 {get_req_task, stop_task},
                 return_when=asyncio.FIRST_COMPLETED
             )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
             if stop_task in done:
-                get_req_task.cancel()
-                try:
-                    await get_req_task
-                except asyncio.CancelledError:
-                    pass
                 break
             if get_req_task in done:
                 data = get_req_task.result()
@@ -51,8 +51,13 @@ class RedisSpider(BaseSpider):
                     data = stream_message.data
                 request = await self.make_request_from_data(data)
                 if request:
+                    if not stream_message or ingress.auto_ack:
+                        self.hooks.scheduler.attach_start_req(
+                            request=request,
+                            message=stream_message or data,
+                        )
                     yield request
-                if stream_message and ingress.auto_ack:
+                elif stream_message and ingress.auto_ack:
                     await self.hooks.scheduler.ack_start_req(spider=self, message=stream_message)
 
     # By default, only a URL is expected. If data is in JSON format, this method should be overridden in subclasses.

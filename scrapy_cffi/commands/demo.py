@@ -49,14 +49,24 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
     if legacy_readme.exists():
         legacy_readme.unlink()
 
-    if use_rabbitmq or use_redis:
+    if use_rabbitmq or use_redis or use_kafka:
         demo_spider_files = ["customRedisSpider", "studentSpider"]
         for demo_spider in demo_spider_files:
             demo_spider_path = demo_spiders_dir / f"{demo_spider}.py"
             target_spider_path = spider_dir / f"{demo_spider}.py"
             demo_spider_code = read_text_template(demo_spider_path)
             target_spider_path.parent.mkdir(parents=True, exist_ok=True)
-            if use_rabbitmq:
+            if use_kafka:
+                demo_spider_code = demo_spider_code.replace(
+                    "from scrapy_cffi.spiders.redis import RedisSpider",
+                    "from scrapy_cffi.spiders.kafka import KafkaSpider",
+                )
+                demo_spider_code = demo_spider_code.replace("(RedisSpider)", "(KafkaSpider)")
+                demo_spider_code = demo_spider_code.replace(
+                    'redis_key = "customRedisSpider_test"',
+                    'kafka_start_topic = "customRedisSpider_start"\n    kafka_topic = "customRedisSpider_requests"',
+                )
+            elif use_rabbitmq:
                 demo_spider_code = demo_spider_code.replace(
                     "from scrapy_cffi.spiders.redis import RedisSpider",
                     "from scrapy_cffi.spiders.rabbitmq import RabbitmqSpider",
@@ -96,7 +106,7 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
         )
 
     print("Project 'demo' created.")
-    demo_readme = template_dir / "demo_README.md"
+    demo_readme = template_dir / "demo_GUIDE.md"
     if demo_readme.exists():
         write_utf8_file(target / "README.md", read_text_template(demo_readme))
         print("  See README.md in demo/ for single-machine steps.")

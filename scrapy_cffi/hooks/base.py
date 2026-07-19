@@ -6,6 +6,10 @@ async def _noop_scheduler_async(*args, **kwargs):
     return None
 
 
+def _noop_scheduler_sync(*args, **kwargs):
+    return None
+
+
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from .spiders import SpidersHooks
@@ -27,6 +31,7 @@ def spiders_hooks(crawler: "Crawler", scheduler) -> "SpidersHooks":
         scheduler=Hooks(
             get_start_req=getattr(scheduler, "get_start_req", _noop_scheduler_async),
             ack_start_req=getattr(scheduler, "ack_start_req", _noop_scheduler_async),
+            attach_start_req=getattr(scheduler, "attach_start_req", _noop_scheduler_sync),
         )
     )
     return cast(Hooks, hooks_obj)

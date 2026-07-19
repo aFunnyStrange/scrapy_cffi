@@ -42,8 +42,11 @@ The crawler still talks to one `RedisManager` cluster client; only **key names**
 ## Configuration (no spider code for cluster routing)
 
 ```python
-settings.REDIS_INFO.MODE = "cluster"
-settings.REDIS_INFO.CLUSTER_NODES = [{"host": "127.0.0.1", "port": 7000}, ...]
+settings.REDIS_INFO.CLUSTER_NODES = [
+    "redis-cluster-01.internal:6379",
+    "redis-cluster-02.internal:6379",
+    "redis-cluster-03.internal:6379",
+]
 settings.FILTER_KEY = "myproject"          # → myproject_new_seen / myproject_sent_seen
 settings.DEDUP_TTL = 86400                 # optional key expiry (cluster cleanup hint)
 settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisDupeFilter"

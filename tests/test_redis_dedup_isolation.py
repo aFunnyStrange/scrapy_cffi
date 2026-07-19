@@ -23,6 +23,7 @@ def test_redis_put_skips_dedup_for_start_url():
     settings._NEW_SEEN = "cffiFilter_new_seen"
     settings._SENT_SEEN = "cffiFilter_sent_seen"
     settings.DEDUP_TTL = 0
+    settings.SCHEDULER_PERSIST = False
 
     redis_mgr = MagicMock()
     redis_mgr.rpush = AsyncMock(return_value=1)

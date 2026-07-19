@@ -1,0 +1,92 @@
+import ast
+import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+
+import toml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _annotation_nodes(tree):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign):
+            yield node.annotation
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            arguments = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+            for argument in arguments:
+                if argument.annotation:
+                    yield argument.annotation
+            if node.args.vararg and node.args.vararg.annotation:
+                yield node.args.vararg.annotation
+            if node.args.kwarg and node.args.kwarg.annotation:
+                yield node.args.kwarg.annotation
+            if node.returns:
+                yield node.returns
+
+
+def test_package_source_uses_python39_compatible_syntax_and_annotations():
+    incompatible_unions = []
+    for path in (ROOT / "scrapy_cffi").rglob("*.py"):
+        source = path.read_text(encoding="utf-8-sig")
+        tree = ast.parse(source, filename=str(path), feature_version=(3, 9))
+        for annotation in _annotation_nodes(tree):
+            for child in ast.walk(annotation):
+                if isinstance(child, ast.BinOp) and isinstance(child.op, ast.BitOr):
+                    incompatible_unions.append((path, child.lineno))
+
+    assert incompatible_unions == []
+
+
+def test_package_metadata_declares_real_python_minimum():
+    project = toml.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["requires-python"] == ">=3.9"
+    assert "python-dotenv" in project["dependencies"]
+    assert "dotenv" not in project["dependencies"]
+
+
+def test_interceptor_none_response_continues_and_unhandled_exception_survives():
+    from scrapy_cffi.core.downloader.internet import Request, Response
+    from scrapy_cffi.interceptors.chains import (
+        ChainNextEnum,
+        InterruptibleChainManager,
+    )
+
+    class Middleware:
+        async def response_intercept(self, **kwargs):
+            return None
+
+        async def exception_intercept(self, **kwargs):
+            return None
+
+    async def run():
+        manager = InterruptibleChainManager.__new__(InterruptibleChainManager)
+        node = SimpleNamespace(instance=Middleware(), prev=None)
+        manager.chain_tail = node
+        request = Request(url="https://example.com")
+        response = Response(request=request)
+
+        async def identity(value):
+            return value
+
+        response_result = await manager.response_intercept_chain(
+            request=request,
+            response=response,
+            spider=None,
+            callback=identity,
+        )
+        assert response_result.next == ChainNextEnum.SPIDER
+        assert response_result.response is response
+
+        error = RuntimeError("boom")
+        exception_result = await manager.exception_intercept_chain(
+            request=request,
+            exception=error,
+            spider=None,
+            callback=identity,
+        )
+        assert exception_result.next == ChainNextEnum.EXCEPTION
+        assert exception_result.exception is error
+
+    asyncio.run(run())

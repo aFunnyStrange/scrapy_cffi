@@ -8,7 +8,7 @@ that exposes url, headers, find_header_key, and Http/WebSocket payload fields.
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, List, Protocol, runtime_checkable
+from typing import Any, Iterable, List, Optional, Protocol, runtime_checkable
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from ..utils.algorithm import do_sha1
@@ -34,9 +34,9 @@ def canonical_request_url(url: str) -> str:
 def build_fingerprint_bytes(
     request: FingerprintRequest,
     *,
-    include_headers: Iterable[str] | None = None,
-    method: str | None = None,
-    body_parts: List[bytes] | None = None,
+    include_headers: Optional[Iterable[str]] = None,
+    method: Optional[str] = None,
+    body_parts: Optional[List[bytes]] = None,
 ) -> bytes:
     include_headers = list(include_headers or [])
     header_subset = {}

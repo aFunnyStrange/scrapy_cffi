@@ -23,16 +23,37 @@ def _install_aiokafka_stubs():
     admin.AIOKafkaAdminClient = MagicMock
     admin.NewTopic = MagicMock
     errors = MagicMock()
-    errors.KafkaConnectionError = Exception
+    errors.KafkaConnectionError = type("KafkaConnectionError", (ConnectionError,), {})
+    errors.TopicAlreadyExistsError = type("TopicAlreadyExistsError", (Exception,), {})
+    structs = MagicMock()
+    structs.TopicPartition = lambda topic, partition: (topic, partition)
+    structs.OffsetAndMetadata = lambda offset, metadata: (offset, metadata)
     sys.modules["aiokafka"] = aiokafka
     sys.modules["aiokafka.admin"] = admin
     sys.modules["aiokafka.errors"] = errors
+    sys.modules["aiokafka.structs"] = structs
 
 
-def _minimal_spider_module(tmp: Path, *, redis: bool = False, rabbit: bool = False) -> Path:
+def _minimal_spider_module(tmp: Path, *, redis: bool = False, rabbit: bool = False, kafka: bool = False) -> Path:
     spiders = tmp / "spiders"
     spiders.mkdir(parents=True, exist_ok=True)
-    if rabbit:
+    if kafka:
+        body = textwrap.dedent(
+            """
+            from scrapy_cffi.spiders.kafka import KafkaSpider
+            from scrapy_cffi.internet import HttpResponse
+
+            class DemoSpider(KafkaSpider):
+                name = "demo"
+                allowed_domains = ["127.0.0.1"]
+                kafka_start_topic = "demo.start"
+                kafka_topic = "demo.requests"
+
+                async def parse(self, response: HttpResponse):
+                    yield {"ok": True}
+            """
+        )
+    elif rabbit:
         body = textwrap.dedent(
             """
             from scrapy_cffi.spiders.rabbitmq import RabbitmqSpider
@@ -141,6 +162,7 @@ def test_memory_scheduler_init(tmp_path):
     crawler = asyncio.run(_init_crawler(settings))
     assert crawler.schedulers["demo"].is_distributed is False
     assert type(crawler.schedulers["demo"]).__name__ == "Scheduler"
+    assert crawler.engines[0].scheduler_loop.__name__ == "_local_scheduler_loop"
 
 
 def test_redis_scheduler_init(tmp_path):
@@ -153,6 +175,7 @@ def test_redis_scheduler_init(tmp_path):
     assert sch.is_distributed is True
     assert type(sch).__name__ == "RedisScheduler"
     assert hasattr(sch, "get_start_req")
+    assert crawler.engines[0].scheduler_loop.__name__ == "_distributed_scheduler_loop"
 
 
 def test_rabbitmq_scheduler_init(tmp_path):
@@ -166,6 +189,19 @@ def test_rabbitmq_scheduler_init(tmp_path):
     assert sch.is_distributed is True
     assert type(sch).__name__ == "RabbitMqScheduler"
     assert hasattr(sch, "get_start_req")
+
+
+def test_kafka_scheduler_init(tmp_path):
+    spiders = _minimal_spider_module(tmp_path, kafka=True)
+    settings = _base_settings(spiders)
+    settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
+    settings.KAFKA_INFO.URL = "127.0.0.1:9092"
+    crawler = asyncio.run(_init_crawler(settings, mock_redis=True, mock_kafka=True))
+    sch = crawler.schedulers["demo"]
+    assert sch.is_distributed is True
+    assert type(sch).__name__ == "KafkaScheduler"
+    assert sch.get_queue_key(crawler.spiders[0]) == "demo.requests"
+    assert sch.get_start_topic(crawler.spiders[0]) == "demo.start"
 
 
 def test_databases_lazy_sqlalchemy():
@@ -215,6 +251,7 @@ def test_kafka_manager_produce_mock():
         mock_producer.send_and_wait = AsyncMock(return_value=True)
         manager._producer = mock_producer
         manager._bootstrap_servers = "127.0.0.1:9092"
+        manager._ensured_topics.add("scrapy_cffi")
         result = await manager.produce("scrapy_cffi", b"hello")
         assert result is True
         mock_producer.send_and_wait.assert_called_once()
@@ -230,6 +267,7 @@ if __name__ == "__main__":
         test_memory_scheduler_init(p / "mem")
         test_redis_scheduler_init(p / "redis")
         test_rabbitmq_scheduler_init(p / "rabbit")
+        test_kafka_scheduler_init(p / "kafka_scheduler")
     test_databases_lazy_sqlalchemy()
     test_kafka_crawler_init(p / "kafka_crawler")
     test_memory_with_kafka_does_not_require_redis(p / "kafka_mem")

@@ -1,125 +1,13 @@
-version: "3.9"
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: scrapy_cffi_app
     command: ["python", "runner.py"]
-    env_file:
-      - .env.dev
-    volumes:
-      - .:/app
-    depends_on:
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      mysql:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
     restart: unless-stopped
 
-  redis:
-    image: redis:7
-    container_name: redis
-    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  rabbitmq:
-    image: rabbitmq:3.13-management
-    container_name: rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  kafka:
-    image: bitnami/kafka:3.7
-    container_name: kafka
-    environment:
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_KRAFT_CLUSTER_ID: qwertyuiopasdfghjklzxcvbnm1234567890
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-    ports:
-      - "9092:9092"
-    volumes:
-      - kafka_data:/bitnami/kafka
-    healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "127.0.0.1:9092", "--list"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
-    restart: unless-stopped
-
-  mysql:
-    image: mysql:8
-    container_name: mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: app_db
-      MYSQL_USER: app_user
-      MYSQL_PASSWORD: app_pass
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -prootpassword --silent"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-    restart: unless-stopped
-
-  mongodb:
-    image: mongo:7
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-volumes:
-  redis_data:
-  rabbitmq_data:
-  kafka_data:
-  mysql_data:
-  mongodb_data:
+    # The crawler container owns no database or message-queue lifecycle.
+    # Configure external Redis/MySQL/PostgreSQL/MongoDB/RabbitMQ/Kafka addresses
+    # in settings.py, or uncomment the optional env file below.
+    # env_file:
+    #   - .env.dev

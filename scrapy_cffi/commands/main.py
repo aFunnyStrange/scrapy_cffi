@@ -37,7 +37,7 @@ def main():
     ip.add_argument(
         "--all",
         action="store_true",
-        help="Generate complete baseline infra in single-node mode.",
+        help="Generate the single-node stack plus all local Sentinel/cluster simulations.",
     )
     ip.add_argument(
         "--clean",
@@ -49,7 +49,7 @@ def main():
     gp = subparsers.add_parser("genspider", help="Generate a new spider")
     gp.add_argument("-r", "--redis", action="store_true", help="Use RedisSpider")
     gp.add_argument("-m", "--rabbitmq", action="store_true", help="Use RabbitMqSpider, override -r/--redis")
-    gp.add_argument("-k", "--kafka", action="store_true", help="Use Kafka Log")
+    gp.add_argument("-k", "--kafka", action="store_true", help="Use KafkaSpider and KafkaScheduler")
     gp.add_argument("name", help="Spider name")
     gp.add_argument("domain", help="Target domain")
 
@@ -102,7 +102,7 @@ def main():
     demo_p = subparsers.add_parser("demo", help="Create a demo project")
     demo_p.add_argument("-r", "--redis", action="store_true", help="Use RedisSpider")
     demo_p.add_argument("-m", "--rabbitmq", action="store_true", help="Use RabbitMqSpider, override -r/--redis")
-    demo_p.add_argument("-k", "--kafka", action="store_true", help="Use Kafka Log")
+    demo_p.add_argument("-k", "--kafka", action="store_true", help="Enable Kafka (logging or KafkaSpider transport)")
 
     # export
     # ep = subparsers.add_parser("export", help="Export files")

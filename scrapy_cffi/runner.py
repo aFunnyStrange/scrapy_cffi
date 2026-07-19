@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Sequence, Tuple
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple
 
 from .crawler import Crawler
 
@@ -61,15 +61,16 @@ def run_sync_base(
         asyncio.set_event_loop(loop)
     else:
         loop = asyncio.get_running_loop()
-    crawler: Crawler | None = None
+    crawler: Optional[Crawler] = None
 
     async def main():
         nonlocal crawler
         crawler = Crawler()
         robot_task = await crawler.do_initialization(settings=settings, start_type=start_type)
-        await crawler.start_engines(robot_task, *args, **kwargs)
-        crawler.stop_event.set()
-        await crawler.shutdown()
+        try:
+            await crawler.start_engines(robot_task, *args, **kwargs)
+        finally:
+            await crawler.shutdown()
 
     try:
         loop.run_until_complete(main())
@@ -141,11 +142,13 @@ def run_spiders_sync(
     async def main():
         nonlocal crawlers
         crawlers, tasks = await run_spiders(configs, new_loop=False, *args, **kwargs)
-        await asyncio.gather(*tasks)
-        for crawler in crawlers:
-            crawler.stop_event.set()
-        for crawler in crawlers:
-            await crawler.shutdown()
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            await asyncio.gather(
+                *(crawler.shutdown() for crawler in crawlers),
+                return_exceptions=False,
+            )
 
     try:
         loop.run_until_complete(main())

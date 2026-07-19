@@ -65,12 +65,47 @@ async def run_kafka_flow(bootstrap: Union[str, List[str]], replication_factor: i
     print("crud events ok")
 
 
+async def run_request_queue_flow(bootstrap: Union[str, List[str]], replication_factor: int) -> None:
+    topic = f"scheduler_requests_{int(time.time() * 1000)}"
+    group = f"scheduler-workers-{int(time.time() * 1000)}"
+
+    manager = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    await manager.connect()
+    await manager.ensure_topic(topic, num_partitions=1, replication_factor=replication_factor)
+    await manager.produce(topic, b"request-1")
+    await manager.produce(topic, b"request-2")
+    first = await manager.dequeue_request(topic, group, timeout=10)
+    second = await manager.dequeue_request(topic, group, timeout=10)
+    assert first and second
+    assert [first.value, second.value] == [b"request-1", b"request-2"]
+
+    # Completing a later offset must not commit across the earlier lease.
+    await manager.ack_request(second)
+    await manager.close()
+
+    replay = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    replay_first = await replay.dequeue_request(topic, group, timeout=10)
+    replay_second = await replay.dequeue_request(topic, group, timeout=10)
+    assert replay_first and replay_second
+    assert [replay_first.value, replay_second.value] == [b"request-1", b"request-2"]
+    await replay.ack_request(replay_second)
+    await replay.ack_request(replay_first)
+    await replay.close()
+
+    drained = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    assert await drained.dequeue_request(topic, group, timeout=3) is None
+    await drained.close()
+    print("request queue offsets ok")
+
+
 async def test_single() -> None:
     await run_kafka_flow(kafka_single_bootstrap(), replication_factor=1)
+    await run_request_queue_flow(kafka_single_bootstrap(), replication_factor=1)
 
 
 async def test_cluster() -> None:
     await run_kafka_flow(kafka_cluster_bootstrap(), replication_factor=3)
+    await run_request_queue_flow(kafka_cluster_bootstrap(), replication_factor=3)
 
 
 def main(argv: Optional[List[str]] = None) -> None:

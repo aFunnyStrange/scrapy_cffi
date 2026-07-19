@@ -1,6 +1,6 @@
 from pydantic import model_validator, Field
 from enum import Enum
-from typing import Optional, Union, List, Tuple
+from typing import Dict, Optional, Union, List, Tuple
 from .base import StrictValidatedModel
 from .redis_stream import RedisIngressMode, RedisStreamConsumerInfo
 
@@ -33,15 +33,36 @@ class RedisMode(str, Enum):
 class RedisInfo(BaseDBInfo):
     MODE: Union[RedisMode, str] = RedisMode.SINGLE
 
-    SENTINELS: Optional[List[tuple[str, int]]] = Field(default_factory=list)
+    SENTINELS: Optional[List[Tuple[str, int]]] = Field(default_factory=list)
     MASTER_NAME: Optional[str] = None  # sentinel mode
     SENTINEL_OVERRIDE_MASTER: Optional[Tuple[str, int]] = None # sentinel mode -> (master_host, master_port)
 
-    CLUSTER_NODES: Optional[List[dict]] = Field(default_factory=list)
+    CLUSTER_NODES: Optional[List[Union[dict, str]]] = Field(default_factory=list)
+    CLUSTER_ADDRESS_REMAP: Dict[str, str] = Field(default_factory=dict)
+
+    CONNECT_TIMEOUT: float = 5.0
+    SOCKET_TIMEOUT: Optional[float] = None
+    SSL: bool = False
+    SSL_CERT_REQS: Optional[str] = None
+    SENTINEL_USERNAME: Optional[str] = None
+    SENTINEL_PASSWORD: Optional[str] = None
 
     @model_validator(mode="after")
     def assemble_url(self) -> "RedisInfo":
-        if self.MODE == RedisMode.SINGLE:
+        has_sentinels = bool(self.SENTINELS)
+        has_cluster_nodes = bool(self.CLUSTER_NODES)
+        if has_sentinels and has_cluster_nodes:
+            raise ValueError("Configure either SENTINELS or CLUSTER_NODES, not both")
+
+        # Node lists are authoritative, so production configuration can switch
+        # topology without repeating MODE in a separately managed secret file.
+        if has_sentinels:
+            object.__setattr__(self, "MODE", RedisMode.SENTINEL)
+        elif has_cluster_nodes:
+            object.__setattr__(self, "MODE", RedisMode.CLUSTER)
+
+        mode = self.MODE.value if isinstance(self.MODE, RedisMode) else self.MODE
+        if mode == RedisMode.SINGLE.value:
             if not self.URL and self.HOST and self.PORT:
                 auth_part = ""
                 if self.USERNAME and self.PASSWORD:
@@ -53,7 +74,9 @@ class RedisInfo(BaseDBInfo):
         return self
 
     @property
-    def resolved_url(self) -> Union[str, List[tuple[str, int]], List[dict], None]:
+    def resolved_url(
+        self,
+    ) -> Optional[Union[str, List[Tuple[str, int]], List[Union[dict, str]]]]:
         if self.MODE == RedisMode.SINGLE:
             return self.URL
         elif self.MODE == RedisMode.SENTINEL:

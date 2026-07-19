@@ -50,8 +50,6 @@ def auto_retry(func):
                 raise asyncio.CancelledError("Stop event set during reconnect")
             await self._reconnect()
             return await func(self, *args, **kwargs)
-        except KeyboardInterrupt:
-            pass
     return wrapper
 
 
@@ -63,6 +61,9 @@ class RedisManager(redis.Redis):
         redis_mode: str = "single",
         master_name: str = None,
         sentinel_override_master: Tuple[str,int]=None,
+        sentinel_username: str = None,
+        sentinel_password: str = None,
+        cluster_address_remap: Dict[str, str] = None,
         **kwargs
     ):
         self.stop_event = stop_event
@@ -70,6 +71,8 @@ class RedisManager(redis.Redis):
         self._redis_url = redis_url
         self._master_name = master_name
         self._sentinel_override_master = sentinel_override_master
+        self._cluster_address_remap_table = cluster_address_remap or {}
+        self._connection_kwargs = dict(kwargs)
         self._method_cache = {}
         self._sentinel = None
         self._cluster_client = None
@@ -80,8 +83,25 @@ class RedisManager(redis.Redis):
         elif redis_mode == "sentinel":
             if not isinstance(redis_url, list):
                 raise ValueError("Sentinel mode requires a list of (host, port)")
-            from redis.sentinel import Sentinel
-            self._sentinel = Sentinel(redis_url, **kwargs)
+            from redis.asyncio.sentinel import Sentinel
+            sentinel_kwargs = {
+                key: value
+                for key, value in kwargs.items()
+                if key.startswith("socket_") or key in {"ssl", "ssl_cert_reqs"}
+            }
+            sentinel_kwargs.update({
+                key: value
+                for key, value in {
+                    "username": sentinel_username,
+                    "password": sentinel_password,
+                }.items()
+                if value is not None
+            })
+            self._sentinel = Sentinel(
+                redis_url,
+                sentinel_kwargs=sentinel_kwargs or None,
+                **kwargs,
+            )
             if self._sentinel_override_master:
                 host, port = self._sentinel_override_master
                 tmp_instance = redis.Redis(host=host, port=port, **kwargs)
@@ -94,9 +114,10 @@ class RedisManager(redis.Redis):
             startup_nodes = self._build_cluster_startup_nodes(redis_url)
             tmp_instance = RedisCluster(
                 startup_nodes=startup_nodes,
-                decode_responses=True,
+                decode_responses=False,
                 require_full_coverage=False,
                 address_remap=self._cluster_address_remap,
+                **kwargs,
             )
             self._cluster_client = tmp_instance
         else:
@@ -104,7 +125,7 @@ class RedisManager(redis.Redis):
         if self.redis_mode == "cluster":
             # Keep a lightweight base Redis instance for compatibility, while real I/O
             # is delegated to `_cluster_client` via __getattribute__.
-            super().__init__(host="127.0.0.1", port=6379, decode_responses=True)
+            super().__init__(host="127.0.0.1", port=6379, decode_responses=False)
         else:
             super().__init__(
                 connection_pool=tmp_instance.connection_pool,
@@ -118,12 +139,27 @@ class RedisManager(redis.Redis):
         if not info.resolved_url:
             raise ValueError("RedisManager.from_redis_info requires a configured REDIS_INFO URL or nodes")
         mode = info.MODE if isinstance(info.MODE, str) else info.MODE.value
+        connection_kwargs = {
+            "username": info.USERNAME,
+            "password": info.PASSWORD,
+            "socket_connect_timeout": info.CONNECT_TIMEOUT,
+            "socket_timeout": info.SOCKET_TIMEOUT,
+            "ssl": info.SSL,
+            "ssl_cert_reqs": info.SSL_CERT_REQS,
+        }
+        connection_kwargs = {
+            key: value for key, value in connection_kwargs.items() if value is not None
+        }
         return cls(
             stop_event=stop_event,
             redis_mode=mode,
             redis_url=info.resolved_url,
             master_name=info.MASTER_NAME,
             sentinel_override_master=info.SENTINEL_OVERRIDE_MASTER,
+            sentinel_username=info.SENTINEL_USERNAME,
+            sentinel_password=info.SENTINEL_PASSWORD,
+            cluster_address_remap=info.CLUSTER_ADDRESS_REMAP,
+            **connection_kwargs,
         )
 
     @classmethod
@@ -136,25 +172,36 @@ class RedisManager(redis.Redis):
         await self.close()
         
         if self.redis_mode == "single":
-            new_instance: "Redis" = redis.from_url(self._redis_url)
+            new_instance: "Redis" = redis.from_url(self._redis_url, **self._connection_kwargs)
             self.connection_pool: "ConnectionPool" = new_instance.connection_pool
         elif self.redis_mode == "sentinel":
             if self._sentinel_override_master:
                 host, port = self._sentinel_override_master
-                new_instance = redis.Redis(host=host, port=port)
+                new_instance = redis.Redis(
+                    host=host,
+                    port=port,
+                    **self._connection_kwargs,
+                )
                 self.connection_pool: "ConnectionPool" = new_instance.connection_pool
             else:
-                master = self._sentinel.master_for(self._master_name)
+                master = self._sentinel.master_for(
+                    self._master_name,
+                    **self._connection_kwargs,
+                )
                 self.connection_pool: "ConnectionPool" = master.connection_pool
         elif self.redis_mode == "cluster":
             from redis.asyncio.cluster import RedisCluster
             new_instance: RedisCluster = RedisCluster(
                 startup_nodes=self._build_cluster_startup_nodes(self._redis_url),
-                decode_responses=True,
+                decode_responses=False,
                 require_full_coverage=False,
                 address_remap=self._cluster_address_remap,
+                **self._connection_kwargs,
             )
             self._cluster_client = new_instance
+        # Cluster methods are cached as bound methods; after failover they must
+        # be rebound to the newly created client instead of the closed one.
+        self._method_cache.clear()
 
     def _build_cluster_startup_nodes(self, redis_url):
         from redis.asyncio.cluster import ClusterNode
@@ -162,10 +209,13 @@ class RedisManager(redis.Redis):
             raise ValueError("Redis cluster startup_nodes cannot be empty")
         if isinstance(redis_url[0], str):
             from urllib.parse import urlparse
-            return [
-                ClusterNode(host=urlparse(u).hostname, port=urlparse(u).port)
-                for u in redis_url
-            ]
+            nodes = []
+            for value in redis_url:
+                parsed = urlparse(value if "://" in value else f"//{value}")
+                if not parsed.hostname or not parsed.port:
+                    raise ValueError(f"Invalid Redis cluster node: {value!r}")
+                nodes.append(ClusterNode(host=parsed.hostname, port=parsed.port))
+            return nodes
         if isinstance(redis_url[0], dict):
             return [
                 ClusterNode(host=node["host"], port=int(node["port"]))
@@ -175,12 +225,14 @@ class RedisManager(redis.Redis):
 
     def _cluster_address_remap(self, address):
         host, port = address
+        if host in self._cluster_address_remap_table:
+            return (self._cluster_address_remap_table[host], port)
         if host in {"host.docker.internal", "localhost"}:
             return ("127.0.0.1", port)
         return (host, port)
 
     def __getattribute__(self, name: str):
-        if name.startswith("_") or name in ("_method_cache", "_reconnect"):
+        if name.startswith("_") or name in ("_method_cache", "_reconnect", "close"):
             return super().__getattribute__(name)
         attr = None
         cluster_client = super().__getattribute__("_cluster_client")
@@ -219,6 +271,32 @@ class RedisManager(redis.Redis):
             method_cache[name] = wrapper
 
         return method_cache[name]
+
+    async def close(self):
+        """Close the active async client even after the crawler stop flag is set."""
+        cluster_client = self._cluster_client
+        self._cluster_client = None
+        self._method_cache.clear()
+        if cluster_client is not None:
+            cluster_close = getattr(cluster_client, "aclose", cluster_client.close)
+            result = cluster_close()
+            if inspect.isawaitable(result):
+                await result
+
+        if self._sentinel is not None:
+            sentinel_closes = []
+            for sentinel_client in self._sentinel.sentinels:
+                sentinel_close = getattr(sentinel_client, "aclose", sentinel_client.close)
+                result = sentinel_close()
+                if inspect.isawaitable(result):
+                    sentinel_closes.append(result)
+            if sentinel_closes:
+                await asyncio.gather(*sentinel_closes, return_exceptions=True)
+
+        base_close = getattr(super(), "aclose", super().close)
+        result = base_close()
+        if inspect.isawaitable(result):
+            await result
 
     @auto_retry
     async def do_filter(self, fingerprint: str, key_new_seen: str, key_is_req: str):

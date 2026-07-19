@@ -2,6 +2,10 @@
 
 > An asyncio-style web scraping framework inspired by Scrapy, powered by `curl_cffi`.
 
+Requires Python 3.9 or newer. The framework uses `asyncio.to_thread` directly;
+type annotations remain compatible with Python 3.9 and avoid the Python
+3.10-only `X | Y` union syntax.
+
 `scrapy_cffi` is a lightweight Python crawler framework that mimics the Scrapy architecture while replacing Twisted with `curl_cffi` as the underlying HTTP/WebSocket client. 
 
 It is designed to be efficient, modular, and suitable for both simple tasks and large-scale distributed crawlers.
@@ -18,11 +22,11 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Flexible DB integration**: Redis, MySQL, **PostgreSQL**, MongoDB with async retry & reconnect
 
-- **Message queue support**: RabbitMQ & Kafka (single / cluster)
+- **Message queue scheduling**: RabbitMQ and Kafka (separate Kafka start/work topics with manual acknowledgement)
 
 - **Configurable deployment**: settings system supporting `.env`, single-instance, **sentinel**, and **cluster** mode
 
-- **`scrapy-cffi geninfra`**: generate local Docker Compose templates for Redis / RabbitMQ / Kafka topologies
+- **`scrapy-cffi geninfra`**: generate independent local Docker infrastructure for Redis / MySQL / PostgreSQL / MongoDB / RabbitMQ / Kafka
 
 - **Redis Stream ingress**: `RedisSpider` consumer groups (`XREADGROUP` / `XACK`), configurable via spider attrs or `settings.REDIS_STREAM_INFO`
 
@@ -44,6 +48,9 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 ```bash
 pip install scrapy_cffi
+
+# Kafka request scheduler support
+pip install "scrapy_cffi[kafka]"
 ```
 
 #### From GitHub (latest main)
@@ -73,6 +80,9 @@ cd <project_name>
 
 scrapy-cffi genspider <spider_name> <domain>
 
+# Kafka start/work request queues
+scrapy-cffi genspider --kafka <spider_name> <domain>
+
 python runner.py
 ```
 
@@ -99,19 +109,29 @@ Generate local infra templates (optional):
 
 ```bash
 scrapy-cffi geninfra
-scrapy-cffi geninfra --redis cluster --rabbitmq cluster --kafka cluster
+./infra/init.sh  # or ./infra/init.ps1 on PowerShell
+scrapy-cffi geninfra --all
+./infra/init.sh --topology redis-cluster
+./infra/destroy.sh --topology redis-cluster  # remove containers and volumes after debugging
 ```
+
+Generated infra is disposable, project-isolated local simulation only. In production, containerize only the crawler application; Redis/database/MQ services remain on real machines or native clusters and the crawler consumes their configured addresses directly.
 
 Example `settings.py` snippet (Redis Sentinel):
 
 ```python
-settings.REDIS_INFO.MODE = "sentinel"
+from scrapy_cffi.models import RedisInfo
 
-settings.REDIS_INFO.SENTINELS = [("<sentinel_host1>", "int(sentinel_port1)"), ("<sentinel_host2>", "int(sentinel_port2)"), ("<sentinel_host3>", "int(sentinel_port3)")]
-
-settings.REDIS_INFO.MASTER_NAME = "<master_name>"
-
-settings.REDIS_INFO.SENTINEL_OVERRIDE_MASTER = ("master_host", "int(master_port)")
+settings.REDIS_INFO = RedisInfo(
+    SENTINELS=[
+        ("redis-sentinel-01.internal", 26379),
+        ("redis-sentinel-02.internal", 26379),
+        ("redis-sentinel-03.internal", 26379),
+    ],
+    MASTER_NAME="mymaster",
+    USERNAME="crawler",
+    PASSWORD="secret-from-env",
+)
 ```
 
 Optional Redis Stream consumer-group defaults (spider attrs override):

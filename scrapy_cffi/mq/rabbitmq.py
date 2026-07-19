@@ -50,12 +50,16 @@ class RabbitMQManager:
         prefetch_count: int = 10,
         persist: bool = False,
         loop: asyncio.AbstractEventLoop = None,
+        connection_timeout: float = 10.0,
+        heartbeat: int = 60,
     ):
         self.stop_event = stop_event or asyncio.Event()
         self.exchange_name = exchange_name
         self.exchange_type = exchange_type
         self.prefetch_count = prefetch_count
         self.persist = persist
+        self.connection_timeout = connection_timeout
+        self.heartbeat = heartbeat
         self.loop = loop or asyncio.get_running_loop()
         self._lock = asyncio.Lock()
 
@@ -97,6 +101,8 @@ class RabbitMQManager:
             exchange_type=exchange_type,
             prefetch_count=info.PREFETCH_COUNT,
             persist=persist,
+            connection_timeout=info.CONNECTION_TIMEOUT,
+            heartbeat=info.HEARTBEAT,
         )
 
     @classmethod
@@ -112,12 +118,20 @@ class RabbitMQManager:
         for node_url in random.sample(self._mq_nodes, k=len(self._mq_nodes)):
             try:
                 self._mq_url = node_url
-                self._connection = await aio_pika.connect_robust(self._mq_url, loop=self.loop)
+                self._connection = await aio_pika.connect_robust(
+                    self._mq_url,
+                    loop=self.loop,
+                    timeout=self.connection_timeout,
+                    heartbeat=self.heartbeat,
+                )
                 self._channel = await self._connection.channel()
                 await self._channel.set_qos(prefetch_count=self.prefetch_count)
                 self._exchange = await self._channel.declare_exchange(
                     self.exchange_name, type=self.exchange_type, durable=self.persist
                 )
+                # Queue objects belong to the old channel and cannot survive a
+                # reconnect, even when their names are still valid server-side.
+                self._queues.clear()
                 return
             except (AMQPConnectionError, ChannelClosed) as exc:
                 last_exc = exc

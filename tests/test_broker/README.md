@@ -8,7 +8,7 @@ Unified broker tests for `scrapy_cffi` modules (since **0.3.0**):
 
 Related docs: [`docs/usage/11-mq.md`](../../docs/usage/11-mq.md) · [`docs/usage/1-settings.md`](../../docs/usage/1-settings.md) (broker + `REDIS_STREAM_INFO`).
 
-To scaffold your own compose files (baseline + optional topology subdirs), use `scrapy-cffi geninfra` — see [`docs/usage/0-start.md`](../../docs/usage/0-start.md#5geninfra).
+To scaffold every disposable local topology, use `scrapy-cffi geninfra --all`, then `infra/init.* --topology <name>`. These Docker stacks are development/integration-test simulations only; production infrastructure runs directly on real machines. See [`docs/usage/0-start.md`](../../docs/usage/0-start.md#5geninfra).
 
 All commands below use Linux shell style (`bash`).
 

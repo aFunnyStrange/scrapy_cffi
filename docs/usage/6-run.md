@@ -66,7 +66,7 @@ Note on **High Concurrency / Cluster Mode**
 For extremely high concurrency workloads, consider deploying the framework in **cluster mode**. A clustered deployment improves horizontal scalability, fault tolerance, and throughput for components such as the scheduler, deduplication store, and MQ layers. For a suggested architecture and deployment diagram, see the cluster reference:
 [cluster](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/cluster.jpg)
 
-**Local infra scaffolding (≥ 0.3.0):** run `scrapy-cffi geninfra` … Details: [0-start.md](./0-start.md#5geninfra), [11-mq.md](./11-mq.md).
+**Local infra scaffolding (≥ 0.3.0):** run `scrapy-cffi geninfra --all`, then select a disposable topology with `infra/init.* --topology` / `-Topology`. Use `destroy.*` after debugging. These stacks are local simulations only; production connects the crawler container directly to real database/MQ machines. Details: [0-start.md](./0-start.md#5geninfra), [11-mq.md](./11-mq.md).
 
 **Multiple crawlers on one loop:** `run_spiders` / `run_spiders_sync` — see [14-multi-spider-resources.md](./14-multi-spider-resources.md).
 

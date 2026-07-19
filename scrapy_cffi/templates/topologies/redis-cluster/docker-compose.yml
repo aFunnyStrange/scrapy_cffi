@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   redis-node1:
     image: redis:7

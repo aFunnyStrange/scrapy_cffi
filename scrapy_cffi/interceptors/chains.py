@@ -40,7 +40,11 @@ class ChainManager:
             class_list=class_list,
         )
 
-    def create_chain(self, crawler: "Crawler", class_list: list["SpiderInterceptor", "DownloadInterceptor"]):
+    def create_chain(
+        self,
+        crawler: "Crawler",
+        class_list: List[Union["SpiderInterceptor", "DownloadInterceptor"]],
+    ):
         nodes: List[ChainNode] = []
         for cls in class_list:
             inst = cls.from_crawler(crawler)
@@ -159,7 +163,7 @@ class InterruptibleChainManager(ChainManager):
                 return await callback(ChainResult(next=ChainNextEnum.RESPONSE, request=request, response=result, spider=spider))
             elif isinstance(result, BaseException):
                 return await callback(ChainResult(next=ChainNextEnum.EXCEPTION, exception=result, request=request, spider=spider))
-            raise callback(ValueError("request_intercept_chain got invalid return"))
+            raise ValueError("request_intercept_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.DOWNLOADER, request=request, spider=spider))
     
     async def response_intercept_chain(self, request: Request, response: Response, spider, callback: Callable):
@@ -180,15 +184,17 @@ class InterruptibleChainManager(ChainManager):
         node = self.chain_tail
         while node:
             result = await node.instance.response_intercept(request=request, response=response, spider=spider)
-            if result is not None:
-                if isinstance(result, Response):
-                    node = node.prev
-                    response = result
-                    continue
-                elif isinstance(result, Request):
-                    return await callback(ChainResult(next=ChainNextEnum.RESCHEDULE, request=result, spider=spider))
-                elif isinstance(result, BaseException):
-                    return await callback(ChainResult(next=ChainNextEnum.EXCEPTION, exception=result, request=request, spider=spider))
+            if result is None:
+                node = node.prev
+                continue
+            if isinstance(result, Response):
+                node = node.prev
+                response = result
+                continue
+            if isinstance(result, Request):
+                return await callback(ChainResult(next=ChainNextEnum.RESCHEDULE, request=result, spider=spider))
+            if isinstance(result, BaseException):
+                return await callback(ChainResult(next=ChainNextEnum.EXCEPTION, exception=result, request=request, spider=spider))
             raise ValueError("response_intercept_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=response, request=request, spider=spider))
     
@@ -226,7 +232,7 @@ class InterruptibleChainManager(ChainManager):
             elif isinstance(result, Response):
                 return await callback(ChainResult(next=ChainNextEnum.RESPONSE, response=result, request=request, spider=spider))
             raise ValueError("exception_intercept_chain got invalid return")
-        return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider, is_across=is_across))
+        return await callback(ChainResult(next=ChainNextEnum.EXCEPTION, exception=exception, request=request, spider=spider, is_across=is_across))
     
     async def process_spider_input_chain(self, response: Response, request: Request, spider, callback: Callable):
         """

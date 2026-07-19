@@ -117,13 +117,12 @@ class Crawler:
         if self.settings.MONBODB_INFO.resolved_url:
             from .databases.mongodb import MongoDBManager
             self.mongodbManager = MongoDBManager.from_crawler(self)
+            await self.mongodbManager.init()
 
         # rabbitmq
         if self.settings.RABBITMQ_INFO.resolved_url:
             from .mq.rabbitmq import RabbitMQManager
             self.rabbitmqManager = RabbitMQManager.from_crawler(self)
-            if not self.settings.SCHEDULER:
-                self.settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
 
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
@@ -162,14 +161,27 @@ class Crawler:
         spider_cls_list = self.spiders
 
         scheduler_path = self.settings.SCHEDULER
-        if scheduler_path:
-            scheduler_cls = load_object(path=scheduler_path)
-        else:
-            from .core.scheduler import Scheduler
-            scheduler_cls = Scheduler
+        configured_scheduler_cls = load_object(path=scheduler_path) if scheduler_path else None
 
         self.schedulers.clear()
         for spider_cls in spider_cls_list:
+            scheduler_cls = configured_scheduler_cls
+            if scheduler_cls is None:
+                from .core.scheduler import Scheduler
+                from .spiders.kafka import KafkaSpider
+                from .spiders.rabbitmq import RabbitmqSpider
+                from .spiders.redis import RedisSpider
+                if issubclass(spider_cls, KafkaSpider):
+                    from .core.scheduler.kafka import KafkaScheduler
+                    scheduler_cls = KafkaScheduler
+                elif issubclass(spider_cls, RabbitmqSpider):
+                    from .core.scheduler.rabbitmq import RabbitMqScheduler
+                    scheduler_cls = RabbitMqScheduler
+                elif issubclass(spider_cls, RedisSpider):
+                    from .core.scheduler.redis import RedisScheduler
+                    scheduler_cls = RedisScheduler
+                else:
+                    scheduler_cls = Scheduler
             name = spider_cls.name
             spider_settings = merge_spider_settings(self.settings, spider_cls)
             self.schedulers[name] = scheduler_cls.from_crawler(
@@ -179,13 +191,10 @@ class Crawler:
                 settings=spider_settings,
             )
 
-        for spider_cls in spider_cls_list:
-            has_redis_key = getattr(spider_cls, "redis_key", None)
-            if has_redis_key:
-                self.taskManager = TaskManager.from_crawler(self, is_distributed=True) # Shared by all spider engines; if any exist, start one to handle blocking
-                break
-        else:
-            self.taskManager = TaskManager.from_crawler(self, is_distributed=False)
+        is_distributed = any(
+            scheduler.is_distributed for scheduler in self.schedulers.values()
+        )
+        self.taskManager = TaskManager.from_crawler(self, is_distributed=is_distributed)
 
         robot_task = None
         if self.settings.ROBOTSTXT_OBEY:
@@ -234,18 +243,45 @@ class Crawler:
             await robot_task
         # All spiders share this thread's asyncio loop; engines run concurrently via gather.
         await asyncio.gather(*[engine.start(*args, **kwargs) for engine in self.engines])
+        self.sessions.freeze()
+        for engine in self.engines:
+            await engine.taskManager.cancel_all()
+        await self._requeue_scheduler_inflight()
+        await self._persist_scheduler_sessions()
         self.stop_event.set()
         await self.sessions.close_all()
         await self.signalManager.stop()
 
+    async def _persist_scheduler_sessions(self):
+        if not self.settings.SCHEDULER_PERSIST or not self.redisManager:
+            return
+        for spider in self.spiders or []:
+            scheduler = self.schedulers.get(spider.name)
+            persist = getattr(scheduler, "persist_all_sessions", None)
+            if persist:
+                await persist(spider)
+
+    async def _requeue_scheduler_inflight(self):
+        for spider in self.spiders or []:
+            scheduler = self.schedulers.get(spider.name)
+            requeue = getattr(scheduler, "requeue_inflight", None)
+            if requeue:
+                await requeue(spider)
+
     async def shutdown(self):
-        self.stop_event.set()
+        if not self.stop_event.is_set():
+            # Stop managed work first while broker writes are still allowed. Any
+            # request already popped from Redis/RabbitMQ is then returned to its
+            # queue, and Kafka leaves its offset uncommitted.
+            self.sessions.freeze()
+            for engine in self.engines or []:
+                await engine.taskManager.cancel_all()
+            await self._requeue_scheduler_inflight()
+            await self._persist_scheduler_sessions()
+            self.stop_event.set()
         self.taskManager.tasks_done_event.set()
         self.taskManager.error_event.set()
 
-        # await asyncio.sleep(1)
-        for engine in self.engines:
-            await engine.taskManager.cancel_all()
         await self.sessions.close_all()
         await self.signalManager.stop()
 
@@ -258,6 +294,9 @@ class Crawler:
                     continue
                 if getattr(sch, "is_distributed", False):
                     await self.redisManager.delete(sch.get_queue_key(spider))
+                    get_session_state_key = getattr(sch, "get_session_state_key", None)
+                    if get_session_state_key:
+                        await self.redisManager.delete(get_session_state_key(spider))
                 df = getattr(sch, "dupefilter", None)
                 if df is not None:
                     keys_to_delete: list[str] = []
@@ -282,5 +321,11 @@ class Crawler:
 
         if self.postgresManager:
             await self.postgresManager.close()
+
+        if self.mongodbManager:
+            await self.mongodbManager.close()
+
+        if self.redisManager:
+            await self.redisManager.close()
 
 __all__ = ["Crawler"]

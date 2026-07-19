@@ -15,11 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt* pyproject.toml* /app/
+COPY requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi \
-    && if [ -f pyproject.toml ]; then pip install --no-cache-dir .; fi
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . /app
 

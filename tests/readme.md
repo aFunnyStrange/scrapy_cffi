@@ -12,7 +12,7 @@ Primary entry: [`tests/test_broker/README.md`](test_broker/README.md)
 
 Legacy dirs `tests/test_redis`, `tests/test_rabbitmq`, and `tests/test_kafka` were removed in **0.3.0** — use `test_broker` instead.
 
-Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra` → see [`docs/usage/11-mq.md`](../docs/usage/11-mq.md).
+Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra --all` → select with `infra/init.* --topology` → remove with `infra/destroy.*`. See [`docs/usage/11-mq.md`](../docs/usage/11-mq.md).
 
 ## Databases
 

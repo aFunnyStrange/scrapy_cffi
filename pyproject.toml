@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy_cffi"
-version = "0.3.2"
+version = "0.3.3"
 description = "An asyncio-style web scraping framework inspired by Scrapy, powered by curl_cffi."
 authors = [{name = "aFunnyStrange"}]
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 dependencies = [
     "curl_cffi",
     "PyExecjs",
@@ -23,10 +23,11 @@ dependencies = [
     "redis>=5.0.0",
     "parsel",
     "regex",
-    "dotenv"
+    "python-dotenv"
 ]
 [project.optional-dependencies]
 media = ["filetype", "Pillow", "hachoir"]
+kafka = ["aiokafka>=0.8.1"]
 
 [project.urls]
 Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"

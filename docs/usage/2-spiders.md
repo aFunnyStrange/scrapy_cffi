@@ -128,6 +128,27 @@ Resolution order: **spider attribute → `REDIS_STREAM_INFO` → framework defau
 - **Type**: str
 - **Description**: The name of the rabbitmq queue from which tasks (URLs) are pulled and scheduled.
 
+## 2.4 KafkaSpider
+
+`KafkaSpider` separates external start-task ingress from framework-generated work requests:
+
+```python
+from scrapy_cffi.spiders.kafka import KafkaSpider
+
+class ProductSpider(KafkaSpider):
+    name = "products"
+    kafka_start_topic = "products.start"
+    kafka_topic = "products.requests"
+```
+
+- `kafka_start_topic`: accepts raw UTF-8 URLs or serialized `Request.to_bytes()` payloads.
+- `kafka_topic`: contains compressed request objects, including callback-generated incremental requests.
+- `kafka_start_group` / `kafka_group`: optional consumer groups; defaults are derived from `KAFKA_INFO.CONSUMER_GROUP` and the spider name.
+
+Kafka request consumers use manual offsets. Work offsets are committed only after callback output crosses its next queue/pipeline boundary. Start offsets are committed only after the converted request is published successfully to the work topic. On Ctrl+C, uncommitted records are replayed after restart.
+
+`KafkaScheduler` uses Redis for distributed deduplication and persisted session cookies, so configure both `KAFKA_INFO` and `REDIS_INFO`.
+
 
 
 # 3.Spider Output

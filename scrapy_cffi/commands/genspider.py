@@ -48,7 +48,11 @@ def run(spider_name: str, allow_domain: str, use_redis: bool, use_rabbitmq: bool
 
     class_name = snake_to_camel(spider_name)
 
-    if use_rabbitmq:
+    if use_kafka:
+        import_path = "from scrapy_cffi.spiders.kafka import KafkaSpider"
+        base_class = "KafkaSpider"
+        start_urls = f'kafka_start_topic = "{spider_name}_start"\n    kafka_topic = "{spider_name}_requests"'
+    elif use_rabbitmq:
         import_path = "from scrapy_cffi.spiders.rabbitmq import RabbitmqSpider"
         base_class = "RabbitmqSpider"
         start_urls = 'rabbitmq_queue = ""'
