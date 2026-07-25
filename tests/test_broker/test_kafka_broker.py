@@ -61,6 +61,7 @@ async def run_kafka_flow(bootstrap: Union[str, List[str]], replication_factor: i
     assert any('"delete"' in m for m in received), f"Delete event missing: {received!r}"
 
     stop_event.set()
+    await manager.delete_topics([topic])
     await manager.close()
     print("crud events ok")
 
@@ -94,6 +95,7 @@ async def run_request_queue_flow(bootstrap: Union[str, List[str]], replication_f
 
     drained = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
     assert await drained.dequeue_request(topic, group, timeout=3) is None
+    await drained.delete_topics([topic])
     await drained.close()
     print("request queue offsets ok")
 

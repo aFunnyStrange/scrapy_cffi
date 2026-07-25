@@ -13,7 +13,7 @@ services:
       - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh:ro
     command: ["/usr/bin/env", "bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,7 +37,7 @@ services:
       - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh:ro
     command: ["/usr/bin/env", "bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -61,7 +61,7 @@ services:
       - ./rabbitmq-entrypoint.sh:/usr/local/bin/rabbitmq-entrypoint.sh:ro
     command: ["/usr/bin/env", "bash", "/usr/local/bin/rabbitmq-entrypoint.sh"]
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -128,3 +128,15 @@ class RabbitMqScheduler(RedisScheduler):
         if request_bytes is None:
             return None
         return request_bytes
+
+    async def cleanup(self, spider: "Spider") -> None:
+        """Remove non-persistent RabbitMQ request state owned by this spider."""
+        queue_name = getattr(spider, "rabbitmq_queue", None)
+        if not queue_name:
+            queue_name = (
+                f"{self.settings.QUEUE_NAME}:{spider.name}:start"
+                if self.settings.QUEUE_NAME
+                else f"{spider.name}_rabbit_start"
+            )
+        for name in {self.get_queue_key(spider), queue_name}:
+            await self.rabbitmqManager.delete_queue(name)

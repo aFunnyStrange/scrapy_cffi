@@ -14,11 +14,10 @@ Designed for use within an asyncio event loop and single-threaded context.
 import json
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, ResponseError, TimeoutError
-from tenacity import retry, wait_fixed, retry_if_exception_type
-from functools import wraps
 from dataclasses import dataclass
 import inspect, asyncio
 from typing import TYPE_CHECKING, Union, Tuple, List, Dict, Optional
+from ..utils.reconnect import AsyncReconnectController
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..models.databases import RedisInfo
@@ -31,26 +30,6 @@ class RedisStreamMessage:
     message_id: Union[str, bytes]
     data: bytes
     fields: Dict
-
-
-def auto_retry(func):
-    @wraps(func)
-    @retry(
-        wait=wait_fixed(1),
-        retry=retry_if_exception_type((ConnectionError, TimeoutError)),
-        reraise=True
-    )
-    async def wrapper(self, *args, **kwargs):
-        if self.stop_event.is_set():
-            raise asyncio.CancelledError("Stop event set, abort Redis operation")
-        try:
-            return await func(self, *args, **kwargs)
-        except (ConnectionError, TimeoutError):
-            if self.stop_event.is_set():
-                raise asyncio.CancelledError("Stop event set during reconnect")
-            await self._reconnect()
-            return await func(self, *args, **kwargs)
-    return wrapper
 
 
 class RedisManager(redis.Redis):
@@ -73,7 +52,6 @@ class RedisManager(redis.Redis):
         self._sentinel_override_master = sentinel_override_master
         self._cluster_address_remap_table = cluster_address_remap or {}
         self._connection_kwargs = dict(kwargs)
-        self._method_cache = {}
         self._sentinel = None
         self._cluster_client = None
         self._stream_groups_initialized = set()
@@ -131,6 +109,12 @@ class RedisManager(redis.Redis):
                 connection_pool=tmp_instance.connection_pool,
                 **{k: v for k, v in kwargs.items() if k in redis.Redis.__init__.__code__.co_varnames}
             )
+        self._reconnect_controller = AsyncReconnectController(
+            self.stop_event,
+            self._reconnect,
+            (ConnectionError, TimeoutError),
+            label="Redis",
+        )
 
     @classmethod
     def from_redis_info(cls, stop_event: asyncio.Event, info: "RedisInfo"):
@@ -144,9 +128,14 @@ class RedisManager(redis.Redis):
             "password": info.PASSWORD,
             "socket_connect_timeout": info.CONNECT_TIMEOUT,
             "socket_timeout": info.SOCKET_TIMEOUT,
-            "ssl": info.SSL,
-            "ssl_cert_reqs": info.SSL_CERT_REQS,
+            "protocol": info.PROTOCOL,
         }
+        if info.SSL and info.SSL_CERT_REQS is not None:
+            connection_kwargs["ssl_cert_reqs"] = info.SSL_CERT_REQS
+        # redis.from_url selects SSLConnection from the rediss:// scheme.
+        # Sentinel/Cluster constructors instead need the explicit ssl flag.
+        if info.SSL and mode != RedisMode.SINGLE.value:
+            connection_kwargs["ssl"] = True
         connection_kwargs = {
             key: value for key, value in connection_kwargs.items() if value is not None
         }
@@ -167,9 +156,7 @@ class RedisManager(redis.Redis):
         return cls.from_redis_info(crawler.stop_event, crawler.settings.REDIS_INFO)
 
     async def _reconnect(self):
-        if self.stop_event.is_set():
-            return
-        await self.close()
+        await self._close_active_client(close_sentinel=False)
         
         if self.redis_mode == "single":
             new_instance: "Redis" = redis.from_url(self._redis_url, **self._connection_kwargs)
@@ -199,9 +186,6 @@ class RedisManager(redis.Redis):
                 **self._connection_kwargs,
             )
             self._cluster_client = new_instance
-        # Cluster methods are cached as bound methods; after failover they must
-        # be rebound to the newly created client instead of the closed one.
-        self._method_cache.clear()
 
     def _build_cluster_startup_nodes(self, redis_url):
         from redis.asyncio.cluster import ClusterNode
@@ -231,59 +215,40 @@ class RedisManager(redis.Redis):
             return ("127.0.0.1", port)
         return (host, port)
 
-    def __getattribute__(self, name: str):
-        if name.startswith("_") or name in ("_method_cache", "_reconnect", "close"):
-            return super().__getattribute__(name)
-        attr = None
-        cluster_client = super().__getattribute__("_cluster_client")
-        if cluster_client is not None and hasattr(cluster_client, name):
-            attr = getattr(cluster_client, name)
-        else:
-            attr = super().__getattribute__(name)
+    async def execute_command(self, *args, **options):
+        """Protect Redis' single command gateway while retaining the Redis API type."""
+        command = args[0] if args else ""
+        if isinstance(command, bytes):
+            command = command.decode("ascii", errors="ignore")
+        allow_during_shutdown = str(command).upper() == "DEL"
 
-        if not callable(attr) or not inspect.iscoroutinefunction(attr):
-            return attr
+        async def operation():
+            if self._cluster_client is not None:
+                return await self._cluster_client.execute_command(*args, **options)
+            return await super(RedisManager, self).execute_command(*args, **options)
 
-        method_cache = super().__getattribute__("_method_cache")
-
-        if name not in method_cache:
-            @wraps(attr)
-            async def wrapper(*args, **kwargs):
-                allowed_during_shutdown = {"execute_command", "initialize", "parse_response"}
-
-                if self.stop_event.is_set():
-                    if (name not in allowed_during_shutdown) or \
-                        (name == "execute_command" and args[0] != "DEL") or \
-                        (name == "parse_response" and args[1] != "DEL"):
-                        raise asyncio.CancelledError(f"Stop event set, abort Redis operation: {name}")
-
-                try:
-                    if self.stop_event.is_set() and name in allowed_during_shutdown:
-                        return await asyncio.wait_for(attr(*args, **kwargs), timeout=3)
-                    else:
-                        return await attr(*args, **kwargs)
-                except (ConnectionError, TimeoutError):
-                    if self.stop_event.is_set():
-                        raise asyncio.CancelledError("Stop event set during reconnect")
-                    await self._reconnect()
-                    return await attr(*args, **kwargs)
-
-            method_cache[name] = wrapper
-
-        return method_cache[name]
+        coroutine = self._reconnect_controller.run(
+            operation,
+            allow_during_shutdown=allow_during_shutdown,
+        )
+        if allow_during_shutdown and self.stop_event.is_set():
+            return await asyncio.wait_for(coroutine, timeout=3)
+        return await coroutine
 
     async def close(self):
         """Close the active async client even after the crawler stop flag is set."""
+        await self._close_active_client(close_sentinel=True)
+
+    async def _close_active_client(self, close_sentinel: bool):
         cluster_client = self._cluster_client
         self._cluster_client = None
-        self._method_cache.clear()
         if cluster_client is not None:
             cluster_close = getattr(cluster_client, "aclose", cluster_client.close)
             result = cluster_close()
             if inspect.isawaitable(result):
                 await result
 
-        if self._sentinel is not None:
+        if close_sentinel and self._sentinel is not None:
             sentinel_closes = []
             for sentinel_client in self._sentinel.sentinels:
                 sentinel_close = getattr(sentinel_client, "aclose", sentinel_client.close)
@@ -298,7 +263,6 @@ class RedisManager(redis.Redis):
         if inspect.isawaitable(result):
             await result
 
-    @auto_retry
     async def do_filter(self, fingerprint: str, key_new_seen: str, key_is_req: str):
         script = """
         local fingerprint = ARGV[1]
@@ -318,7 +282,6 @@ class RedisManager(redis.Redis):
             fingerprint
         )
     
-    @auto_retry
     async def do_bloom_filter(
         self,
         key_new_seen: str,
@@ -362,7 +325,6 @@ class RedisManager(redis.Redis):
         indices_json = json.dumps(index_list)
         return await self.eval(script, 2, key_new_seen, key_is_req, indices_json)
 
-    @auto_retry
     async def dequeue_request(self, queue_key, timeout=2, decode_responses=False): # Pop a request from the queue, with optional timeout and decoding.
         result = await self.blpop(queue_key, timeout=timeout)
         if result:
@@ -372,7 +334,6 @@ class RedisManager(redis.Redis):
             return request
         return None
 
-    @auto_retry
     async def dequeue_stream_request(
         self,
         stream_key: str,

@@ -17,6 +17,18 @@ Optional PostgreSQL smoke test: `tests/test_postgres/test_postgres_manager.py` (
 
 Specifically, once connected, `RedisManager` provides **full compatibility with the native `redis.asyncio` API**.
 
+Retry is implemented at explicit I/O boundaries, not by intercepting every
+attribute access. Concurrent failures share one reconnect operation, so a
+database outage does not make every spider task rebuild the same client or
+pool. This also keeps public types visible to IDEs:
+
+- `RedisManager` subclasses `redis.asyncio.Redis`; native commands such as
+  `get`, `set`, Streams, pipelines, and scripts retain their normal completion.
+- `MongoDBManager.collection()` is typed as `AsyncIOMotorCollection` while a
+  small internal proxy refreshes the collection after reconnect.
+- SQL managers expose typed `engine` and `session_factory` attributes, and use
+  explicitly declared helpers instead of dynamic method wrapping.
+
 ## 2.1 RedisManager
 An async Redis client extending `redis.asyncio.Redis` with full API support.
 
@@ -25,6 +37,8 @@ An async Redis client extending `redis.asyncio.Redis` with full API support.
 - Respects a global asyncio stop event to gracefully abort operations during shutdown.
 - Only allows certain Redis commands (e.g. DEL) to run when stopping to ensure safe cleanup.
 - Provides convenience methods with built-in retry for common queue and deduplication patterns.
+- Routes retry through Redis' common `execute_command` gateway; it does not
+  cache or replace bound Redis methods.
 
 **Usage**
 `RedisManager` only needs two things to initialize:
@@ -61,6 +75,11 @@ Low-level helpers on `RedisManager`:
 See [2-spiders.md](./2-spiders.md#22-redisspider) and [1-settings.md](./1-settings.md#293-redis_stream_info).
 
 ## 2.2 SQLAlchemyMySQLManager / SQLAlchemyPostgresManager
+Only `execute`, `fetchone`, `fetchall`, and `run_stmt` are automatically
+replayed after a retryable connection failure. Native `engine` /
+`session_factory` usage remains fully explicit: transactions are never
+silently replayed by an attribute proxy.
+
 Both managers share `BaseSQLAlchemyManager` (retry, reconnect, pool). Configure connection and pool options via `MYSQL_INFO` / `POSTGRES_INFO` in settings — the crawler calls `init()` automatically when `resolved_url` is set.
 
 ```python

@@ -79,6 +79,20 @@ scrapy-cffi demo -r
 scrapy-cffi demo -m
 ```
 
+Framework development can validate Memory, Redis, RabbitMQ, and Kafka demos
+serially (with isolated local infra and automatic data reset) in one command:
+
+```bash
+python scripts/verify_demo.py
+```
+
+The script starts the generated HTTP/WebSocket servers and performs a real
+start-request plus incremental WebSocket crawl for every mode. It retains
+`demo.log`, crawler console, server, broker, and PASS/FAIL evidence under
+`artifacts/demo-verification/<timestamp>/`. Use `--log-dir <path>` to choose the
+evidence directory, or `--skip-infra` for generated-project and unit-level
+scheduler checks only.
+
 # 5.geninfra
 Generate an independent local-development Docker Compose stack into `infra/` (or `--output-dir`). It includes Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka; it is deliberately separate from the crawler application image.
 

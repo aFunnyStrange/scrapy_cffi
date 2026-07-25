@@ -48,7 +48,12 @@ class RedisScheduler(BaseScheduler):
             dedup_kw.setdefault("redis_namespace", self.spiders_name[0])
         if self.settings.DUPEFILTER:
             from ...utils import load_object
-            dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
+            configured = self.settings.DUPEFILTER
+            dupefilter_cls = (
+                load_object(path=configured)
+                if isinstance(configured, str)
+                else configured
+            )
             self.dupefilter = dupefilter_cls(settings=self.settings, redisManager=self.redisManager, **dedup_kw)
         else:
             from ...dupefilter.redis import RedisDupeFilter

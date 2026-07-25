@@ -7,15 +7,19 @@ class ComponentInfo(StrictValidatedModel):
     value: List[Type] = Field(default_factory=list)
 
     @classmethod
-    def from_raw(cls, raw: Union[Dict[str, Any], List[Any], str, type], field_name="") -> "ComponentInfo":
+    def from_raw(
+        cls,
+        raw: Union[Dict[Union[str, type], Any], List[Any], str, type],
+        field_name="",
+    ) -> "ComponentInfo":
         # dict -> sort by value and use key as path or class
         if isinstance(raw, dict):
             try:
                 sorted_items = sorted(raw.items(), key=lambda item: item[1])
-                items = [cls._load(k, field_name) for k, _ in sorted_items]
-                return cls(value=items)
-            except Exception:
-                raise ValueError(f"{field_name}: dict values must be sortable")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field_name}: dict values must be sortable") from exc
+            items = [cls._load(k, field_name) for k, _ in sorted_items]
+            return cls(value=items)
         # list -> supports str or class
         elif isinstance(raw, list):
             if all(isinstance(i, (str, type)) for i in raw):
@@ -25,9 +29,12 @@ class ComponentInfo(StrictValidatedModel):
         elif isinstance(raw, (str, type)):
             return cls(value=[cls._load(raw, field_name)])
         elif raw is None:
-            cls(value=[])
+            return cls(value=[])
         else:
-            raise ValueError(f"{field_name}: must be dict, list[str|class], str, or class")
+            raise ValueError(
+                f"{field_name}: must be dict, list of import paths/classes, "
+                "an import path, or a class"
+            )
 
     @staticmethod
     def _load(obj: Union[str, type], field_name: str) -> Type:

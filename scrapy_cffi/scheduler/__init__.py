@@ -1,5 +1,7 @@
 from ..core.scheduler import Scheduler
-from ..core.scheduler.api import RedisScheduler, RabbitMqScheduler, KafkaScheduler
+from ..core.scheduler.kafka import KafkaScheduler
+from ..core.scheduler.rabbitmq import RabbitMqScheduler
+from ..core.scheduler.redis import RedisScheduler
 
 __all__ = [
     "Scheduler",

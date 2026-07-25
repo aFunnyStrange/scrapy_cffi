@@ -99,7 +99,12 @@ class Scheduler(BaseScheduler):
         )
         if self.settings.DUPEFILTER:
             from ...utils import load_object
-            dupefilter_cls = load_object(path=self.settings.DUPEFILTER)
+            configured = self.settings.DUPEFILTER
+            dupefilter_cls = (
+                load_object(path=configured)
+                if isinstance(configured, str)
+                else configured
+            )
             self.dupefilter = dupefilter_cls(settings=self.settings, **kwargs)
         else:
             from ...dupefilter.base import MemoryDupeFilter

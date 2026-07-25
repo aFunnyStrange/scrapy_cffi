@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List
 from ._template_build import copytree_merge_text_safe, read_text_template, write_utf8_file
+from .genspider import update_runner_default_spider
 
 
 def copytree_merge(src: Path, dst: Path) -> None:
@@ -17,20 +18,6 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
 
     project_path = find_project_root(is_demo=True)
     check_config(project_path, use_redis=use_redis, use_rabbitmq=use_rabbitmq, use_kafka=use_kafka)
-
-    settings_path = target / "settings.py"
-    settings_code = read_text_template(settings_path)
-    settings_code = settings_code.replace("# settings.EXTENSIONS_PATH", "settings.EXTENSIONS_PATH")
-    settings_code = settings_code.replace("# settings.ITEM_PIPELINES_PATH", "settings.ITEM_PIPELINES_PATH")
-    settings_code = settings_code.replace(
-        '# "interceptors.CustomDownloadInterceptor1"',
-        '"interceptors.CustomDownloadInterceptor1"',
-    )
-    settings_code = settings_code.replace(
-        '# "interceptors.CustomDownloadInterceptor2"',
-        '"interceptors.CustomDownloadInterceptor2"',
-    )
-    write_utf8_file(settings_path, settings_code)
 
     spider_dir = target / "spiders"
     demo_spiders_dir = template_dir / "demo_spider"
@@ -86,6 +73,11 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
             use_redis=use_redis,
             use_rabbitmq=use_rabbitmq,
         )
+        update_runner_default_spider(
+            target,
+            "CustomRedisSpider",
+            "customRedisSpider",
+        )
     else:
         spider_dir.mkdir(parents=True, exist_ok=True)
         demo_spider_files = ["customSpider", "studentSpider"]
@@ -104,6 +96,7 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
             use_redis=use_redis,
             use_rabbitmq=use_rabbitmq,
         )
+        update_runner_default_spider(target, "CustomSpider", "customSpider")
 
     print("Project 'demo' created.")
     demo_readme = template_dir / "demo_GUIDE.md"

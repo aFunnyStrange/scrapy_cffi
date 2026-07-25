@@ -1,5 +1,6 @@
 import ast
 import asyncio
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -90,3 +91,27 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
         assert exception_result.exception is error
 
     asyncio.run(run())
+
+
+def test_class_based_settings_export_to_recoverable_env_paths():
+    from scrapy_cffi.core.scheduler.redis import RedisScheduler
+    from scrapy_cffi.pipelines import Pipeline
+    from scrapy_cffi.settings import SettingsInfo
+    from scrapy_cffi.spiders import RedisSpider
+    from scrapy_cffi.utils.envConfig import env_to_settings, settings_to_env
+
+    settings = SettingsInfo(
+        SPIDERS_PATH=RedisSpider,
+        SCHEDULER=RedisScheduler,
+        ITEM_PIPELINES_PATH=[Pipeline],
+    )
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+        env_path = Path(directory) / ".env"
+        settings_to_env(settings, env_path)
+        env_text = env_path.read_text(encoding="utf-8")
+        restored = env_to_settings(env_path, SettingsInfo)
+
+    assert "<class" not in env_text
+    assert "scrapy_cffi.core.scheduler.redis.RedisScheduler" in env_text
+    assert restored.SCHEDULER == "scrapy_cffi.core.scheduler.redis.RedisScheduler"
+    assert restored.ITEM_PIPELINES_PATH.value == [Pipeline]

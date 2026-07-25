@@ -1,5 +1,8 @@
+import asyncio
+
 import pytest
 
+from scrapy_cffi.databases.redis import RedisManager
 from scrapy_cffi.models.databases import RedisInfo, RedisMode
 from scrapy_cffi.models.mq import KafkaInfo, MQMode, RabbitMQInfo
 
@@ -58,3 +61,18 @@ def test_kafka_host_port_uses_native_bootstrap_format():
     kafka = KafkaInfo(HOST="kafka.internal", PORT=9093)
 
     assert kafka.URL == "kafka.internal:9093"
+
+
+def test_redis_single_connection_does_not_pass_ssl_false_to_plain_tcp():
+    info = RedisInfo(URL="redis://127.0.0.1:6379")
+    manager = RedisManager.from_redis_info(asyncio.Event(), info)
+
+    assert manager.connection_pool.connection_kwargs["protocol"] == 2
+    assert "ssl" not in manager.connection_pool.connection_kwargs
+    asyncio.run(manager.close())
+
+
+def test_redis_ssl_host_configuration_uses_rediss_scheme():
+    info = RedisInfo(HOST="redis.internal", PORT=6379, SSL=True)
+
+    assert info.URL == "rediss://redis.internal:6379"

@@ -1,9 +1,33 @@
 import sys
 from pathlib import Path
-from scrapy_cffi.utils import get_run_py_dir
+from typing import Optional, Type, Union
+
+from extensions.extension import CustomExtension
+from interceptors.interceptors import (
+    CustomDownloadInterceptor1,
+    CustomDownloadInterceptor2,
+)
+from pipelines.pipeline import CustomPipeline1, CustomPipeline2
+from scrapy_cffi.core.scheduler.kafka import KafkaScheduler
+from scrapy_cffi.core.scheduler.rabbitmq import RabbitMqScheduler
+from scrapy_cffi.core.scheduler.redis import RedisScheduler
+from scrapy_cffi.spiders import BaseSpider
+from scrapy_cffi.utils.envConfig import env_to_settings
+from scrapy_cffi.utils.common import get_run_py_dir
 from scrapy_cffi.settings import SettingsInfo
 
-def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=False, used_kafka=False, *args, **kwargs):
+SpiderTarget = Union[str, Path, Type[BaseSpider]]
+
+
+def create_settings(
+    spider_path: SpiderTarget,
+    env_path: Optional[str] = None,
+    used_redis: bool = False,
+    used_rabbitmq: bool = False,
+    used_kafka: bool = False,
+    *args,
+    **kwargs,
+) -> SettingsInfo:
     if env_path:
         env_file = Path(env_path)
         if env_file.exists():
@@ -29,11 +53,11 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
     settings.ROBOTSTXT_OBEY = False  # Demo server randomizes robots.txt and can introduce noisy nondeterminism.
     settings.TIMEOUT = 30
     settings.SPIDERS_PATH = spider_path
-    settings.EXTENSIONS_PATH = "extensions.CustomExtension"
-    settings.ITEM_PIPELINES_PATH = ["pipelines.CustomPipeline2", "pipelines.CustomPipeline1"]
+    settings.EXTENSIONS_PATH = CustomExtension
+    settings.ITEM_PIPELINES_PATH = [CustomPipeline2, CustomPipeline1]
     settings.DOWNLOAD_INTERCEPTORS_PATH = {
-        "interceptors.CustomDownloadInterceptor1": 300,
-        "interceptors.CustomDownloadInterceptor2": 200,
+        CustomDownloadInterceptor1: 300,
+        CustomDownloadInterceptor2: 200,
     }
     settings.JS_PATH = str(get_run_py_dir() / "js_path") # can be a custom path string, or True to use the default: get_run_py_dir() / "js_path"
 
@@ -42,23 +66,23 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
         settings.MAX_GLOBAL_CONCURRENT_TASKS = 200
         settings.MAX_CONCURRENT_REQ = 50
 
-    # settings.DUPEFILTER = "scrapy_cffi.dupefilter.BloomDupeFilter" # In-memory Bloom filter deduplication
-    # settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisBloomDupeFilter" # Enable Redis Bloom filter deduplication
+    # from scrapy_cffi.dupefilter import BloomDupeFilter
+    # settings.DUPEFILTER = BloomDupeFilter # In-memory Bloom filter deduplication
 
     if used_kafka:
-        settings.SCHEDULER_PERSIST = True
-        settings.SCHEDULER = "scrapy_cffi.scheduler.KafkaScheduler"
-        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Deduplication and persisted session cookies
+        settings.SCHEDULER_PERSIST = False
+        settings.SCHEDULER = KafkaScheduler
+        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Distributed deduplication (always required)
         settings.KAFKA_INFO.URL = "localhost:9092"
     elif used_rabbitmq:
-        settings.SCHEDULER_PERSIST = True
-        settings.SCHEDULER = "scrapy_cffi.scheduler.RabbitMqScheduler"
-        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Used for request deduplication
+        settings.SCHEDULER_PERSIST = False
+        settings.SCHEDULER = RabbitMqScheduler
+        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Distributed deduplication (always required)
         settings.RABBITMQ_INFO.URL = "amqp://guest:guest@127.0.0.1:5672"
         # settings.SCHEDULER_LOOP_END = 5
         settings.MAX_SCHEDULER_LOOP_NUM = 1 # One crawler, run_all_spiders, aio_pika does not fully support a large number of concurrent robust connections.
     elif used_redis:
-        settings.SCHEDULER = "scrapy_cffi.scheduler.RedisScheduler" # Starting the Redis scheduler requires configuring Redis information
+        settings.SCHEDULER = RedisScheduler # Starting the Redis scheduler requires configuring Redis information
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
         settings.SCHEDULER_PERSIST = False
         # Optional: shared Redis Stream consumer-group defaults for RedisSpider (spider attrs override)
@@ -83,7 +107,7 @@ def create_settings(spider_path, env_path=None, used_redis=False, used_rabbitmq=
 
 if __name__ == "__main__":
     from scrapy_cffi.utils.envConfig import settings_to_env, env_to_settings
-    from scrapy_cffi.utils import get_run_py_dir
+    from scrapy_cffi.utils.common import get_run_py_dir
     
     spider_path = str(get_run_py_dir() / "spiders")
     env_path = str(get_run_py_dir() / ".env.dev")

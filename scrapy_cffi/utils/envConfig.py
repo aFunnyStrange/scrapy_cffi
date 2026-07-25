@@ -4,13 +4,20 @@ from dotenv import dotenv_values
 from typing import Type, Any, Union
 try:
     from ..models.api import ComponentInfo
-except BaseException as e:
+except ImportError:
     from scrapy_cffi.models.api import ComponentInfo
+
+
+def _class_path(value: type) -> str:
+    return f"{value.__module__}.{value.__qualname__}"
+
 
 def _json_serialize(value: Any):
     """Convert non-serializable objects into serializable format for JSON."""
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, type):
+        return _class_path(value)
     raise TypeError(f"Type {type(value)} not JSON serializable")
 
 # Fields that require special handling as ComponentInfo objects
@@ -26,7 +33,7 @@ def settings_to_env(obj: Any, env_path: Union[str, Path]):
     Convert a Python object (Pydantic model or plain object) into a .env file.
     - dict/list fields are serialized as JSON
     - bool fields are converted to 'true'/'false'
-    - ComponentInfo fields are written as empty JSON '{}'
+    - imported classes are exported as stable module paths
     - Fields with None values are skipped
     """
     lines = []
@@ -40,9 +47,20 @@ def settings_to_env(obj: Any, env_path: Union[str, Path]):
     for key, value in data.items():
         if key.startswith("_") or value is None:
             continue
-        # Write ComponentInfo fields as empty JSON
+        original_value = getattr(obj, key, value)
         if key in _COMPONENT_FIELDS:
-            value_str = "{}"
+            components = (
+                original_value.value
+                if isinstance(original_value, ComponentInfo)
+                else original_value
+            )
+            value_str = json.dumps(
+                components or [],
+                ensure_ascii=False,
+                default=_json_serialize,
+            )
+        elif isinstance(original_value, type):
+            value_str = _class_path(original_value)
         elif isinstance(value, (dict, list)):
             value_str = json.dumps(value, ensure_ascii=False, default=_json_serialize)
         elif isinstance(value, bool):

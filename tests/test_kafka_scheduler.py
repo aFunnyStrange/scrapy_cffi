@@ -59,6 +59,10 @@ class FakeKafka:
         self.acked.append(message)
         return True
 
+    async def delete_topics(self, topics):
+        for topic in topics:
+            self.topics.pop(topic, None)
+
 
 class FakeRabbit:
     def __init__(self):
@@ -74,6 +78,10 @@ class FakeRabbit:
 
     async def llen(self, queue_name):
         return len(self.queues.get(queue_name, []))
+
+    async def delete_queue(self, queue_name):
+        self.queues.pop(queue_name, None)
+        return True
 
 
 class Spider:
@@ -238,6 +246,68 @@ def test_rabbit_scheduler_requeues_work_and_start_requests_for_ctrl_c():
     asyncio.run(run())
 
 
+def test_rabbit_and_kafka_nonpersistent_cleanup_keeps_redis_dedup_required():
+    from scrapy_cffi.core.scheduler.kafka import KafkaScheduler
+    from scrapy_cffi.core.scheduler.rabbitmq import RabbitMqScheduler
+    from scrapy_cffi.core.sessions import SessionManager
+    from scrapy_cffi.settings import SettingsInfo
+
+    async def run():
+        settings = SettingsInfo(SCHEDULER_PERSIST=False)
+        settings.KAFKA_INFO.URL = "127.0.0.1:9092"
+        sessions = SessionManager(asyncio.Event(), settings)
+
+        for scheduler_cls, manager_kw in (
+            (RabbitMqScheduler, {"rabbitmqManager": FakeRabbit()}),
+            (KafkaScheduler, {"kafkaManager": FakeKafka()}),
+        ):
+            try:
+                scheduler_cls(
+                    spiders_name=["demo"],
+                    stop_event=asyncio.Event(),
+                    settings=settings,
+                    sessions=sessions,
+                    sessions_lock=asyncio.Lock(),
+                    signalManager=MagicMock(),
+                    redisManager=None,
+                    **manager_kw,
+                )
+            except ValueError as exc:
+                assert "RedisScheduler requires" in str(exc)
+            else:
+                raise AssertionError("Distributed broker scheduler accepted no Redis")
+
+        redis = FakeRedis()
+        rabbit = FakeRabbit()
+        rabbit.queues.update({"demo_req": [b"work"], "rabbit.start": [b"start"]})
+        rabbit_scheduler = RabbitMqScheduler(
+            spiders_name=["demo"],
+            stop_event=asyncio.Event(),
+            settings=settings,
+            sessions=sessions,
+            sessions_lock=asyncio.Lock(),
+            signalManager=MagicMock(),
+            redisManager=redis,
+            rabbitmqManager=rabbit,
+        )
+
+        class RabbitSpider:
+            name = "demo"
+            rabbitmq_queue = "rabbit.start"
+
+        await rabbit_scheduler.cleanup(RabbitSpider())
+        assert rabbit.queues == {}
+
+        kafka = FakeKafka()
+        kafka.topics.update({"demo.requests": [b"work"], "demo.start": [b"start"]})
+        kafka_scheduler = _scheduler(settings, sessions, redis, kafka)
+        await kafka_scheduler.cleanup(Spider())
+        assert kafka.topics == {}
+        await sessions.close_all()
+
+    asyncio.run(run())
+
+
 def test_kafka_offsets_commit_only_after_contiguous_completion():
     import sys
 
@@ -336,6 +406,103 @@ def test_crawler_shutdown_cancels_then_requeues_then_snapshots_before_stop():
         assert events[-1] == "close_sessions"
         redis_close.assert_awaited_once()
         mongodb_close.assert_awaited_once()
+
+    asyncio.run(run())
+
+
+def test_crawler_nonpersistent_cleanup_runs_once_before_broker_close():
+    from scrapy_cffi.crawler import Crawler
+    from scrapy_cffi.settings import SettingsInfo
+
+    async def run():
+        events = []
+
+        class Sessions:
+            def freeze(self):
+                pass
+
+            async def close_all(self):
+                pass
+
+        class ManagedTasks:
+            tasks_done_event = asyncio.Event()
+            error_event = asyncio.Event()
+
+            async def cancel_all(self):
+                pass
+
+        class Scheduler:
+            is_distributed = False
+            dupefilter = None
+
+            async def requeue_inflight(self, spider):
+                pass
+
+            async def cleanup(self, spider):
+                assert not crawler.stop_event.is_set()
+                events.append("cleanup")
+
+        crawler = Crawler()
+        crawler.settings = SettingsInfo(SCHEDULER_PERSIST=False)
+        crawler.stop_event = asyncio.Event()
+        crawler.sessions = Sessions()
+        crawler.taskManager = ManagedTasks()
+        crawler.engines = []
+        crawler.spiders = [SimpleNamespace(name="demo")]
+        crawler.schedulers = {"demo": Scheduler()}
+        crawler.signalManager = SimpleNamespace(stop=AsyncMock())
+        crawler.redisManager = SimpleNamespace(delete=AsyncMock(), close=AsyncMock())
+        crawler.rabbitmqManager = SimpleNamespace(
+            close=AsyncMock(side_effect=lambda: events.append("rabbit_close"))
+        )
+        crawler.kafkaManager = None
+        crawler.mysqlManager = None
+        crawler.postgresManager = None
+        crawler.mongodbManager = None
+
+        await crawler.shutdown()
+        assert events == ["cleanup", "rabbit_close"]
+
+    asyncio.run(run())
+
+
+def test_crawler_shutdown_preparation_is_atomic_when_callers_race():
+    from scrapy_cffi.crawler import Crawler
+    from scrapy_cffi.settings import SettingsInfo
+
+    async def run():
+        events = []
+
+        class Sessions:
+            def freeze(self):
+                events.append("freeze")
+
+        class ManagedTasks:
+            async def cancel_all(self):
+                events.append("cancel")
+                await asyncio.sleep(0)
+
+        class Scheduler:
+            async def requeue_inflight(self, spider):
+                assert not crawler.stop_event.is_set()
+                events.append("requeue")
+                await asyncio.sleep(0)
+
+        crawler = Crawler()
+        crawler.settings = SettingsInfo(SCHEDULER_PERSIST=False)
+        crawler.stop_event = asyncio.Event()
+        crawler.sessions = Sessions()
+        crawler.engines = [SimpleNamespace(taskManager=ManagedTasks())]
+        crawler.spiders = [SimpleNamespace(name="demo")]
+        crawler.schedulers = {"demo": Scheduler()}
+        crawler.redisManager = None
+
+        await asyncio.gather(
+            crawler._prepare_shutdown(),
+            crawler._prepare_shutdown(),
+        )
+        assert events == ["freeze", "cancel", "requeue"]
+        assert crawler.stop_event.is_set()
 
     asyncio.run(run())
 

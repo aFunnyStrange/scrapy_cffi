@@ -116,7 +116,14 @@ def _base_settings(spiders_path: Path):
     return settings
 
 
-async def _init_crawler(settings, *, mock_redis=False, mock_rabbit=False, mock_kafka=False):
+async def _init_crawler(
+    settings,
+    *,
+    start_type=0,
+    mock_redis=False,
+    mock_rabbit=False,
+    mock_kafka=False,
+):
     from scrapy_cffi.crawler import Crawler
 
     patches = []
@@ -140,6 +147,8 @@ async def _init_crawler(settings, *, mock_redis=False, mock_rabbit=False, mock_k
         import scrapy_cffi.mq.kafka as kafka_mod
 
         mock_km = MagicMock()
+        mock_km.produce = AsyncMock(return_value=True)
+        mock_km.produce_async = AsyncMock()
         mock_km.from_crawler = MagicMock(return_value=mock_km)
         patches.append(
             patch.object(kafka_mod.KafkaManager, "from_crawler", mock_km.from_crawler)
@@ -149,7 +158,7 @@ async def _init_crawler(settings, *, mock_redis=False, mock_rabbit=False, mock_k
         p.start()
     try:
         crawler = Crawler()
-        await crawler.do_initialization(settings=settings, start_type=0)
+        await crawler.do_initialization(settings=settings, start_type=start_type)
         return crawler
     finally:
         for p in patches:
@@ -176,6 +185,30 @@ def test_redis_scheduler_init(tmp_path):
     assert type(sch).__name__ == "RedisScheduler"
     assert hasattr(sch, "get_start_req")
     assert crawler.engines[0].scheduler_loop.__name__ == "_distributed_scheduler_loop"
+
+
+def test_single_spider_and_scheduler_accept_real_classes(tmp_path):
+    import importlib.util
+
+    from scrapy_cffi.core.scheduler.redis import RedisScheduler
+
+    spiders = _minimal_spider_module(tmp_path, redis=True)
+    spec = importlib.util.spec_from_file_location(
+        "typed_demo_spider",
+        spiders / "demo.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    settings = _base_settings(spiders)
+    settings.SPIDERS_PATH = module.DemoSpider
+    settings.SCHEDULER = RedisScheduler
+    settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
+
+    crawler = asyncio.run(
+        _init_crawler(settings, start_type=1, mock_redis=True)
+    )
+    assert crawler.spiders[0].__class__ is settings.SPIDERS_PATH
+    assert crawler.schedulers["demo"].__class__ is RedisScheduler
 
 
 def test_rabbitmq_scheduler_init(tmp_path):

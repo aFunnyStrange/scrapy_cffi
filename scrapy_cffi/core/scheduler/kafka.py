@@ -133,5 +133,11 @@ class KafkaScheduler(RedisScheduler):
     async def ack_start_req(self, spider: "Spider", message: "KafkaMessage", **kwargs):
         return await self.kafkaManager.ack_request(message)
 
+    async def cleanup(self, spider: "Spider") -> None:
+        """Remove non-persistent Kafka request state owned by this spider."""
+        await self.kafkaManager.delete_topics(
+            [self.get_queue_key(spider), self.get_start_topic(spider)]
+        )
+
 
 __all__ = ["KafkaScheduler"]

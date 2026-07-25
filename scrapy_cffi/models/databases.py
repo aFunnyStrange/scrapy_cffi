@@ -42,6 +42,7 @@ class RedisInfo(BaseDBInfo):
 
     CONNECT_TIMEOUT: float = 5.0
     SOCKET_TIMEOUT: Optional[float] = None
+    PROTOCOL: int = 2
     SSL: bool = False
     SSL_CERT_REQS: Optional[str] = None
     SENTINEL_USERNAME: Optional[str] = None
@@ -70,7 +71,10 @@ class RedisInfo(BaseDBInfo):
                 elif self.PASSWORD:
                     auth_part = f":{self.PASSWORD}@"
                 db_part = f"/{self.DB}" if self.DB is not None else ""
-                self.URL = f"redis://{auth_part}{self.HOST}:{self.PORT}{db_part}"
+                scheme = "rediss" if self.SSL else "redis"
+                self.URL = f"{scheme}://{auth_part}{self.HOST}:{self.PORT}{db_part}"
+            elif self.URL and self.SSL and self.URL.startswith("redis://"):
+                self.URL = f"rediss://{self.URL[len('redis://'):]}"
         return self
 
     @property

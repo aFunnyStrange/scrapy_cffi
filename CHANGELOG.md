@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Shared single-flight reconnect controller for database/MQ adapters. Concurrent
+  failures now collapse into one transport rebuild and respect crawler shutdown.
+- `scripts/verify_demo.py`, a one-command serial verifier for Memory, Redis,
+  RabbitMQ, and Kafka demos. It starts the generated HTTP/WebSocket servers,
+  performs real start and incremental requests, retains per-mode framework,
+  console, server, broker, and PASS/FAIL logs, and removes disposable
+  containers/volumes before continuing.
 - `KafkaSpider` / `KafkaScheduler` with separate start and work topics, compressed request payloads, Redis-backed dedup/session state, and manual contiguous offset commits.
 - Persistent Session Cookie Hash state and adaptive request-state compression.
 - Independent `geninfra` development stack for Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka, with PowerShell/shell `init`, `reset`, and `destroy` scripts.
@@ -15,10 +22,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `production-endpoints.example.toml` and production connection settings for real infrastructure hosts: Redis ACL/Sentinel auth/TLS/timeouts/address remap, RabbitMQ timeout/heartbeat, and Kafka SASL/TLS/client timeout.
 
 ### Changed
+- Redis keeps its native `redis.asyncio.Redis` API and handles retry only at
+  `execute_command`; RabbitMQ, Kafka, and SQLAlchemy managers now use explicit
+  reconnectable methods instead of global `__getattribute__` interception.
+  Mongo collections retain the native Motor type for IDE completion through a
+  typed internal proxy.
+- `RabbitMqScheduler` and `KafkaScheduler` still require Redis for distributed
+  deduplication. With `SCHEDULER_PERSIST=False`, normal exit and Ctrl+C now also
+  delete their start/work queues or topics along with Redis dedup/session state.
+  Demo broker modes exercise this cleanup by default.
+- RabbitMQ exchange durability is now stable across persistent and transient
+  schedulers, allowing both modes to share an exchange without AMQP
+  `PRECONDITION_FAILED`; queue/message durability still follows
+  `SCHEDULER_PERSIST`.
+- Local RabbitMQ healthchecks now wait for AMQP port connectivity instead of
+  reporting healthy while the broker is still starting its listeners.
+- Crawler shutdown preparation is now locked and idempotent. Concurrent normal
+  completion, Ctrl+C, and explicit `crawler.shutdown()` can no longer race by
+  setting the global stop event before unfinished Redis/RabbitMQ requests are
+  requeued.
 - Project Docker Compose now contains only the crawler application and no longer owns or waits for database/MQ containers.
 - Docker infrastructure templates are explicitly development-only. Production containerizes the crawler application and connects directly to databases/MQ on real machines or native clusters.
 - Redis and MQ node lists infer Sentinel/cluster mode; Kafka replication defaults to the configured bootstrap-node count for constructed cluster settings.
 - Local Kafka Compose and broker-test stacks use the official Apache Kafka KRaft image; obsolete Bitnami/ZooKeeper instructions were removed.
+- Generated `runner.py` and `settings.py` now use explicit class imports for spiders, schedulers, extensions, pipelines, and interceptors. String import paths remain backwards compatible.
+- `.env` export serializes configured classes back to stable import paths instead of dropping components or writing unusable `<class ...>` representations.
 
 ### Removed
 - The obsolete demo README and monolithic project Compose database/MQ definitions. Generated demos now use the topology-aware local-infra guide.
@@ -29,10 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Package metadata now declares the actual Python 3.9 minimum, uses the `python-dotenv` distribution name, and avoids Python 3.10-only union annotations.
 - Response/exception interceptor chains now continue correctly on `None` and preserve exceptions after every interceptor declines to handle them.
 - Redis start-request polling no longer leaks one pending stop task per message; synchronous runners now execute crawler shutdown even when an engine raises, and repeated Kafka shutdown clears closed client state.
-- Redis Sentinel now uses the asyncio client, Redis Cluster reconnects invalidate bound-method caches, and RabbitMQ reconnects discard Queue objects owned by the previous channel.
+- Redis Sentinel now uses the asyncio client, Redis Cluster reconnects replace
+  the command target without stale bound-method caches, and RabbitMQ reconnects
+  discard Queue objects owned by the previous channel.
 - MongoDB is initialized before first use; crawler shutdown now closes MongoDB and Redis clients, while Redis no longer swallows `KeyboardInterrupt` during retries.
 - Response objects no longer share a mutable default `meta` dictionary across requests.
 - Scheduler state decoding uses bounded streaming decompression and rejects logical payloads above 16 MiB, preventing oversized broker messages or compression bombs from exhausting crawler memory.
+- `demo -r` works with current redis-py: plain `redis://` connections no longer receive an invalid `ssl=False` keyword, and RESP2 is selected by default for compatibility across Redis server versions.
+- `genspider` and every demo variant bind `runner.DEFAULT_SPIDER` to an existing generated class instead of the removed hard-coded `spiders.CustomSpider` string.
 
 ---
 ## [0.3.2] - 2026-05-29

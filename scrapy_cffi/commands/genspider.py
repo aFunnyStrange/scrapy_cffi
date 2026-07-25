@@ -6,40 +6,19 @@ def check_config(project_path: Path, use_redis: bool=False, use_rabbitmq: bool=F
     config_path = project_path / "scrapy_cffi.toml"
 
     config_data = toml.load(config_path)
-    if config_data.get("default"):
-        if use_rabbitmq and (not config_data["default"].get("use_rabbitmq", False)):
-            config_data["default"]["use_rabbitmq"] = True
-            with config_path.open("w", encoding="utf-8") as f:
-                toml.dump(config_data, f)
-
-            # Scheduler -> RabbitMqScheduler
-            settings_file = project_path / "settings.py"
-            settings_data = settings_file.read_text(encoding='utf-8')
-            if 'used_rabbitmq=False,' in settings_data:
-                settings_data = settings_data.replace('used_rabbitmq=False,', 'used_rabbitmq=True,')
-                settings_file.write_text(settings_data, encoding="utf-8")
-        elif use_redis and (not config_data["default"].get("use_redis", False)):
-            config_data["default"]["use_redis"] = True
-            with config_path.open("w", encoding="utf-8") as f:
-                toml.dump(config_data, f)
-
-            # Scheduler -> RedisScheduler
-            settings_file = project_path / "settings.py"
-            settings_data = settings_file.read_text(encoding='utf-8')
-            if 'used_redis=False,' in settings_data:
-                settings_data = settings_data.replace('used_redis=False,', 'used_redis=True,')
-                settings_file.write_text(settings_data, encoding="utf-8")
-
-        if use_kafka and (not config_data["default"].get("use_kafka", False)):
-            config_data["default"]["use_kafka"] = True
-            with config_path.open("w", encoding="utf-8") as f:
-                toml.dump(config_data, f)
-
-            settings_file = project_path / "settings.py"
-            settings_data = settings_file.read_text(encoding='utf-8')
-            if 'used_kafka=False,' in settings_data:
-                settings_data = settings_data.replace('used_kafka=False,', 'used_kafka=True,')
-                settings_file.write_text(settings_data, encoding="utf-8")
+    defaults = config_data.setdefault("default", {})
+    changed = False
+    for key, enabled in (
+        ("use_redis", use_redis),
+        ("use_rabbitmq", use_rabbitmq),
+        ("use_kafka", use_kafka),
+    ):
+        if enabled and not defaults.get(key, False):
+            defaults[key] = True
+            changed = True
+    if changed:
+        with config_path.open("w", encoding="utf-8") as f:
+            toml.dump(config_data, f)
 
 def run(spider_name: str, allow_domain: str, use_redis: bool, use_rabbitmq: bool, use_kafka: bool, is_demo=False):
     from .base import find_project_root
@@ -84,6 +63,7 @@ def run(spider_name: str, allow_domain: str, use_redis: bool, use_rabbitmq: bool
 
     # To avoid overwriting user-defined content, only spider templates should be regenerated; other files should be appended or updated dynamically.
     update_spiders_init(project_path, class_name, spider_name)
+    update_runner_default_spider(project_path, class_name, spider_name)
     if not is_demo:
         print(f"Spider created: {target_file}")
 
@@ -105,3 +85,33 @@ def update_spiders_init(project_path: Path, class_name: str, spider_name: str):
         return
     with open(init_path, "a", encoding="utf-8") as f:
         f.write(import_line)
+
+
+def update_runner_default_spider(
+    project_path: Path,
+    class_name: str,
+    spider_module: str,
+) -> None:
+    """Bind generated runner helpers to a real class so IDEs can follow it."""
+    runner_path = project_path / "runner.py"
+    if not runner_path.is_file():
+        return
+
+    start_marker = "# <scrapy-cffi:default-spider>"
+    end_marker = "# </scrapy-cffi:default-spider>"
+    runner_data = runner_path.read_text(encoding="utf-8")
+    start = runner_data.find(start_marker)
+    end = runner_data.find(end_marker)
+    if start < 0 or end < 0 or end < start:
+        return
+    end += len(end_marker)
+    replacement = (
+        f"{start_marker}\n"
+        f"from spiders.{spider_module} import {class_name}\n"
+        f"DEFAULT_SPIDER: Type[BaseSpider] = {class_name}\n"
+        f"{end_marker}"
+    )
+    runner_path.write_text(
+        runner_data[:start] + replacement + runner_data[end:],
+        encoding="utf-8",
+    )

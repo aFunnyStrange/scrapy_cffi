@@ -24,6 +24,7 @@ htmlcov/
 .coverage
 .cache
 .pytest_cache/
+artifacts/demo-verification/
 
 # VS Code / JetBrains / Editors
 .vscode/

@@ -1,4 +1,5 @@
 import json, asyncio, sys
+from pathlib import Path
 from .core.api import *
 from .interceptors import ChainManager, InterruptibleChainManager
 # from .interceptors import DownloadInterceptor
@@ -50,6 +51,10 @@ class Crawler:
 
         self.spiders = None
         self.engines = None
+        self._shutdown_lock = None
+        self._runtime_close_lock = None
+        self._shutdown_prepared = False
+        self._runtime_closed = False
 
     @property
     def scheduler(self):
@@ -63,6 +68,10 @@ class Crawler:
 
     async def do_initialization(self, settings: "SettingsInfo", start_type=0):
         self.stop_event = asyncio.Event()
+        self._shutdown_lock = asyncio.Lock()
+        self._runtime_close_lock = asyncio.Lock()
+        self._shutdown_prepared = False
+        self._runtime_closed = False
 
         self.settings: "SettingsInfo" = settings
         from .cpy import CExtensionLoader
@@ -153,15 +162,37 @@ class Crawler:
             self.logger.warning(f"not provided self.settings.SPIDERS_PATH，guessed to load -> {self.settings.SPIDERS_PATH}")
             start_type = 0
         if start_type:
-            self.spiders = [load_object(path=self.settings.SPIDERS_PATH)]
+            spider_target = self.settings.SPIDERS_PATH
+            spider_cls = (
+                load_object(path=spider_target)
+                if isinstance(spider_target, str)
+                else spider_target
+            )
+            if not isinstance(spider_cls, type):
+                raise TypeError(
+                    "SPIDERS_PATH must be a spider class or import path in single-spider mode"
+                )
+            self.spiders = [spider_cls]
         else:
+            if not isinstance(self.settings.SPIDERS_PATH, (str, Path)):
+                raise TypeError(
+                    "SPIDERS_PATH must be a directory path in run-all-spiders mode"
+                )
             self.spiders = get_all_spiders_cls(spiders_dir=self.settings.SPIDERS_PATH)
             get_all_spiders_name(logger=self.logger, spiders_cls_list=self.spiders)
 
         spider_cls_list = self.spiders
 
         scheduler_path = self.settings.SCHEDULER
-        configured_scheduler_cls = load_object(path=scheduler_path) if scheduler_path else None
+        configured_scheduler_cls = None
+        if scheduler_path:
+            configured_scheduler_cls = (
+                load_object(path=scheduler_path)
+                if isinstance(scheduler_path, str)
+                else scheduler_path
+            )
+            if not isinstance(configured_scheduler_cls, type):
+                raise TypeError("SCHEDULER must be a scheduler class or import path")
 
         self.schedulers.clear()
         for spider_cls in spider_cls_list:
@@ -243,14 +274,34 @@ class Crawler:
             await robot_task
         # All spiders share this thread's asyncio loop; engines run concurrently via gather.
         await asyncio.gather(*[engine.start(*args, **kwargs) for engine in self.engines])
-        self.sessions.freeze()
-        for engine in self.engines:
-            await engine.taskManager.cancel_all()
-        await self._requeue_scheduler_inflight()
-        await self._persist_scheduler_sessions()
-        self.stop_event.set()
-        await self.sessions.close_all()
-        await self.signalManager.stop()
+        await self._prepare_shutdown()
+        await self._close_runtime_state()
+
+    async def _prepare_shutdown(self):
+        """Run the broker-writable shutdown phase exactly once."""
+        if self._shutdown_lock is None:
+            self._shutdown_lock = asyncio.Lock()
+        async with self._shutdown_lock:
+            if self._shutdown_prepared:
+                return
+            self.sessions.freeze()
+            for engine in self.engines or []:
+                await engine.taskManager.cancel_all()
+            await self._requeue_scheduler_inflight()
+            await self._persist_scheduler_sessions()
+            await self._cleanup_scheduler_state()
+            self.stop_event.set()
+            self._shutdown_prepared = True
+
+    async def _close_runtime_state(self):
+        if self._runtime_close_lock is None:
+            self._runtime_close_lock = asyncio.Lock()
+        async with self._runtime_close_lock:
+            if self._runtime_closed:
+                return
+            await self.sessions.close_all()
+            await self.signalManager.stop()
+            self._runtime_closed = True
 
     async def _persist_scheduler_sessions(self):
         if not self.settings.SCHEDULER_PERSIST or not self.redisManager:
@@ -268,22 +319,33 @@ class Crawler:
             if requeue:
                 await requeue(spider)
 
+    async def _cleanup_scheduler_state(self):
+        if self.settings.SCHEDULER_PERSIST:
+            return
+        cleaned = getattr(self, "_cleaned_scheduler_state", set())
+        for spider in self.spiders or []:
+            if spider.name in cleaned:
+                continue
+            scheduler = self.schedulers.get(spider.name)
+            cleanup = getattr(scheduler, "cleanup", None)
+            if cleanup:
+                await cleanup(spider)
+            cleaned.add(spider.name)
+        self._cleaned_scheduler_state = cleaned
+
     async def shutdown(self):
-        if not self.stop_event.is_set():
-            # Stop managed work first while broker writes are still allowed. Any
-            # request already popped from Redis/RabbitMQ is then returned to its
-            # queue, and Kafka leaves its offset uncommitted.
-            self.sessions.freeze()
-            for engine in self.engines or []:
-                await engine.taskManager.cancel_all()
-            await self._requeue_scheduler_inflight()
-            await self._persist_scheduler_sessions()
-            self.stop_event.set()
+        # Stop managed work while broker writes are still allowed. This method
+        # can race with start_engines() after Ctrl+C or an external shutdown,
+        # so the writable phase is locked and idempotent.
+        await self._prepare_shutdown()
         self.taskManager.tasks_done_event.set()
         self.taskManager.error_event.set()
 
-        await self.sessions.close_all()
-        await self.signalManager.stop()
+        await self._close_runtime_state()
+
+        # start_engines() sets stop_event after normal completion. Run the same
+        # idempotent broker cleanup here so normal exit and Ctrl+C behave alike.
+        await self._cleanup_scheduler_state()
 
         if not self.settings.SCHEDULER_PERSIST and self.redisManager:
             for spider in self.spiders:

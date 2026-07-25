@@ -65,6 +65,7 @@ Bloom tuning: `settings.BLOOM_INFO` (`SIZE`, `EXPECTED`, `HASH_COUNT`).
 When `SCHEDULER_PERSIST` is **False** (default), `Crawler.shutdown()` deletes:
 
 - Spider ingress key (`redis_key`) and distributed work queue
+- RabbitMQ/Kafka start and work queues/topics owned by each spider
 - Dedup keys from `RedisDupeFilter.dedup_cleanup_keys()` → `DedupKeyRouter.cleanup_keys()`
 
 This runs on normal exit and on **Ctrl+C** (`KeyboardInterrupt` in `runner.py`).
@@ -77,7 +78,9 @@ This runs on normal exit and on **Ctrl+C** (`KeyboardInterrupt` in `runner.py`).
 **Notes**
 
 - **Cluster**: jump-hash spreads fingerprints across shard suffixes; cleanup deletes all known node suffix keys. Residual keys are possible — use `DEDUP_TTL` as a safety net.
-- **Rabbit demo** sets `SCHEDULER_PERSIST = True` so dedup keys survive across runs (intentional).
+- RabbitMQ/Kafka always use Redis for distributed deduplication. Their demo
+  configurations set `SCHEDULER_PERSIST = False`, so normal exit and Ctrl+C
+  remove broker request state and Redis dedup/session keys.
 - **Re-run still deduping?** Keys from a pre-0.3.2 run may remain; delete manually or set `SCHEDULER_PERSIST = False` and exit cleanly once.
 
 Ingress / `start_urls` requests carry `meta["is_start_url"]` and bypass dedup in `RedisScheduler` / `RabbitMqScheduler.put`.

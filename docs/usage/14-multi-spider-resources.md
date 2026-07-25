@@ -95,12 +95,13 @@ Full process isolation: use `multiprocessing` + `run_spider_sync(..., new_loop=T
 
 ```python
 import asyncio
-from scrapy_cffi import run_all_spiders_sync
+from scrapy_cffi.core.scheduler.redis import RedisScheduler
+from scrapy_cffi.runner import run_all_spiders_sync
 from myproject.settings import create_settings
 
 # create_settings loads two spider classes from spiders/ directory
 settings = create_settings(spider_path="spiders")
-settings.SCHEDULER = "scrapy_cffi.scheduler.RedisScheduler"
+settings.SCHEDULER = RedisScheduler
 settings.REDIS_INFO.URL = "redis://127.0.0.1:6379/0"
 
 if __name__ == "__main__":

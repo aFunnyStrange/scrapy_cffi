@@ -1,9 +1,10 @@
 import asyncio
 import inspect
 from functools import wraps
-from typing import Optional, Any, Callable, Coroutine, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, cast
 try:
     from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+    from pymongo.errors import AutoReconnect, ConnectionFailure, NetworkTimeout
 except ImportError as e:
     raise ImportError(
         "Missing motor dependencies. "
@@ -13,21 +14,9 @@ if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..models.databases import MongodbInfo
 
-RETRYABLE_EXCEPTIONS = (ConnectionError, TimeoutError)
+from ..utils.reconnect import AsyncReconnectController, reconnectable
 
-def auto_retry(func: Callable[..., Coroutine[Any, Any, Any]]):
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        if self.stop_event.is_set():
-            raise asyncio.CancelledError("Stop event set, abort MongoDB operation")
-        try:
-            return await func(self, *args, **kwargs)
-        except RETRYABLE_EXCEPTIONS:
-            if self.stop_event.is_set():
-                raise asyncio.CancelledError("Stop event set during reconnect")
-            await self._reconnect()
-            return await func(self, *args, **kwargs)
-    return wrapper
+RETRYABLE_EXCEPTIONS = (AutoReconnect, ConnectionFailure, NetworkTimeout)
 
 class MongoCollectionWrapper:
     def __init__(self, collection: AsyncIOMotorCollection, manager: "MongoDBManager"):
@@ -42,16 +31,12 @@ class MongoCollectionWrapper:
 
         @wraps(attr)
         async def wrapper(*args, **kwargs):
-            if self._manager.stop_event.is_set():
-                raise asyncio.CancelledError("Stop event set, abort MongoDB operation")
-            try:
-                return await attr(*args, **kwargs)
-            except RETRYABLE_EXCEPTIONS:
-                if self._manager.stop_event.is_set():
-                    raise asyncio.CancelledError("Stop event set during reconnect")
-                await self._manager._reconnect()
-                new_attr = getattr(self._manager.db.get_collection(self._collection.name), name)
-                return await new_attr(*args, **kwargs)
+            async def operation():
+                collection = self._manager.db.get_collection(self._collection.name)
+                method = getattr(collection, name)
+                return await method(*args, **kwargs)
+
+            return await self._manager._reconnect_controller.run(operation)
         return wrapper
 
 class MongoDBManager:
@@ -63,6 +48,12 @@ class MongoDBManager:
         self.db_name = db_name
         self.client: Optional[AsyncIOMotorClient] = None
         self.db = None
+        self._reconnect_controller = AsyncReconnectController(
+            self.stop_event,
+            self._reconnect,
+            RETRYABLE_EXCEPTIONS,
+            label="MongoDB",
+        )
 
     @classmethod
     def from_mongodb_info(cls, stop_event: asyncio.Event, info: "MongodbInfo"):
@@ -94,12 +85,17 @@ class MongoDBManager:
             self.client.close()
 
     def collection(self, name: str) -> AsyncIOMotorCollection:
-        return MongoCollectionWrapper(self.db.get_collection(name), self)
+        # The proxy deliberately advertises Motor's collection type so user code
+        # keeps the complete Motor API completion in IDEs.
+        return cast(
+            AsyncIOMotorCollection,
+            MongoCollectionWrapper(self.db.get_collection(name), self),
+        )
 
-    @auto_retry
+    @reconnectable
     async def list_collections(self):
         return await self.db.list_collection_names()
     
-    @auto_retry
+    @reconnectable
     async def drop_database(self, db_name: Optional[str] = None):
         await self.client.drop_database(db_name or self.db_name)

@@ -317,48 +317,58 @@ If PROXIES is not set and this is provided, a random proxy from the list will be
 
 ## 2.4 Component Path
 ### 2.4.1 SPIDERS_PATH
-- **Type**: Optional[str]
+- **Type**: Optional[Union[str, Path, Type[BaseSpider]]]
 - **Default**: None
 - **Description**: 
     1. If not set, finds all spiders in the `spiders/` directory and `run_all_spiders()`.  
     2. If set:  
-        - for `run_spider()`: expects a module path  
+        - for `run_spider()`: prefer the imported Spider class; a legacy module path remains supported
         - for `run_all_spiders()`: expects a directory path  
+
+```python
+from spiders.orders import OrdersSpider
+
+settings.SPIDERS_PATH = OrdersSpider  # IDE navigation and completion work
+```
 
 ---
 
 ### 2.4.2 ComponentInfo
 `SPIDER_INTERCEPTORS_PATH`, `DOWNLOAD_INTERCEPTORS_PATH`, `ITEM_PIPELINES_PATH` and `EXTENSIONS_PATH` are all internally converted to `ComponentInfo`.
-- **Type**: **Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]]**
-A flexible container for specifying component module paths, supporting multiple formats. Internally, the framework will normalize all input into a consistent list of module strings. This allows users to configure components in a concise and readable manner.
+- **Type**: imported classes or legacy strings, individually, in a list, or as priority-map keys.
+A flexible container for specifying component classes. Direct class objects are preferred because IDE navigation, rename refactoring and type completion remain available. String import paths remain compatible with older projects.
 Supported formats:
 
-1. str
-A single module path string will be converted into a single-item list. 
+1. Class (recommended)
 ```python
-"extensions.CustomExtension"
-# => ["extensions.CustomExtension"]
+from extensions.extension import CustomExtension
+
+settings.EXTENSIONS_PATH = CustomExtension
 ```
 
-2. List[str]
-A list of module paths. The order of components will be preserved and used directly.
+2. List of classes
 ```python
-["pipelines.CustomPipeline2", "pipelines.CustomPipeline1"]
+from pipelines.pipeline import CustomPipeline1, CustomPipeline2
+
+settings.ITEM_PIPELINES_PATH = [CustomPipeline2, CustomPipeline1]
 ```
 
-3. Dict[str, int] (Scrapy-style format)
-A dictionary mapping module paths to priority values. The framework will sort by value (lower means higher priority), and convert it into an ordered list.
+3. Class-to-priority dictionary (Scrapy-style format)
+The framework sorts by value (lower means higher priority).
 
 The priority number follows the same convention as Scrapy: the **lower** the number, the **closer** the component is to the engine (i.e., executed later on responses and earlier on requests). Higher numbers are farther away, closer to the outer layers like the downloader or output pipeline.
 ```python
 {
-    "interceptors.CustomDownloadInterceptor1": 300,  
-    "interceptors.CustomDownloadInterceptor2": 200  
+    CustomDownloadInterceptor1: 300,
+    CustomDownloadInterceptor2: 200,
 }  
-# => ["interceptors.CustomDownloadInterceptor2", "interceptors.CustomDownloadInterceptor1"]
+# => [CustomDownloadInterceptor2, CustomDownloadInterceptor1]
 ```
 
-4. None
+4. String/list/dict string paths
+Still accepted for environment-driven or backwards-compatible configuration, but generated Python settings no longer use them.
+
+5. None
 If not specified, only the framework's built-in components will be loaded.  
 
 > This design improves usability and flexibility, allowing components to be declared in various intuitive formats.
@@ -367,16 +377,22 @@ If not specified, only the framework's built-in components will be loaded.
 
 ## 2.5 Scheduler Config
 ### 2.5.1 SCHEDULER
-- **Type**: Optional[str]
+- **Type**: Optional[Union[str, Type[BaseScheduler]]]
 - **Default**: None
-- **Description**: Module path for the scheduler. Supports custom scheduler implementation.
+- **Description**: Scheduler class or legacy import path. Generated projects import and assign the class directly.
+
+```python
+from scrapy_cffi.core.scheduler.redis import RedisScheduler
+
+settings.SCHEDULER = RedisScheduler
+```
 
 ---
 
 ### 2.5.2 DUPEFILTER
-- **Type**: Optional[str]
+- **Type**: Optional[Union[str, Type]]
 - **Default**: None
-- **Description**: Module path for the dupefilter. Supports custom dupefilter implementation.
+- **Description**: Dupefilter class or legacy import path.
 
 ---
 
@@ -418,6 +434,9 @@ This configuration is used to define parameters for the `DUPEFILTER` when using 
 - **State size boundary**: A single decoded request/session state is limited to 16 MiB. Oversized states and compressed payloads that expand beyond this limit are rejected so Redis/MQ messages cannot exhaust crawler memory; large files belong in object/file storage and the queue should contain only their references.
 - **Session Hash key**: Defaults to `{scheduler_queue_key}:sessions`. Set `SCHEDULER_SESSION_KEY` to use an explicit key.
 - **Ctrl+C ordering**: Active tasks are cancelled while broker writes are still available. Unfinished Redis/RabbitMQ work and start requests are returned to their queues; Kafka offsets remain uncommitted. Session cookies are then snapshotted before the global stop event disables Redis writes.
+- **Distributed MQ rule**: RabbitMQ/Kafka always require Redis for distributed
+  deduplication. With `SCHEDULER_PERSIST=False`, shutdown also deletes their
+  owned start/work queues or topics, in addition to Redis state.
 - **Description**: Whether to persist scheduler state. If **False**, Redis data (ingress queue, work queue, dedup keys) is cleared when the crawler shuts down — including **Ctrl+C** via `runner.py` → `crawler.shutdown()`.
 
 **Notes**:
@@ -700,6 +719,7 @@ When constructed from `.env`/structured configuration, a non-empty `SENTINELS` o
 - `USERNAME` / `PASSWORD`: Redis ACL credentials, applied in single, Sentinel, and Cluster modes.
 - `SENTINEL_USERNAME` / `SENTINEL_PASSWORD`: separate Sentinel control-plane credentials.
 - `CONNECT_TIMEOUT` / `SOCKET_TIMEOUT`: connection and command timeouts.
+- `PROTOCOL`: Redis wire protocol; defaults to RESP2 for compatibility with old and new Redis servers.
 - `SSL` / `SSL_CERT_REQS`: TLS connection controls.
 - `CLUSTER_ADDRESS_REMAP`: optional `{advertised_host: reachable_host}` mapping for networks where Redis advertises private names. Normal production DNS requires no mapping.
 

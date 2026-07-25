@@ -1,29 +1,48 @@
 # runner.py
 import asyncio
 import sys
-import scrapy_cffi
 from settings import create_settings
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import Optional, Tuple, Type
 
-if TYPE_CHECKING:
-    from scrapy_cffi import Crawler
+from scrapy_cffi.crawler import Crawler
+from scrapy_cffi.runner import (
+    cleanup_loop,
+    run_all_spiders,
+    run_all_spiders_sync,
+    run_spider,
+    run_spider_sync,
+)
+from scrapy_cffi.spiders import BaseSpider
+
+# <scrapy-cffi:default-spider>
+DEFAULT_SPIDER: Optional[Type[BaseSpider]] = None
+# </scrapy-cffi:default-spider>
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-from scrapy_cffi.utils import setup_uvloop_once, get_or_create_loop
+from scrapy_cffi.utils.common import get_or_create_loop, setup_uvloop_once
 setup_uvloop_once()
 
 # Ordinary users
-def main(*args, **kwargs):
-    settings = create_settings(spider_path="spiders.CustomSpider")
+def main(
+    spider_cls: Optional[Type[BaseSpider]] = DEFAULT_SPIDER,
+    *args,
+    **kwargs,
+):
+    if spider_cls is None:
+        raise RuntimeError(
+            "No default spider is configured. Run `scrapy-cffi genspider ...` "
+            "or pass a Spider class to main(spider_cls=...)."
+        )
+    settings = create_settings(spider_path=spider_cls)
 
     # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
-    scrapy_cffi.run_spider_sync(settings=settings, *args, **kwargs)
+    run_spider_sync(settings=settings, *args, **kwargs)
 
 def main_all(*args, **kwargs):
-    from scrapy_cffi.utils import get_run_py_dir
+    from scrapy_cffi.utils.common import get_run_py_dir
     spider_path = str(get_run_py_dir() / "spiders") # must be a directory when mode is 'run_all_spiders', since all spider files will be loaded from it
     settings = create_settings(spider_path=spider_path)
 
@@ -31,21 +50,30 @@ def main_all(*args, **kwargs):
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
     
-    scrapy_cffi.run_all_spiders_sync(settings=settings, *args, **kwargs)
+    run_all_spiders_sync(settings=settings, *args, **kwargs)
 
 # Advanced Users
-async def advance_main(*args, **kwargs) -> Tuple["Crawler", asyncio.Task]:
-    settings = create_settings(spider_path="spiders.CustomSpider")
+async def advance_main(
+    spider_cls: Optional[Type[BaseSpider]] = DEFAULT_SPIDER,
+    *args,
+    **kwargs,
+) -> Tuple[Crawler, asyncio.Task]:
+    if spider_cls is None:
+        raise RuntimeError(
+            "No default spider is configured. Run `scrapy-cffi genspider ...` "
+            "or pass a Spider class to advance_main(spider_cls=...)."
+        )
+    settings = create_settings(spider_path=spider_cls)
 
     # compatible scrapy settings.py
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
-    crawler, engine_task = await scrapy_cffi.run_spider(settings=settings, new_loop=False, *args, **kwargs)
+    crawler, engine_task = await run_spider(settings=settings, new_loop=False, *args, **kwargs)
     return crawler, engine_task
 
-async def advance_main_all(*args, **kwargs) -> Tuple["Crawler", asyncio.Task]:
-    from scrapy_cffi.utils import get_run_py_dir
+async def advance_main_all(*args, **kwargs) -> Tuple[Crawler, asyncio.Task]:
+    from scrapy_cffi.utils.common import get_run_py_dir
     spider_path = str(get_run_py_dir() / "spiders") # must be a directory when mode is 'run_all_spiders', since all spider files will be loaded from it
     settings = create_settings(spider_path=spider_path)
 
@@ -53,7 +81,7 @@ async def advance_main_all(*args, **kwargs) -> Tuple["Crawler", asyncio.Task]:
     # from scrapy_cffi import load_settings_with_path
     # settings = load_settings_with_path()
 
-    crawler, engine_task = await scrapy_cffi.run_all_spiders(settings=settings, new_loop=False, *args, **kwargs)
+    crawler, engine_task = await run_all_spiders(settings=settings, new_loop=False, *args, **kwargs)
     return crawler, engine_task
 
 # ————————————————————————————————————————————————————————————————————————
@@ -78,7 +106,7 @@ if __name__ == "__main__":
     shutdown_event = asyncio.Event()
     setup_signal_handlers(loop, shutdown_event)
 
-    crawler: Optional["Crawler"] = None
+    crawler: Optional[Crawler] = None
 
     async def demo_main():
         global crawler
@@ -104,7 +132,7 @@ if __name__ == "__main__":
         if crawler:
             loop.run_until_complete(crawler.shutdown())
     finally:
-        scrapy_cffi.cleanup_loop(loop=loop)
+        cleanup_loop(loop=loop)
 
     # To use the synchronous helpers instead: uncomment in your own copy.
     # import threading

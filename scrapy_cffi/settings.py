@@ -1,4 +1,5 @@
 from .models import BaseValidatedModel, StrictValidatedModel
+from pathlib import Path
 from .models.api import (
     ComponentInfo,
     RedisInfo,
@@ -11,7 +12,15 @@ from .models.api import (
     CPYExtensionsConfig,
 )
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
-from typing import Optional, List, Dict, Union, Any, ClassVar, Literal
+from typing import Optional, List, Dict, Union, Any, ClassVar, Literal, Type
+
+ComponentTarget = Union[str, Type[Any]]
+ComponentConfig = Union[
+    ComponentInfo,
+    Dict[ComponentTarget, int],
+    List[ComponentTarget],
+    ComponentTarget,
+]
 
 class BloomInfo(StrictValidatedModel):
     MODE: Optional[bool] = False
@@ -64,14 +73,16 @@ class SettingsInfo(BaseValidatedModel):
     PROXIES: Optional[Dict] = None
     PROXIES_LIST: Optional[List[str]] = Field(default_factory=list)
     
-    SPIDERS_PATH: Optional[str] = None # If not set, defaults to the `spiders` directory under the current running script
-    SPIDER_INTERCEPTORS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
-    DOWNLOAD_INTERCEPTORS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
-    ITEM_PIPELINES_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
-    EXTENSIONS_PATH: Optional[Union[ComponentInfo, Dict[str, int], List[str], str, None]] = ComponentInfo()
+    # A class object is preferred for one-spider runs because IDEs can resolve
+    # it. String import paths remain supported for backwards compatibility.
+    SPIDERS_PATH: Optional[Union[str, Path, Type[Any]]] = None
+    SPIDER_INTERCEPTORS_PATH: Optional[ComponentConfig] = ComponentInfo()
+    DOWNLOAD_INTERCEPTORS_PATH: Optional[ComponentConfig] = ComponentInfo()
+    ITEM_PIPELINES_PATH: Optional[ComponentConfig] = ComponentInfo()
+    EXTENSIONS_PATH: Optional[ComponentConfig] = ComponentInfo()
 
-    SCHEDULER: Optional[str] = None
-    DUPEFILTER: Optional[str] = None
+    SCHEDULER: Optional[Union[str, Type[Any]]] = None
+    DUPEFILTER: Optional[Union[str, Type[Any]]] = None
     BLOOM_INFO: Optional[BloomInfo] = BloomInfo()
     SCHEDULER_PERSIST: Optional[bool] = False
     SCHEDULER_SESSION_KEY: Optional[str] = None # Redis Hash key for compressed session cookies; defaults to `{queue_key}:sessions`.

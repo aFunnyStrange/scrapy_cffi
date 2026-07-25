@@ -20,7 +20,8 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **HTTP & WebSocket support**: built-in asynchronous clients
 
-- **Flexible DB integration**: Redis, MySQL, **PostgreSQL**, MongoDB with async retry & reconnect
+- **Flexible DB integration**: Redis, MySQL, **PostgreSQL**, MongoDB with
+  single-flight async reconnects and native IDE-visible client types
 
 - **Message queue scheduling**: RabbitMQ and Kafka (separate Kafka start/work topics with manual acknowledgement)
 
@@ -86,10 +87,24 @@ scrapy-cffi genspider --kafka <spider_name> <domain>
 python runner.py
 ```
 
+Generated `runner.py` imports the generated Spider class directly, and generated
+`settings.py` assigns imported Scheduler, Extension, Pipeline, and Interceptor
+classes instead of opaque strings. IDE navigation and completion therefore work
+out of the box; legacy string import paths remain supported.
+
 **Notes:**
 > The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
 
 > Starting from `scrapy-cffi >= 0.2.5`, `RedisScheduler` and `RabbitMqScheduler` no longer automatically terminate when the queue is empty. For finite/terminable spiders, use `SCHEDULER_LOOP_END` to specify the number of scheduler loops before automatic exit. For continuous-listening spiders (`RedisSpider`, `RabbitMqSpider`, or custom persistent spiders), leave `SCHEDULER_LOOP_END` as `None`. This change only affects automatic termination; task scheduling remains fully functional.
+
+Framework maintainers can run every generated demo path serially with
+`python scripts/verify_demo.py`. The check uses disposable local Redis,
+RabbitMQ, and Kafka infrastructure and removes each case's data before moving
+to the next one. It starts the generated HTTP/WebSocket servers, runs each
+Spider end to end, and keeps `demo.log`, crawler console, server, broker, and
+PASS/FAIL evidence under `artifacts/demo-verification/<timestamp>/`.
+`--skip-infra` runs only generation and scheduler unit checks; `--log-dir`
+selects a different evidence directory.
 
 ---
 
