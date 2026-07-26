@@ -1,7 +1,13 @@
-from scrapy_cffi.spiders.redis import RedisSpider
+from scrapy_cffi.spiders import RedisSpider
 from scrapy_cffi.exceptions import Failure
-from scrapy_cffi.internet import *
-from demo_endpoints import DEMO_WS_URL
+from scrapy_cffi.internet import (
+    CloseSignal,
+    HttpResponse,
+    WebSocketMsg,
+    WebSocketRequest,
+    WebSocketResponse,
+)
+from demo_support.endpoints import DEMO_WS_URL
 
 class CustomRedisSpider(RedisSpider):
     name = "customRedisSpider"
@@ -22,7 +28,7 @@ class CustomRedisSpider(RedisSpider):
             dont_filter=self.settings.DONT_FILTER,
             callback=self.sec_test, 
             errback=self.errRet,
-            send_message=WebSocketMsg(data=f"connect send test".encode('utf-8'))
+            send_message=WebSocketMsg(data=b"connect send test")
         )
 
     async def sec_test(self, response: WebSocketResponse):
@@ -35,16 +41,10 @@ class CustomRedisSpider(RedisSpider):
                 send_message=WebSocketMsg(data=f"hello：{self.count}".encode('utf-8'))
             )
         elif self.count == 3:
-            # scrapy_cffi version >= 0.2.0
-            yield CloseSignal(session_id=self.session_id, websocket_end_for_key=response.websocket_id)
-
-            # scrapy_cffi version 0.1.x
-            # yield WebSocketRequest(
-            #     session_id=self.session_id,
-            #     websocket_id=response.websocket_id,
-            #     websocket_end=True,
-            #     # send_message=f"hello：{self.count}".encode('utf-8')
-            # )
+            yield CloseSignal(
+                session_id=self.session_id,
+                websocket_end_for_key=response.websocket_id,
+            )
             yield {"session_id": response.session_id, "data": response.msg[0].decode()}
             yield {"session_id": response.session_id, "data": "spider end"}
         self.count += 1

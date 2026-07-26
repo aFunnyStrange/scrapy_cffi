@@ -1,42 +1,41 @@
-# tests/
+# Tests
 
-Integration and smoke tests for `scrapy_cffi`. For development, install from source or GitHub (see root [`README.md`](../README.md)); **≥ 0.3.0** changes are AIGC-assisted and may land on GitHub before PyPI.
+The default suite contains framework unit and smoke tests:
 
-## Broker (Redis / RabbitMQ / Kafka)
+```bash
+python -m pytest -q
+```
 
-Primary entry: [`tests/test_broker/README.md`](test_broker/README.md)
+Key coverage:
 
-- Scripts: `test_redis_broker.py`, `test_rabbitmq_broker.py`, `test_kafka_broker.py`
-- Stacks: `test_broker/stacks/{redis,rabbitmq,kafka}/`
-- Config templates: `test_broker/config_templates.toml`
+- scheduler persistence, request serialization, Cookie restoration, and Ctrl+C
+  shutdown behavior;
+- Redis ingress and distributed deduplication isolation;
+- RabbitMQ and Kafka request schedulers;
+- database/MQ reconnect controllers;
+- generated project, Demo, Docker, and infrastructure templates;
+- Python 3.9 syntax and annotation compatibility.
 
-Legacy dirs `tests/test_redis`, `tests/test_rabbitmq`, and `tests/test_kafka` were removed in **0.3.0** — use `test_broker` instead.
+`test_broker/` contains opt-in tests against live Redis, RabbitMQ, and Kafka.
+Generate their disposable infrastructure from the canonical templates:
 
-Local infra scaffolding (alternative to test stacks): `scrapy-cffi geninfra --all` → select with `infra/init.* --topology` → remove with `infra/destroy.*`. See [`docs/usage/11-mq.md`](../docs/usage/11-mq.md).
+```bash
+scrapy-cffi infra generate
+scrapy-cffi infra up --topology single --services redis rabbitmq kafka
+```
 
-## Databases
+See [test_broker/README.md](test_broker/README.md) for topology-specific runs.
+Database integration tests use their corresponding environment variables and
+skip when the optional driver or live endpoint is unavailable.
 
-| Test | Requires |
-| ---- | -------- |
-| [`test_mysql.py`](test_mysql.py) | MySQL + `sqlalchemy[asyncio]` |
-| [`test_mongodb.py`](test_mongodb.py) | MongoDB + `motor` |
-| [`test_postgres/test_postgres_manager.py`](test_postgres/test_postgres_manager.py) | PostgreSQL + `asyncpg` |
+The complete generated-Demo matrix is exposed through one CLI:
 
-## Framework units (no live broker)
+```bash
+scrapy-cffi test single
+scrapy-cffi test sentinel
+scrapy-cffi test cluster
+scrapy-cffi test all
+scrapy-cffi test all --quick
+```
 
-| Test | Covers |
-| ---- | ------ |
-| [`test_redis_ingress.py`](test_redis_ingress.py) | `REDIS_STREAM_INFO` / spider attr merge |
-| [`test_dupefilter_fingerprint.py`](test_dupefilter_fingerprint.py) | URL query param order in dedup fingerprint |
-| [`test_domain_filter.py`](test_domain_filter.py) | Hostname-only `allowed_domains` |
-| [`test_dedup_routing.py`](test_dedup_routing.py) | `DedupKeyRouter` jump-hash keys |
-| [`test_redis_dedup_isolation.py`](test_redis_dedup_isolation.py) | Per-spider namespace, start-url dedup skip, cleanup keys |
-| [`test_scheduler_smoke.py`](test_scheduler_smoke.py) | Memory / Redis / Rabbit / Kafka scheduler init |
-
-## Other
-
-- [`c_bloom/readme.md`](c_bloom/readme.md) — C Bloom filter build notes
-- [`blackboxprotobuf/`](blackboxprotobuf/) — protobuf helper tests
-- [`unstable_workflows/`](unstable_workflows/) — release/changelog CI scripts
-
-Docs index: [`docs/usage/`](../docs/usage/) · [13-standalone-tools.md](../docs/usage/13-standalone-tools.md) · [14-multi-spider-resources.md](../docs/usage/14-multi-spider-resources.md) · [15-deduplication.md](../docs/usage/15-deduplication.md) · [RELEASE-0.3.2.md](../docs/RELEASE-0.3.2.md).
+Verification logs are written below the ignored `artifacts/` directory.

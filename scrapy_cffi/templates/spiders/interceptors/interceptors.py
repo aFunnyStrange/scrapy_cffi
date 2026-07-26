@@ -1,5 +1,10 @@
 from scrapy_cffi.interceptors import DownloadInterceptor
-from scrapy_cffi.internet import *
+from scrapy_cffi.internet import (
+    HttpRequest,
+    HttpResponse,
+    WebSocketRequest,
+    WebSocketResponse,
+)
 from typing import Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from scrapy_cffi.spiders import BaseSpider

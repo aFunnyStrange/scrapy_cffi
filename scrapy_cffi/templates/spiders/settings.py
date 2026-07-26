@@ -8,9 +8,11 @@ from interceptors.interceptors import (
     CustomDownloadInterceptor2,
 )
 from pipelines.pipeline import CustomPipeline1, CustomPipeline2
-from scrapy_cffi.core.scheduler.kafka import KafkaScheduler
-from scrapy_cffi.core.scheduler.rabbitmq import RabbitMqScheduler
-from scrapy_cffi.core.scheduler.redis import RedisScheduler
+from scrapy_cffi.scheduler import (
+    KafkaScheduler,
+    RabbitMqScheduler,
+    RedisScheduler,
+)
 from scrapy_cffi.spiders import BaseSpider
 from scrapy_cffi.utils.envConfig import env_to_settings
 from scrapy_cffi.utils.common import get_run_py_dir
@@ -104,7 +106,7 @@ def create_settings(
 
     # settings.LOG_INFO.LOG_ENABLED = False # Disable logging entirely
     try:
-        from demo_topology import apply_demo_topology
+        from demo_support.topology import apply_demo_topology
     except ImportError:
         pass
     else:

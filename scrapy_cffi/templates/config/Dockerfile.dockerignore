@@ -1,0 +1,11 @@
+venv/
+.env
+
+__pycache__/
+*.pyc
+*.pyo
+
+docker/
+
+*.swp
+*.DS_Store

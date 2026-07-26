@@ -3,9 +3,15 @@ from curl_cffi.const import CurlWsFlag
 from scrapy_cffi.utils import create_uniqueId
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.exceptions import Failure
-from scrapy_cffi.internet import *
+from scrapy_cffi.internet import (
+    CloseSignal,
+    HttpResponse,
+    WebSocketMsg,
+    WebSocketRequest,
+    WebSocketResponse,
+)
 from items.item import CustomItem
-from demo_endpoints import DEMO_HTTP_URL, DEMO_WS_URL
+from demo_support.endpoints import DEMO_HTTP_URL, DEMO_WS_URL
 
 class CustomSpider(Spider):
     name = "customSpider"
@@ -27,7 +33,10 @@ class CustomSpider(Spider):
             dont_filter=self.settings.DONT_FILTER,
             callback=self.sec_test, 
             errback=self.errRet,
-            send_message=WebSocketMsg(data=f"connect send test".encode('utf-8'), flags=CurlWsFlag.BINARY), # Pydantic v2 models do not support positional initialization for fields, you must always use keywords.
+            send_message=WebSocketMsg(
+                data=b"connect send test",
+                flags=CurlWsFlag.BINARY,
+            ),
             ping_data=WebSocketMsg(data="ping"),
         )
 
@@ -42,16 +51,10 @@ class CustomSpider(Spider):
                 send_message=WebSocketMsg(data=f"hello：{self.count} -> {js_res}".encode('utf-8'), flags=CurlWsFlag.BINARY)
             )
         elif self.count == 3:
-            # scrapy_cffi version >= 0.2.0
-            yield CloseSignal(session_id=self.session_id, websocket_end_for_key=response.websocket_id)
-
-            # scrapy_cffi version 0.1.x
-            # yield WebSocketRequest(
-            #     session_id=self.session_id,
-            #     websocket_id=response.websocket_id,
-            #     websocket_end=True,
-            #     # send_message=f"hello：{self.count} -> {js_res}".encode('utf-8')
-            # )
+            yield CloseSignal(
+                session_id=self.session_id,
+                websocket_end_for_key=response.websocket_id,
+            )
             customItem = CustomItem() or {}
             customItem["session_id"] = response.session_id
             customItem["data"] = response.msg[0].decode()
@@ -62,7 +65,7 @@ class CustomSpider(Spider):
             # customItem["session_end"] = True # scrapy_cffi version 0.1.x
             customItem["data"] = "spider end"
             yield customItem
-            yield CloseSignal(session_id=self.session_id, session_end=True) # # scrapy_cffi version >= 0.2.0
+            yield CloseSignal(session_id=self.session_id, session_end=True)
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scrapy_cffi.commands import geninfra, infra
+from scrapy_cffi.commands import _infra_templates, infra
 
 
 SERVICE_NAMES = ("redis", "mysql", "postgres", "mongodb", "rabbitmq", "kafka")
@@ -22,9 +22,12 @@ def test_project_compose_contains_only_the_crawler_app():
         assert f"  {service}:\n" not in compose
 
 
-def test_geninfra_generates_independent_dev_stack_and_reset_scripts(tmp_path, monkeypatch):
+def test_infra_templates_generate_independent_dev_stack_and_reset_scripts(
+    tmp_path,
+    monkeypatch,
+):
     monkeypatch.chdir(tmp_path)
-    geninfra.run()
+    _infra_templates.run()
 
     target = tmp_path / "infra"
     compose = (target / "docker-compose.yml").read_text(encoding="utf-8")
@@ -33,6 +36,7 @@ def test_geninfra_generates_independent_dev_stack_and_reset_scripts(tmp_path, mo
 
     assert "apache/kafka:4.3.1" in compose
     assert "bitnami/kafka" not in compose
+    assert 'MYSQL_ROOT_HOST: "${MYSQL_ROOT_HOST:-%}"' in compose
     assert not (target / "Dockerfile").exists()
     assert (target / ".env.example").is_file()
     assert (target / "production-endpoints.example.toml").is_file()
@@ -42,27 +46,35 @@ def test_geninfra_generates_independent_dev_stack_and_reset_scripts(tmp_path, mo
     assert (target / "init.sh").is_file()
     assert (target / "reset.sh").is_file()
     assert (target / "destroy.sh").is_file()
-    assert "workspace_slug" in (target / "reset.sh").read_text(encoding="utf-8")
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "| MySQL | `root` | `123456` |" in readme
+    assert "| PostgreSQL | `postgres` | `123456` | `app_db` |" in readme
+    assert "| MongoDB | - | - | Authentication disabled;" in readme
+    assert "Database initialization variables only apply" in readme
+    assert "infra_project_name" in (target / "reset.sh").read_text(encoding="utf-8")
     assert "down --volumes --remove-orphans" in (target / "reset.sh").read_text(
         encoding="utf-8"
     )
 
 
-def test_geninfra_clean_preserves_developer_env(tmp_path, monkeypatch):
+def test_infra_templates_clean_preserves_developer_env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    geninfra.run()
+    _infra_templates.run()
     env_path = tmp_path / "infra" / ".env"
     env_path.write_text("REDIS_PORT=6380\n", encoding="utf-8")
 
-    geninfra.run(clean=True)
+    _infra_templates.run(clean=True)
 
     assert env_path.read_text(encoding="utf-8") == "REDIS_PORT=6380\n"
     assert not (tmp_path / "infra" / "docker-compose.yml").exists()
 
 
-def test_geninfra_all_generates_every_disposable_local_topology(tmp_path, monkeypatch):
+def test_infra_templates_generate_every_disposable_local_topology(
+    tmp_path,
+    monkeypatch,
+):
     monkeypatch.chdir(tmp_path)
-    geninfra.run(generate_all=True)
+    _infra_templates.run(generate_all=True)
 
     target = tmp_path / "infra"
     for topology in (
@@ -76,7 +88,7 @@ def test_geninfra_all_generates_every_disposable_local_topology(tmp_path, monkey
     init_script = (target / "init.ps1").read_text(encoding="utf-8")
     assert "[ValidateSet(" in init_script
     assert '"redis-sentinel"' in init_script
-    assert "workspaceSlug" in init_script
+    assert "infra_project_name" in init_script
     kafka_cluster = (
         target / "kafka-cluster" / "docker-compose.yml"
     ).read_text(encoding="utf-8")
@@ -118,6 +130,52 @@ def test_infra_cli_builds_whole_single_sentinel_and_cluster_plans(tmp_path):
         "rabbitmq-cluster",
         "kafka-cluster",
     ]
+
+
+def test_single_without_services_lets_compose_start_defined_services(tmp_path):
+    stacks = infra.build_stacks(
+        tmp_path / "infra",
+        "single",
+        project_name="case",
+    )
+
+    assert len(stacks) == 1
+    assert stacks[0].services == []
+
+
+def test_infra_project_prefix_comes_from_scrapy_cffi_toml(tmp_path):
+    (tmp_path / "scrapy_cffi.toml").write_text(
+        '[default]\ninfra_project_name = "my_unique_crawler_dev"\n',
+        encoding="utf-8",
+    )
+
+    assert infra._project_prefix(tmp_path / "infra") == "my_unique_crawler_dev"
+
+
+def test_automatic_template_completion_preserves_custom_images(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    _infra_templates.run()
+    compose_path = tmp_path / "infra" / "docker-compose.yml"
+    compose_path.write_text(
+        compose_path.read_text(encoding="utf-8").replace(
+            "redis:7-alpine",
+            "example.local/redis:custom",
+        ),
+        encoding="utf-8",
+    )
+
+    infra.run(
+        "plan",
+        topology="cluster",
+        services=("redis", "rabbitmq", "kafka"),
+        project_name="case",
+    )
+
+    assert "example.local/redis:custom" in compose_path.read_text(encoding="utf-8")
+    assert (tmp_path / "infra" / "kafka-cluster" / "docker-compose.yml").is_file()
 
 
 def test_infra_cli_plan_auto_generates_templates(tmp_path, monkeypatch, capsys):

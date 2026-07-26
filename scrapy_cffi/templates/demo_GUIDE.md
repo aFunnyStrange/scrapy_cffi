@@ -16,20 +16,20 @@ work from Windows or Linux/macOS:
 
 ```bash
 # Windows
-docker-demo.bat verify single
-docker-demo.bat verify sentinel
-docker-demo.bat verify cluster
-docker-demo.bat verify-all
-docker-demo.bat verify-interrupt single
-docker-demo.bat verify-interrupt-all
+scripts\docker-demo.bat verify single
+scripts\docker-demo.bat verify sentinel
+scripts\docker-demo.bat verify cluster
+scripts\docker-demo.bat verify-all
+scripts\docker-demo.bat verify-interrupt single
+scripts\docker-demo.bat verify-interrupt-all
 
 # Linux/macOS
-./docker-demo.sh verify single
-./docker-demo.sh verify sentinel
-./docker-demo.sh verify cluster
-./docker-demo.sh verify-all
-./docker-demo.sh verify-interrupt single
-./docker-demo.sh verify-interrupt-all
+./scripts/docker-demo.sh verify single
+./scripts/docker-demo.sh verify sentinel
+./scripts/docker-demo.sh verify cluster
+./scripts/docker-demo.sh verify-all
+./scripts/docker-demo.sh verify-interrupt single
+./scripts/docker-demo.sh verify-interrupt-all
 ```
 
 `verify` starts the selected infrastructure and both Demo servers, seeds the
@@ -45,6 +45,10 @@ Kafka topics were removed. On Windows it uses a new process group plus
 event.
 
 Kafka takes precedence when `-k` is combined with another broker flag.
+Each generated Demo validates only its selected mode: `demo -m` starts
+Redis + RabbitMQ, while `demo -k` starts Redis + Kafka. Use
+`scrapy-cffi test single` or `scrapy-cffi test all` from the framework checkout
+to generate and validate Memory, Redis, RabbitMQ, and Kafka serially.
 
 ## Local infrastructure
 
@@ -52,12 +56,18 @@ All topology templates are generated automatically. They can also be managed
 without running the crawler:
 
 ```bash
-./docker-demo.sh plan cluster
-./docker-demo.sh up cluster
-./docker-demo.sh status cluster
-./docker-demo.sh reset cluster
-./docker-demo.sh down cluster
+./scripts/docker-demo.sh plan cluster
+./scripts/docker-demo.sh up cluster
+./scripts/docker-demo.sh status cluster
+./scripts/docker-demo.sh reset cluster
+./scripts/docker-demo.sh down cluster
 ```
+
+The ports are intentionally fixed so settings, command-line tools, and evidence
+logs remain predictable. Before starting Compose, the manager checks every
+required port. If another process or container owns one, it prints the service,
+port, Docker owner when available, and an OS-specific lookup command, then
+exits without starting a partial stack. Stop the conflict and retry.
 
 For RabbitMQ/Kafka, `sentinel` means a single broker plus Redis Sentinel;
 `cluster` means the three-node broker cluster plus Redis Cluster. This preserves
@@ -67,7 +77,9 @@ Production does not use these Compose stacks. Only the crawler application is co
 
 ## Run
 
-Start the mock HTTP/WebSocket server under `demo_server`, then:
+The generated test helpers are under `demo_support/`; management and publisher
+entry points are under `scripts/`. To run the crawler against manually started
+mock servers:
 
 ```bash
 cd demo
@@ -86,10 +98,10 @@ Redis ingress:
 redis-cli RPUSH customRedisSpider_test "http://127.0.0.1:8002"
 ```
 
-RabbitMQ (`demo -m`) generates `push_rabbitmq_demo.py`:
+RabbitMQ (`demo -m`) generates `scripts/push_rabbitmq_demo.py`:
 
 ```bash
-python push_rabbitmq_demo.py
+python scripts/push_rabbitmq_demo.py
 ```
 
 Kafka start requests go to the generated spider's `kafka_start_topic`; follow-up requests use its separate `kafka_topic`.
@@ -103,6 +115,6 @@ Kafka start requests go to the generated spider's `kafka_start_topic`; follow-up
 - Ctrl+C follows the same graceful persistence path as normal shutdown.
 - RabbitMQ queues use stable durable declarations in both modes; persistence
   controls message delivery and shutdown deletion, avoiding declaration
-  conflicts between `push_rabbitmq_demo.py` and the crawler.
+  conflicts between `scripts/push_rabbitmq_demo.py` and the crawler.
 
 See [MQ and local infra](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/usage/11-mq.md) and [deduplication](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/usage/15-deduplication.md).

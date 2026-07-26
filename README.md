@@ -92,19 +92,15 @@ Generated `runner.py` imports the generated Spider class directly, and generated
 classes instead of opaque strings. IDE navigation and completion therefore work
 out of the box; legacy string import paths remain supported.
 
-**Notes:**
-> The CLI command is `scrapy_cffi` in versions ≤0.1.4 and `scrapy-cffi` in versions >0.1.4 for **improved usability**.
+For finite spiders, use `SCHEDULER_LOOP_END` to stop after a bounded number of
+empty scheduler loops. Continuous Redis/RabbitMQ/Kafka spiders normally leave
+it as `None`.
 
-> Starting from `scrapy-cffi >= 0.2.5`, `RedisScheduler` and `RabbitMqScheduler` no longer automatically terminate when the queue is empty. For finite/terminable spiders, use `SCHEDULER_LOOP_END` to specify the number of scheduler loops before automatic exit. For continuous-listening spiders (`RedisSpider`, `RabbitMqSpider`, or custom persistent spiders), leave `SCHEDULER_LOOP_END` as `None`. This change only affects automatic termination; task scheduling remains fully functional.
-
-Framework maintainers can run every generated demo path serially with
-`python scripts/verify_demo.py`. The check uses disposable local Redis,
-RabbitMQ, and Kafka infrastructure and removes each case's data before moving
-to the next one. It starts the generated HTTP/WebSocket servers, runs each
-Spider end to end, and keeps `demo.log`, crawler console, server, broker, and
-PASS/FAIL evidence under `artifacts/demo-verification/<timestamp>/`.
-`--skip-infra` runs only generation and scheduler unit checks; `--log-dir`
-selects a different evidence directory.
+Framework maintainers can validate every generated Demo path serially with
+`scrapy-cffi test all`. The command uses disposable local infrastructure,
+removes each case's data before continuing, and retains crawler/server/broker
+evidence under `artifacts/release-verification/<timestamp>/`. Use `--quick`
+for generation, imports, topology plans, and unit tests without Docker.
 
 ---
 
@@ -130,6 +126,17 @@ scrapy-cffi infra down --topology cluster --services redis rabbitmq kafka
 ```
 
 Generated infra is disposable, project-isolated local simulation only. In production, containerize only the crawler application; Redis/database/MQ services remain on real machines or native clusters and the crawler consumes their configured addresses directly.
+Each generated `scrapy_cffi.toml` contains
+`default.infra_project_name = "scrapy_cffi"`; change this prefix during
+development and keep it unique across concurrently running projects. Compose
+uses it to isolate container, network, and volume names. For `single`, omitting
+`--services` starts all services still defined in the project-local
+`infra/docker-compose.yml`. Edit that file's `image:` values or remove/comment
+unwanted service blocks as needed. `infra up` preserves these edits; explicit
+`infra generate` refreshes the generated templates.
+The prefix is read only by Docker-management tooling. Crawler runtime code
+continues to connect to Redis, databases, RabbitMQ, and Kafka through their
+ordinary configured addresses and exposed ports.
 
 Framework maintainers can run the complete release check through one entry:
 
@@ -139,13 +146,11 @@ scrapy-cffi test sentinel
 scrapy-cffi test cluster
 scrapy-cffi test all
 scrapy-cffi test all --quick  # no Docker: tests/import/topology plans
-# Or use verify.bat / sh verify.sh with the same topology argument.
 ```
 
 Every phase is summarized in `summary.md`/`summary.json`; crawler, server,
 broker, cleanup, and console logs remain under
 `artifacts/release-verification/<timestamp>/`.
-`scrapy-cffi verify` remains an all-topology compatibility alias.
 
 Example `settings.py` snippet (Redis Sentinel):
 

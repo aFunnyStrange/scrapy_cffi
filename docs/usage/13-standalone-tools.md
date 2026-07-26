@@ -50,7 +50,11 @@ from scrapy_cffi.models import PostgresInfo
 async def main():
     stop = asyncio.Event()
     info = PostgresInfo(
-        HOST="127.0.0.1", PORT=5432, USERNAME="postgres", PASSWORD="secret", DB="app"
+        HOST="127.0.0.1",
+        PORT=5432,
+        USERNAME="postgres",
+        PASSWORD="123456",
+        DB="app_db",
     )
     db = SQLAlchemyPostgresManager.from_db_info(stop, info)
     await db.init()

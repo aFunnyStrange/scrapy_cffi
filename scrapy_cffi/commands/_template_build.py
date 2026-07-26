@@ -20,6 +20,7 @@ TEXT_SUFFIXES = {
     ".sh",
     ".bat",
 }
+IGNORED_TEMPLATE_NAMES = {"__pycache__", ".pytest_cache"}
 
 
 def read_text_template(path: Path) -> str:
@@ -38,10 +39,16 @@ def read_text_template(path: Path) -> str:
 
 def write_utf8_file(path: Path, text: str) -> None:
     text_lf = text.replace("\r\n", "\n").replace("\r", "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(text_lf.encode("utf-8"))
 
 
-def copytree_merge_text_safe(src: Path, dst: Path, skip_files: Optional[Iterable[str]] = None) -> None:
+def copytree_merge_text_safe(
+    src: Path,
+    dst: Path,
+    skip_files: Optional[Iterable[str]] = None,
+    overwrite: bool = True,
+) -> None:
     src = Path(src)
     dst = Path(dst)
     skip = set(skip_files or [])
@@ -51,12 +58,21 @@ def copytree_merge_text_safe(src: Path, dst: Path, skip_files: Optional[Iterable
         dst.mkdir(parents=True)
 
     for item in src.iterdir():
-        if item.name in skip:
+        if item.name in skip or item.name in IGNORED_TEMPLATE_NAMES:
+            continue
+        if item.is_file() and item.suffix.lower() in {".pyc", ".pyo"}:
             continue
         src_path = src / item.name
         dst_path = dst / item.name
         if src_path.is_dir():
-            copytree_merge_text_safe(src_path, dst_path, skip_files=skip)
+            copytree_merge_text_safe(
+                src_path,
+                dst_path,
+                skip_files=skip,
+                overwrite=overwrite,
+            )
+            continue
+        if dst_path.exists() and not overwrite:
             continue
         if src_path.suffix.lower() in TEXT_SUFFIXES:
             write_utf8_file(dst_path, read_text_template(src_path))

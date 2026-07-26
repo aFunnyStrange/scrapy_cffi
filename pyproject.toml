@@ -28,6 +28,10 @@ dependencies = [
 [project.optional-dependencies]
 media = ["filetype", "Pillow", "hachoir"]
 kafka = ["aiokafka>=0.8.1"]
+rabbitmq = ["aio-pika>=9.0"]
+mysql = ["sqlalchemy[asyncio]>=2.0", "asyncmy>=0.2"]
+postgres = ["sqlalchemy[asyncio]>=2.0", "asyncpg>=0.29"]
+mongodb = ["motor>=3.7.1"]
 
 [project.urls]
 Homepage = "https://github.com/aFunnyStrange/scrapy_cffi"
@@ -43,15 +47,10 @@ scrapy-cffi = "scrapy_cffi.commands.main:main"
 include-package-data = true
 
 [tool.setuptools.package-data]
-"scrapy_cffi" = ["templates/*"]
+"scrapy_cffi" = ["templates/*", "templates/**/*", "templates/**/.*"]
 "scrapy_cffi.cpy" = ["cpy_resources/**/*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.py[cod]"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = [
-    "tests/debug",
-    "tests/project",
-    "tests/unstable_workflows",
-]

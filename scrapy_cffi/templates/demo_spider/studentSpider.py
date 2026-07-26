@@ -1,6 +1,6 @@
 import random
 from scrapy_cffi.spiders import Spider
-from scrapy_cffi.internet import *
+from scrapy_cffi.internet import HttpRequest, HttpResponse
 from copy import deepcopy
 
 class StudentSpider(Spider):

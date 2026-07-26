@@ -382,7 +382,7 @@ If not specified, only the framework's built-in components will be loaded.
 - **Description**: Scheduler class or legacy import path. Generated projects import and assign the class directly.
 
 ```python
-from scrapy_cffi.core.scheduler.redis import RedisScheduler
+from scrapy_cffi.scheduler import RedisScheduler
 
 settings.SCHEDULER = RedisScheduler
 ```
@@ -807,7 +807,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.9.5.1 DRIVER
 - **Type**: str
 - **Default**: "mysql+asyncmy"
-- **Description**: The default driver prefix for integration with the `SQLAlchemyMySQLManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] aiomysql`). If you are using a custom MySQL manager, you may override this field to adapt the driver.
+- **Description**: The default driver prefix for integration with the `SQLAlchemyMySQLManager` provided by `scrapy_cffi` (install with `pip install "scrapy_cffi[mysql]"`). If you are using a custom MySQL manager, you may override this field to adapt the driver.
 
 ---
 
@@ -815,7 +815,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.9.6.1 DRIVER
 - **Type**: str
 - **Default**: "postgresql+asyncpg"
-- **Description**: The default driver prefix for integration with the `SQLAlchemyPostgresManager` provided by `scrapy_cffi` (requires `pip install sqlalchemy[asyncio] asyncpg`). If you are using a custom PostgreSQL manager, you may override this field to adapt the driver.
+- **Description**: The default driver prefix for integration with the `SQLAlchemyPostgresManager` provided by `scrapy_cffi` (install with `pip install "scrapy_cffi[postgres]"`). If you are using a custom PostgreSQL manager, you may override this field to adapt the driver.
 
 ---
 

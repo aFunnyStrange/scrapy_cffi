@@ -19,12 +19,21 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI was not found. Install Docker with the Compose plugin first."
 }
 if (-not (Test-Path -LiteralPath $composeFile)) {
-    throw "Topology '$Topology' was not generated. Run: scrapy-cffi geninfra --all"
+    throw "Topology '$Topology' was not generated. Run: scrapy-cffi infra generate"
 }
 if (-not $ProjectName) {
-    $workspaceName = Split-Path -Leaf (Split-Path -Parent $infraDir)
-    $workspaceSlug = $workspaceName.ToLowerInvariant() -replace '[^a-z0-9_-]', '_'
-    $ProjectName = "scrapy_cffi_${workspaceSlug}_dev_$($Topology.Replace('-', '_'))"
+    $projectConfig = Join-Path (Split-Path -Parent $infraDir) "scrapy_cffi.toml"
+    $projectPrefix = "scrapy_cffi"
+    if (Test-Path -LiteralPath $projectConfig) {
+        $configMatch = Select-String -LiteralPath $projectConfig `
+            -Pattern '^\s*infra_project_name\s*=\s*[''"]([^''"]+)[''"]' |
+            Select-Object -First 1
+        if ($configMatch) {
+            $projectPrefix = $configMatch.Matches[0].Groups[1].Value
+        }
+    }
+    $projectPrefix = $projectPrefix.ToLowerInvariant() -replace '[^a-z0-9_-]', '_'
+    $ProjectName = "${projectPrefix}_$($Topology.Replace('-', '_'))"
 }
 if (-not (Test-Path -LiteralPath $envFile)) {
     Copy-Item -LiteralPath $exampleEnvFile -Destination $envFile

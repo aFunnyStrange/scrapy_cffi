@@ -1,9 +1,9 @@
 # 1.Introduction
 scrapy_cffi.databases provides adapter frameworks with automatic retry and reconnection utility classes for `Redis`, `MySQL`, `PostgreSQL`, and `MongoDB`. By default, `Redis` is included. For using the SQL or MongoDB utility classes, you need to install the dependencies manually:
 ```bash
-pip install sqlalchemy[asyncio] aiomysql
-pip install sqlalchemy[asyncio] asyncpg
-pip install motor>=3.7.1
+pip install "scrapy_cffi[mysql]"
+pip install "scrapy_cffi[postgres]"
+pip install "scrapy_cffi[mongodb]"
 ```
 
 Optional PostgreSQL smoke test: `tests/test_postgres/test_postgres_manager.py` (requires running Postgres + `asyncpg`).
@@ -91,15 +91,15 @@ settings.POSTGRES_INFO = PostgresInfo(
     HOST="127.0.0.1",
     PORT=5432,
     USERNAME="postgres",
-    PASSWORD="secret",
-    DB="app",
+    PASSWORD="123456",
+    DB="app_db",
     ECHO=False,
     POOL_PRE_PING=True,
     POOL_SIZE=5,
     MAX_OVERFLOW=10,
 )
 # Or pass a full URL:
-# settings.POSTGRES_INFO.URL = "postgresql+asyncpg://user:pass@localhost:5432/app"
+# settings.POSTGRES_INFO.URL = "postgresql+asyncpg://postgres:123456@127.0.0.1:5432/app_db"
 ```
 
 In a spider or pipeline, use `crawler.postgresManager` / `crawler.mysqlManager` after startup. Both managers extend `BaseSQLAlchemyManager` (shared retry/reconnect/session helpers).
@@ -114,7 +114,10 @@ Standalone manager usage (PostgreSQL):
 ```python
 from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
 
-manager = SQLAlchemyPostgresManager(stop_event, "postgresql+asyncpg://user:pass@localhost:5432/app")
+manager = SQLAlchemyPostgresManager(
+    stop_event,
+    "postgresql+asyncpg://postgres:123456@127.0.0.1:5432/app_db",
+)
 await manager.init()
 await manager.execute(
     "insert into items (name, price) values (:name, :price)",

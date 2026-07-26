@@ -1,6 +1,9 @@
+import importlib.util
 from pathlib import Path
 import subprocess
 import sys
+
+import pytest
 
 from scrapy_cffi.commands import demo, genspider, startproject
 
@@ -16,12 +19,14 @@ def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
     project = _generate_demo(tmp_path, monkeypatch)
     runner = (project / "runner.py").read_text(encoding="utf-8")
     settings = (project / "settings.py").read_text(encoding="utf-8")
+    project_config = (project / "scrapy_cffi.toml").read_text(encoding="utf-8")
 
     assert "from spiders.customSpider import CustomSpider" in runner
     assert "DEFAULT_SPIDER: Type[BaseSpider] = CustomSpider" in runner
     assert 'spider_path="spiders.CustomSpider"' not in runner
     assert 'settings.EXTENSIONS_PATH = "' not in settings
     assert '"interceptors.CustomDownloadInterceptor' not in settings
+    assert 'infra_project_name = "scrapy_cffi"' in project_config
 
 
 def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypatch):
@@ -36,27 +41,31 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     assert "use_redis = true" in (project / "scrapy_cffi.toml").read_text(
         encoding="utf-8"
     )
-    assert (project / "docker-demo.bat").is_file()
-    assert (project / "docker-demo.sh").is_file()
-    assert (project / "demo_docker.py").is_file()
+    assert (project / "scripts" / "docker-demo.bat").is_file()
+    assert (project / "scripts" / "docker-demo.sh").is_file()
+    assert (project / "scripts" / "demo_docker.py").is_file()
     assert (project / "infra" / "docker-compose.yml").is_file()
     assert (project / "infra" / "redis-sentinel" / "docker-compose.yml").is_file()
     assert (project / "infra" / "redis-cluster" / "docker-compose.yml").is_file()
     assert (project / "infra" / "rabbitmq-cluster" / "docker-compose.yml").is_file()
     assert (project / "infra" / "kafka-cluster" / "docker-compose.yml").is_file()
-    manager = (project / "demo_docker.py").read_text(encoding="utf-8")
+    manager = (project / "scripts" / "demo_docker.py").read_text(encoding="utf-8")
     assert '"verify-interrupt"' in manager
+    assert '"infra_project_name"' in manager
     assert "signal.CTRL_BREAK_EVENT" in manager
     assert "assert_nonpersistent_cleanup(topology, log_dir)" in manager
+    assert "are already in use" in manager
+    assert "docker ps --filter publish=<PORT>" in manager
+    assert "Only this mode's required services" in manager
     assert "signal.SIGBREAK" in runner
     assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" in runner
     assert 'DEMO_MODE = "redis"' in (
-        project / "demo_topology.py"
+        project / "demo_support" / "topology.py"
     ).read_text(encoding="utf-8")
     if sys.platform.startswith("win"):
         batch = subprocess.run(
             ["cmd.exe", "/c", "docker-demo.bat", "plan", "sentinel"],
-            cwd=str(project),
+            cwd=str(project / "scripts"),
             capture_output=True,
             text=True,
             check=True,
@@ -77,11 +86,21 @@ def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypa
         settings = (project / "settings.py").read_text(encoding="utf-8")
         assert 'settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"' in settings
         assert "settings.SCHEDULER_PERSIST = False" in settings
-        topology = (project / "demo_topology.py").read_text(encoding="utf-8")
+        topology = (
+            project / "demo_support" / "topology.py"
+        ).read_text(encoding="utf-8")
         expected = "rabbitmq" if mode == "rabbit" else "kafka"
         assert 'DEMO_MODE = "%s"' % expected in topology
+        requirement = (
+            "scrapy_cffi[rabbitmq]"
+            if mode == "rabbit"
+            else "scrapy_cffi[kafka]"
+        )
+        assert (project / "requirements.txt").read_text(
+            encoding="utf-8"
+        ).strip() == requirement
         result = subprocess.run(
-            [sys.executable, "demo_docker.py", "plan", "cluster"],
+            [sys.executable, "scripts/demo_docker.py", "plan", "cluster"],
             cwd=str(project),
             capture_output=True,
             text=True,
@@ -99,11 +118,13 @@ def test_demo_verifier_uses_environment_endpoints_and_retained_logs(
 
     settings = (project / "settings.py").read_text(encoding="utf-8")
     spider = (project / "spiders" / "customSpider.py").read_text(encoding="utf-8")
-    endpoints = (project / "demo_endpoints.py").read_text(encoding="utf-8")
-    websocket_server = (
-        project / "demo_server" / "ws_server.py"
+    endpoints = (
+        project / "demo_support" / "endpoints.py"
     ).read_text(encoding="utf-8")
-    manager = (project / "demo_docker.py").read_text(encoding="utf-8")
+    websocket_server = (
+        project / "demo_support" / "server" / "ws_server.py"
+    ).read_text(encoding="utf-8")
+    manager = (project / "scripts" / "demo_docker.py").read_text(encoding="utf-8")
     assert "SCRAPY_CFFI_DEMO_LOG" in manager
     assert "artifacts\" / \"demo-verification" in manager
     assert "DEMO_HTTP_URL" in spider
@@ -133,3 +154,56 @@ def test_genspider_updates_runner_without_rewriting_settings_signature(
     assert "use_redis = true" in (project / "scrapy_cffi.toml").read_text(
         encoding="utf-8"
     )
+
+
+def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    startproject.run("sample")
+    project = tmp_path / "sample"
+
+    assert (project / "docker" / "Dockerfile").is_file()
+    assert (project / "docker" / "Dockerfile.dockerignore").is_file()
+    compose = (project / "docker" / "docker-compose.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "context: .." in compose
+    assert "dockerfile: docker/Dockerfile" in compose
+    assert not (project / "Dockerfile").exists()
+    assert not (project / "docker-compose.yml").exists()
+    assert not (project / "__pycache__").exists()
+
+
+def test_demo_manager_reports_fixed_port_conflicts(tmp_path, monkeypatch):
+    project = _generate_demo(tmp_path, monkeypatch, rabbit=True)
+    manager_path = project / "scripts" / "demo_docker.py"
+    sys.path.insert(0, str(project))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "generated_demo_docker",
+            manager_path,
+        )
+        assert spec is not None and spec.loader is not None
+        manager = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(manager)
+    finally:
+        sys.path.remove(str(project))
+
+    monkeypatch.setattr(
+        manager,
+        "port_is_available",
+        lambda port: port != 6379,
+    )
+    monkeypatch.setattr(
+        manager,
+        "docker_port_owners",
+        lambda port: ["existing-redis"] if port == 6379 else [],
+    )
+
+    with pytest.raises(RuntimeError) as error:
+        manager.preflight_ports("single")
+
+    message = str(error.value)
+    assert "6379 (Redis): existing-redis" in message
+    assert "Stop the conflicting service/container" in message
+    lookup_command = "netstat -ano" if sys.platform == "win32" else "lsof -nP"
+    assert lookup_command in message

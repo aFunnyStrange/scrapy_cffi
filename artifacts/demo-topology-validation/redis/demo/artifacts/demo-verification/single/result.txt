@@ -1,6 +1,0 @@
-status=PASS
-mode=redis
-topology=single
-interrupt=True
-http_port=18002
-websocket_port=18765

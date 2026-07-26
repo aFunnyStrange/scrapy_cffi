@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List
 from ._template_build import copytree_merge_text_safe, read_text_template, write_utf8_file
 from .genspider import update_runner_default_spider
-from . import geninfra
+from . import _infra_templates
 
 
 def copytree_merge(src: Path, dst: Path) -> None:
@@ -28,36 +28,46 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
         if use_redis
         else "memory"
     )
+    requirement = (
+        "scrapy_cffi[kafka]"
+        if use_kafka
+        else "scrapy_cffi[rabbitmq]"
+        if use_rabbitmq
+        else "scrapy_cffi"
+    )
+    write_utf8_file(target / "requirements.txt", requirement + "\n")
 
-    geninfra.run(output_dir=str(target / "infra"), generate_all=True)
+    _infra_templates.run(output_dir=str(target / "infra"), generate_all=True)
     management_dir = template_dir / "demo_management"
     copytree_merge(management_dir, target)
-    topology_module = target / "demo_topology.py"
+    topology_module = target / "demo_support" / "topology.py"
     topology_code = read_text_template(topology_module).replace(
         "__SCRAPY_CFFI_DEMO_MODE__",
         demo_mode,
     )
     write_utf8_file(topology_module, topology_code)
-    shell_manager = target / "docker-demo.sh"
+    shell_manager = target / "scripts" / "docker-demo.sh"
     if shell_manager.exists():
         shell_manager.chmod(0o755)
 
     spider_dir = target / "spiders"
     demo_spiders_dir = template_dir / "demo_spider"
 
-    copytree_merge(template_dir / "server", target)
+    copytree_merge(
+        template_dir / "server" / "demo_server",
+        target / "demo_support" / "server",
+    )
     if use_rabbitmq:
         push_demo = template_dir / "spiders" / "push_rabbitmq_demo.py"
         if push_demo.is_file():
-            write_utf8_file(target / "push_rabbitmq_demo.py", read_text_template(push_demo))
+            write_utf8_file(
+                target / "scripts" / "push_rabbitmq_demo.py",
+                read_text_template(push_demo),
+            )
     else:
-        maybe_push_demo = target / "push_rabbitmq_demo.py"
+        maybe_push_demo = target / "scripts" / "push_rabbitmq_demo.py"
         if maybe_push_demo.exists():
             maybe_push_demo.unlink()
-
-    legacy_readme = target / "readme.txt"
-    if legacy_readme.exists():
-        legacy_readme.unlink()
 
     if use_rabbitmq or use_redis or use_kafka:
         demo_spider_files = ["customRedisSpider", "studentSpider"]
@@ -68,8 +78,8 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
             target_spider_path.parent.mkdir(parents=True, exist_ok=True)
             if use_kafka:
                 demo_spider_code = demo_spider_code.replace(
-                    "from scrapy_cffi.spiders.redis import RedisSpider",
-                    "from scrapy_cffi.spiders.kafka import KafkaSpider",
+                    "from scrapy_cffi.spiders import RedisSpider",
+                    "from scrapy_cffi.spiders import KafkaSpider",
                 )
                 demo_spider_code = demo_spider_code.replace("(RedisSpider)", "(KafkaSpider)")
                 demo_spider_code = demo_spider_code.replace(
@@ -78,8 +88,8 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
                 )
             elif use_rabbitmq:
                 demo_spider_code = demo_spider_code.replace(
-                    "from scrapy_cffi.spiders.redis import RedisSpider",
-                    "from scrapy_cffi.spiders.rabbitmq import RabbitmqSpider",
+                    "from scrapy_cffi.spiders import RedisSpider",
+                    "from scrapy_cffi.spiders import RabbitmqSpider",
                 )
                 demo_spider_code = demo_spider_code.replace("(RedisSpider)", "(RabbitmqSpider)")
                 demo_spider_code = demo_spider_code.replace(
@@ -88,13 +98,9 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
                 )
             write_utf8_file(target_spider_path, demo_spider_code)
 
-        update_spiders_path(
-            project_path=target,
-            demo_spiders_dir=demo_spiders_dir,
+        update_spiders_package(
             demo_spider_files=demo_spider_files,
             spider_dir=spider_dir,
-            use_redis=use_redis,
-            use_rabbitmq=use_rabbitmq,
         )
         update_runner_default_spider(
             target,
@@ -111,13 +117,9 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
             target_spider_path.parent.mkdir(parents=True, exist_ok=True)
             write_utf8_file(target_spider_path, demo_spider_code)
 
-        update_spiders_path(
-            project_path=target,
-            demo_spiders_dir=demo_spiders_dir,
+        update_spiders_package(
             demo_spider_files=demo_spider_files,
             spider_dir=spider_dir,
-            use_redis=use_redis,
-            use_rabbitmq=use_rabbitmq,
         )
         update_runner_default_spider(target, "CustomSpider", "customSpider")
 
@@ -128,13 +130,9 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
         print("  See README.md in demo/ for single-machine steps.")
 
 
-def update_spiders_path(
-    project_path: Path,
-    demo_spiders_dir: Path,
+def update_spiders_package(
     demo_spider_files: List,
     spider_dir: Path,
-    use_redis: bool,
-    use_rabbitmq: bool,
 ):
     spider_dir.mkdir(parents=True, exist_ok=True)
     keep = set(demo_spider_files)

@@ -10,35 +10,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Shared single-flight reconnect controller for database/MQ adapters. Concurrent
   failures now collapse into one transport rebuild and respect crawler shutdown.
-- Cargo-style `scrapy-cffi test single|sentinel|cluster|all`, plus
-  `verify.bat` and `verify.sh`, provide one release-check entry for pytest and
+- Cargo-style `scrapy-cffi test single|sentinel|cluster|all` provides the
+  single release-check entry for pytest and
   Memory/Redis/RabbitMQ/Kafka crawl/interrupt cases. The verifier continues after individual
   failures, writes Markdown/JSON summaries and per-phase logs, and always
-  attempts cleanup. `--quick` provides a Docker-free daily check;
-  `scrapy-cffi verify` and the old `scripts/verify_demo.py` path remain
-  all-topology compatibility aliases.
-- Generated demos now include `docker-demo.bat` and `docker-demo.sh`. Their
+  attempts cleanup. `--quick` provides a Docker-free daily check.
+- Generated demos now keep `docker-demo.bat`, `docker-demo.sh`, the manager,
+  and the RabbitMQ publisher under `scripts/`; topology/endpoints/mock servers
+  live under `demo_support/`. Their
   shared manager supports plan/up/status/reset/down and retained-log
   verification for single-node, Redis Sentinel, and full Redis/MQ cluster
   topologies.
+- Demo infrastructure keeps deterministic fixed ports but now preflights all
+  ports before Compose startup. Conflicts report the affected service, port,
+  Docker container when discoverable, and platform lookup command without a
+  Python traceback or partially starting the selected stack.
 - Generated Demo managers also provide `verify-interrupt` and
   `verify-interrupt-all`, which send a real process-level console interrupt and
   retain cleanup evidence for every supported topology.
 - `scrapy-cffi infra` unifies local template generation, Compose planning,
   configuration, startup, status, reset, shutdown, destruction, and cleanup by
-  topology and service. The older `geninfra` command remains compatible.
+  topology and service.
 - `KafkaSpider` / `KafkaScheduler` with separate start and work topics, compressed request payloads, Redis-backed dedup/session state, and manual contiguous offset commits.
 - Persistent Session Cookie Hash state and adaptive request-state compression.
-- Independent `geninfra` development stack for Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka, with PowerShell/shell `init`, `reset`, and `destroy` scripts.
-- `geninfra --all` local simulations for Redis Sentinel/Cluster, RabbitMQ Cluster, and Kafka Cluster. Compose project names derive from crawler project + topology, isolating containers, networks, and volumes across projects.
+- Independent `infra` development stack for Redis, MySQL, PostgreSQL, MongoDB,
+  RabbitMQ, and Kafka, with PowerShell/shell lifecycle scripts.
+- Local simulations for Redis Sentinel/Cluster, RabbitMQ Cluster, and Kafka
+  Cluster. Compose project names derive from crawler project + topology,
+  isolating containers, networks, and volumes across projects.
 - `production-endpoints.example.toml` and production connection settings for real infrastructure hosts: Redis ACL/Sentinel auth/TLS/timeouts/address remap, RabbitMQ timeout/heartbeat, and Kafka SASL/TLS/client timeout.
 
 ### Changed
+- New projects persist the editable Compose prefix
+  `default.infra_project_name = "scrapy_cffi"` in `scrapy_cffi.toml`;
+  developers change this one value and keep it unique across concurrently
+  running projects. Single-node startup now delegates an omitted service list to Compose, so the project-local
+  `infra/docker-compose.yml` is the source of truth for enabled services and
+  image versions. Normal infra operations fill missing templates without
+  overwriting developer image/service edits.
+- `startproject` now groups application-only container artifacts under
+  `docker/` (`Dockerfile`, `Dockerfile.dockerignore`, and Compose file), keeping
+  the generated project root focused on crawler code.
+- Optional transports/databases now have declared installation extras
+  (`rabbitmq`, `kafka`, `mysql`, `postgres`, and `mongodb`). Generated
+  RabbitMQ/Kafka demos select the matching extra in `requirements.txt`.
+- Local database credentials now follow their common image defaults: MySQL
+  `root / 123456`, PostgreSQL `postgres / 123456`, and unauthenticated MongoDB.
+  Generated infra documentation lists every default single-node credential;
+  these relaxed settings are limited to disposable development stacks.
 - Redis keeps its native `redis.asyncio.Redis` API and handles retry only at
   `execute_command`; RabbitMQ, Kafka, and SQLAlchemy managers now use explicit
   reconnectable methods instead of global `__getattribute__` interception.
   Mongo collections retain the native Motor type for IDE completion through a
   typed internal proxy.
+
 - `RabbitMqScheduler` and `KafkaScheduler` still require Redis for distributed
   deduplication. With `SCHEDULER_PERSIST=False`, normal exit and Ctrl+C now also
   delete their start/work queues or topics along with Redis dedup/session state.
@@ -66,6 +91,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.env` export serializes configured classes back to stable import paths instead of dropping components or writing unusable `<class ...>` representations.
 
 ### Removed
+- Redundant `geninfra`/`verify` CLI aliases, root verification wrappers, and
+  duplicate verification scripts; `scrapy-cffi infra` and
+  `scrapy-cffi test` are now the only supported entry points.
+- Committed generated Demo/log artifacts, duplicate broker Compose stacks,
+  abandoned test projects/workflows, and cached bytecode. Runtime verification
+  evidence remains local under the ignored `artifacts/` directory.
 - The obsolete demo README and monolithic project Compose database/MQ definitions. Generated demos now use the topology-aware local-infra guide.
 
 ### Fixed

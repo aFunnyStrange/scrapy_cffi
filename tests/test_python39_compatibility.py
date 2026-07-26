@@ -41,10 +41,25 @@ def test_package_source_uses_python39_compatible_syntax_and_annotations():
 
 
 def test_package_metadata_declares_real_python_minimum():
-    project = toml.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    project = toml.loads(
+        (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
     assert project["requires-python"] == ">=3.9"
     assert "python-dotenv" in project["dependencies"]
     assert "dotenv" not in project["dependencies"]
+    extras = project["optional-dependencies"]
+    assert "aio-pika>=9.0" in extras["rabbitmq"]
+    assert "aiokafka>=0.8.1" in extras["kafka"]
+    assert "asyncmy>=0.2" in extras["mysql"]
+
+
+def test_runtime_and_package_versions_match():
+    from scrapy_cffi import __version__
+
+    project = toml.loads(
+        (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+    assert __version__ == project["version"]
 
 
 def test_interceptor_none_response_continues_and_unhandled_exception_survives():
@@ -94,8 +109,8 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
 
 
 def test_class_based_settings_export_to_recoverable_env_paths():
-    from scrapy_cffi.core.scheduler.redis import RedisScheduler
     from scrapy_cffi.pipelines import Pipeline
+    from scrapy_cffi.scheduler import RedisScheduler
     from scrapy_cffi.settings import SettingsInfo
     from scrapy_cffi.spiders import RedisSpider
     from scrapy_cffi.utils.envConfig import env_to_settings, settings_to_env

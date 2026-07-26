@@ -30,13 +30,18 @@ case "$topology" in
 esac
 
 if [ ! -f "$compose_file" ]; then
-    echo "Topology '$topology' was not generated. Run: scrapy-cffi geninfra --all" >&2
+    echo "Topology '$topology' was not generated. Run: scrapy-cffi infra generate" >&2
     exit 1
 fi
 if [ -z "$project_name" ]; then
-    workspace_name=$(basename -- "$(dirname -- "$infra_dir")")
-    workspace_slug=$(printf '%s' "$workspace_name" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '_')
-    project_name="scrapy_cffi_${workspace_slug}_dev_$(printf '%s' "$topology" | tr '-' '_')"
+    project_config="$(dirname -- "$infra_dir")/scrapy_cffi.toml"
+    project_prefix="scrapy_cffi"
+    if [ -f "$project_config" ]; then
+        configured_prefix=$(awk -F= '/^[[:space:]]*infra_project_name[[:space:]]*=/ { value=$2; gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", value); print value; exit }' "$project_config")
+        [ -z "$configured_prefix" ] || project_prefix="$configured_prefix"
+    fi
+    project_prefix=$(printf '%s' "$project_prefix" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '_')
+    project_name="${project_prefix}_$(printf '%s' "$topology" | tr '-' '_')"
 fi
 
 env_file="$infra_dir/.env"

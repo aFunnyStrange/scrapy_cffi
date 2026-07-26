@@ -1,13 +1,14 @@
 """Manage project-local, development-only Docker infrastructure."""
 
-import hashlib
 from pathlib import Path
 import re
 import shutil
 import subprocess
 from typing import List, NamedTuple, Optional, Sequence
 
-from . import geninfra
+import toml
+
+from . import _infra_templates
 
 
 ALL_SERVICES = (
@@ -32,30 +33,42 @@ def _slug(value: str) -> str:
     return result or "project"
 
 
+def default_project_prefix() -> str:
+    return "scrapy_cffi"
+
+
 def _project_prefix(infra_dir: Path) -> str:
     project_dir = infra_dir.parent.resolve()
-    digest = hashlib.sha1(str(project_dir).encode("utf-8")).hexdigest()[:8]
-    return "scrapy_cffi_%s_%s_dev" % (_slug(project_dir.name), digest)
+    config_path = project_dir / "scrapy_cffi.toml"
+    if config_path.is_file():
+        try:
+            default = toml.load(config_path).get("default", {})
+            configured = default.get("infra_project_name")
+            if isinstance(configured, str) and configured.strip():
+                return _slug(configured)
+        except (OSError, TypeError, toml.TomlDecodeError):
+            pass
+    return default_project_prefix()
 
 
 def build_stacks(
     infra_dir: Path,
     topology: str,
-    services: Sequence[str],
+    services: Optional[Sequence[str]] = None,
     project_name: Optional[str] = None,
 ) -> List[Stack]:
-    selected = list(dict.fromkeys(services))
+    selected = list(dict.fromkeys(services or ALL_SERVICES))
     unknown = sorted(set(selected) - set(ALL_SERVICES))
     if unknown:
         raise ValueError("Unsupported services: %s" % ", ".join(unknown))
-    prefix = project_name or _project_prefix(infra_dir)
+    prefix = _slug(project_name) if project_name else _project_prefix(infra_dir)
 
     if topology == "single":
         return [
             Stack(
                 "%s_single" % prefix,
                 infra_dir / "docker-compose.yml",
-                selected,
+                selected if services is not None else [],
             )
         ]
 
@@ -115,7 +128,11 @@ def _ensure_templates(infra_dir: Path) -> None:
     )
     if all(path.is_file() for path in required):
         return
-    geninfra.run(output_dir=str(infra_dir), generate_all=True)
+    _infra_templates.run(
+        output_dir=str(infra_dir),
+        generate_all=True,
+        overwrite=False,
+    )
 
 
 def _ensure_env(infra_dir: Path) -> None:
@@ -159,17 +176,15 @@ def run(
     project_name: Optional[str] = None,
 ) -> None:
     infra_dir = (Path.cwd() / output_dir).resolve()
-    selected = list(services or ALL_SERVICES)
-
     if action == "generate":
-        geninfra.run(output_dir=str(infra_dir), generate_all=True)
+        _infra_templates.run(output_dir=str(infra_dir), generate_all=True)
         return
     if action == "clean":
-        geninfra.run(output_dir=str(infra_dir), clean=True)
+        _infra_templates.run(output_dir=str(infra_dir), clean=True)
         return
 
     _ensure_templates(infra_dir)
-    stacks = build_stacks(infra_dir, topology, selected, project_name)
+    stacks = build_stacks(infra_dir, topology, services, project_name)
 
     if action == "plan":
         for stack in stacks:
@@ -215,6 +230,7 @@ def run(
             args = ["up", "--detach", "--wait"]
             args.extend(stack.services)
             _execute(_compose_command(stack, infra_dir, args), infra_dir)
+        print("Development credentials: %s" % (infra_dir / "README.md"))
         return
 
     if action == "status":
