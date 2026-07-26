@@ -18,6 +18,7 @@ TEXT_SUFFIXES = {
     ".css",
     ".js",
     ".sh",
+    ".bat",
 }
 
 

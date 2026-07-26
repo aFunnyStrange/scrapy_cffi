@@ -44,7 +44,8 @@ class DedupKeyRouter:
         suffix = f":{namespace}" if namespace else ""
         self._base_new = f"{base_new_seen}{suffix}"
         self._base_sent = f"{base_sent_seen}{suffix}"
-        self._redis_mode = str(redis_mode)
+        mode_value = getattr(redis_mode, "value", redis_mode)
+        self._redis_mode = str(mode_value)
         self._cluster_nodes = list(cluster_nodes or [])
 
     @classmethod
@@ -76,19 +77,27 @@ class DedupKeyRouter:
             from ..utils.algorithm import get_node
 
             node = get_node(self._cluster_nodes, fingerprint)
+            # Both Lua KEYS must share one Redis Cluster slot. Redis hashes only
+            # the text inside {...}, so keep the independently named SET/bitmap
+            # keys under a common per-shard hash tag.
+            hash_tag = self._cluster_hash_tag(node)
             return DedupKeys(
-                new_seen=f"{self._base_new}:{node}",
-                sent_seen=f"{self._base_sent}:{node}",
+                new_seen=f"{self._base_new}:{{{hash_tag}}}",
+                sent_seen=f"{self._base_sent}:{{{hash_tag}}}",
             )
         return DedupKeys(new_seen=self._base_new, sent_seen=self._base_sent)
+
+    def _cluster_hash_tag(self, node: str) -> str:
+        return "scrapy-cffi-dedup:%s:%s" % (self._base_new, node)
 
     def cleanup_keys(self) -> List[str]:
         """Redis keys to delete on shutdown when SCHEDULER_PERSIST is False."""
         if self.is_cluster:
             out: List[str] = []
             for node in self._cluster_nodes:
-                out.append(f"{self._base_new}:{node}")
-                out.append(f"{self._base_sent}:{node}")
+                hash_tag = self._cluster_hash_tag(node)
+                out.append(f"{self._base_new}:{{{hash_tag}}}")
+                out.append(f"{self._base_sent}:{{{hash_tag}}}")
             return out
         return [self._base_new, self._base_sent]
 

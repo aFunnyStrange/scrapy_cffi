@@ -69,6 +69,9 @@ When `SCHEDULER_PERSIST` is **False** (default), `Crawler.shutdown()` deletes:
 - Dedup keys from `RedisDupeFilter.dedup_cleanup_keys()` → `DedupKeyRouter.cleanup_keys()`
 
 This runs on normal exit and on **Ctrl+C** (`KeyboardInterrupt` in `runner.py`).
+Redis deletion is started independently from broker queue/topic deletion and
+before the global stop event. A RabbitMQ/Kafka cleanup error therefore cannot
+prevent Redis cleanup; the shutdown path retries failed backend cleanup once.
 
 | Mode | Keys removed |
 | ---- | ------------ |

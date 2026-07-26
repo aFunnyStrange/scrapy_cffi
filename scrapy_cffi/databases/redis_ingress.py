@@ -25,7 +25,7 @@ class RedisIngressConfig:
 
     @property
     def is_stream(self) -> bool:
-        return self.mode == RedisIngressMode.STREAM or bool(self.group_name)
+        return self.mode == RedisIngressMode.STREAM
 
 
 def _pick_spider_value(spider: Any, *names: str):

@@ -1,5 +1,5 @@
 import argparse
-from . import startproject, genspider, demo, geninfra, cinstall
+from . import startproject, genspider, demo, geninfra, infra, cinstall, verify
 
 def main():
     parser = argparse.ArgumentParser(prog="scrapy_cffi", description="scrapy_cffi CLI tool")
@@ -44,6 +44,102 @@ def main():
         action="store_true",
         help="Clean generated infra artifacts under --output-dir.",
     )
+
+    infra_p = subparsers.add_parser(
+        "infra",
+        help="Generate and manage project-local development Docker infrastructure",
+    )
+    infra_p.add_argument(
+        "action",
+        choices=(
+            "generate",
+            "plan",
+            "config",
+            "init",
+            "up",
+            "status",
+            "reset",
+            "down",
+            "destroy",
+            "clean",
+        ),
+    )
+    infra_p.add_argument(
+        "--output-dir",
+        default="infra",
+        help="Infrastructure directory (default: infra).",
+    )
+    infra_p.add_argument(
+        "--topology",
+        choices=("single", "sentinel", "cluster"),
+        default="single",
+    )
+    infra_p.add_argument(
+        "--services",
+        nargs="+",
+        choices=infra.ALL_SERVICES,
+        default=list(infra.ALL_SERVICES),
+        help="Services to manage; defaults to the full local development stack.",
+    )
+    infra_p.add_argument(
+        "--project-name",
+        default=None,
+        help="Optional Compose project-name prefix override.",
+    )
+
+    verify_p = subparsers.add_parser(
+        "verify",
+        help="Run the framework test suite and generated Demo verification matrix",
+    )
+    verify_p.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip Docker crawls; run tests, generation/import, and topology plans.",
+    )
+    verify_p.add_argument(
+        "--no-interrupt",
+        action="store_true",
+        help="Skip the real process-interrupt matrix.",
+    )
+    verify_p.add_argument(
+        "--mode",
+        dest="modes",
+        action="append",
+        choices=verify.ALL_MODES,
+        help="Limit verification to one or more modes; repeat this option.",
+    )
+    verify_p.add_argument("--log-dir")
+    verify_p.add_argument("--keep-workdir", action="store_true")
+
+    test_p = subparsers.add_parser(
+        "test",
+        help="Run single, Sentinel, cluster, or all framework verification cases",
+    )
+    test_p.add_argument(
+        "topology",
+        nargs="?",
+        default="all",
+        choices=("single", "sentinel", "cluster", "all"),
+    )
+    test_p.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip Docker crawls; run tests, generation/import, and topology plans.",
+    )
+    test_p.add_argument(
+        "--no-interrupt",
+        action="store_true",
+        help="Skip the real process-interrupt cases.",
+    )
+    test_p.add_argument(
+        "--mode",
+        dest="modes",
+        action="append",
+        choices=verify.ALL_MODES,
+        help="Limit verification to one or more modes; repeat this option.",
+    )
+    test_p.add_argument("--log-dir")
+    test_p.add_argument("--keep-workdir", action="store_true")
 
     # genspider
     gp = subparsers.add_parser("genspider", help="Generate a new spider")
@@ -124,6 +220,37 @@ def main():
             kafka_topology=args.kafka,
             generate_all=args.all,
             clean=args.clean,
+        )
+    elif args.command == "infra":
+        infra.run(
+            action=args.action,
+            output_dir=args.output_dir,
+            topology=args.topology,
+            services=args.services,
+            project_name=args.project_name,
+        )
+    elif args.command == "verify":
+        return verify.run(
+            quick=args.quick,
+            no_interrupt=args.no_interrupt,
+            modes=args.modes,
+            topologies=verify.TOPOLOGIES,
+            log_dir=args.log_dir,
+            keep_workdir=args.keep_workdir,
+        )
+    elif args.command == "test":
+        topologies = (
+            verify.TOPOLOGIES
+            if args.topology == "all"
+            else (args.topology,)
+        )
+        return verify.run(
+            quick=args.quick,
+            no_interrupt=args.no_interrupt,
+            modes=args.modes,
+            topologies=topologies,
+            log_dir=args.log_dir,
+            keep_workdir=args.keep_workdir,
         )
     elif args.command == "cinstall":
         cinstall.run(

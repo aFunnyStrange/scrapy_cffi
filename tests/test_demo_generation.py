@@ -1,7 +1,8 @@
 from pathlib import Path
+import subprocess
+import sys
 
 from scrapy_cffi.commands import demo, genspider, startproject
-from scripts.verify_demo import configure_e2e_project
 
 
 def _generate_demo(tmp_path: Path, monkeypatch, *, redis=False, rabbit=False, kafka=False):
@@ -35,6 +36,32 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     assert "use_redis = true" in (project / "scrapy_cffi.toml").read_text(
         encoding="utf-8"
     )
+    assert (project / "docker-demo.bat").is_file()
+    assert (project / "docker-demo.sh").is_file()
+    assert (project / "demo_docker.py").is_file()
+    assert (project / "infra" / "docker-compose.yml").is_file()
+    assert (project / "infra" / "redis-sentinel" / "docker-compose.yml").is_file()
+    assert (project / "infra" / "redis-cluster" / "docker-compose.yml").is_file()
+    assert (project / "infra" / "rabbitmq-cluster" / "docker-compose.yml").is_file()
+    assert (project / "infra" / "kafka-cluster" / "docker-compose.yml").is_file()
+    manager = (project / "demo_docker.py").read_text(encoding="utf-8")
+    assert '"verify-interrupt"' in manager
+    assert "signal.CTRL_BREAK_EVENT" in manager
+    assert "assert_nonpersistent_cleanup(topology, log_dir)" in manager
+    assert "signal.SIGBREAK" in runner
+    assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" in runner
+    assert 'DEMO_MODE = "redis"' in (
+        project / "demo_topology.py"
+    ).read_text(encoding="utf-8")
+    if sys.platform.startswith("win"):
+        batch = subprocess.run(
+            ["cmd.exe", "/c", "docker-demo.bat", "plan", "sentinel"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "redis-sentinel" in batch.stdout
 
 
 def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypatch):
@@ -50,33 +77,41 @@ def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypa
         settings = (project / "settings.py").read_text(encoding="utf-8")
         assert 'settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"' in settings
         assert "settings.SCHEDULER_PERSIST = False" in settings
+        topology = (project / "demo_topology.py").read_text(encoding="utf-8")
+        expected = "rabbitmq" if mode == "rabbit" else "kafka"
+        assert 'DEMO_MODE = "%s"' % expected in topology
+        result = subprocess.run(
+            [sys.executable, "demo_docker.py", "plan", "cluster"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "redis-cluster" in result.stdout
+        assert ("%s-cluster" % expected) in result.stdout
 
 
-def test_demo_verifier_injects_persistent_logs_and_isolated_servers(
+def test_demo_verifier_uses_environment_endpoints_and_retained_logs(
     tmp_path,
     monkeypatch,
 ):
     project = _generate_demo(tmp_path, monkeypatch)
-    log_dir = tmp_path / "evidence" / "memory"
-    configure_e2e_project(
-        project,
-        log_dir,
-        None,
-        http_port=18002,
-        websocket_port=18765,
-    )
 
     settings = (project / "settings.py").read_text(encoding="utf-8")
     spider = (project / "spiders" / "customSpider.py").read_text(encoding="utf-8")
+    endpoints = (project / "demo_endpoints.py").read_text(encoding="utf-8")
     websocket_server = (
         project / "demo_server" / "ws_server.py"
     ).read_text(encoding="utf-8")
-    assert str(log_dir / "demo.log") in settings
-    assert "settings.MAX_SCHEDULER_LOOP_NUM = 1" in settings
-    assert "settings.SCHEDULER_LOOP_END = None" in settings
-    assert "http://127.0.0.1:18002" in spider
-    assert "ws://127.0.0.1:18765" in spider
-    assert '"127.0.0.1", 18765' in websocket_server
+    manager = (project / "demo_docker.py").read_text(encoding="utf-8")
+    assert "SCRAPY_CFFI_DEMO_LOG" in manager
+    assert "artifacts\" / \"demo-verification" in manager
+    assert "DEMO_HTTP_URL" in spider
+    assert "DEMO_WS_URL" in spider
+    assert "SCRAPY_CFFI_DEMO_HTTP_PORT" in endpoints
+    assert "SCRAPY_CFFI_DEMO_WS_PORT" in endpoints
+    assert "SCRAPY_CFFI_DEMO_WS_PORT" in websocket_server
+    assert "settings.LOG_INFO.LOG_FILE" in settings
 
 
 def test_genspider_updates_runner_without_rewriting_settings_signature(

@@ -58,6 +58,9 @@ class RabbitMQManager:
         self._channel: aio_pika.RobustChannel = None
         self._exchange: aio_pika.Exchange = None
         self._queues: Dict[str, aio_pika.Queue] = {}
+        self._consumer_channels: Dict[str, aio_pika.RobustChannel] = {}
+        self._consumer_queues: Dict[str, aio_pika.Queue] = {}
+        self._consumer_lock = asyncio.Lock()
         self._reconnect_controller = AsyncReconnectController(
             self.stop_event,
             self._reconnect,
@@ -133,6 +136,8 @@ class RabbitMQManager:
                     )
                     # Queue objects belong to the old channel.
                     self._queues.clear()
+                    self._consumer_channels.clear()
+                    self._consumer_queues.clear()
                     return
                 except (AMQPConnectionError, ChannelClosed) as exc:
                     last_exc = exc
@@ -151,10 +156,20 @@ class RabbitMQManager:
 
     @reconnectable
     async def declare_queue(self, queue_name: str, routing_key: str = None):
+        async with self._lock:
+            return await self._declare_queue_unlocked(queue_name, routing_key)
+
+    async def _declare_queue_unlocked(self, queue_name: str, routing_key: str = None):
         if queue_name in self._queues:
             return self._queues[queue_name]
         queue = await self._channel.declare_queue(
-            queue_name, durable=self.persist, auto_delete=not self.persist
+            # Queue identity must remain stable when persistent and transient
+            # crawlers (or an external ingress publisher) share a name.
+            # SCHEDULER_PERSIST controls message delivery mode and framework
+            # cleanup, not RabbitMQ entity declaration arguments.
+            queue_name,
+            durable=True,
+            auto_delete=False,
         )
         routing_key = routing_key or queue_name
         await queue.bind(self._exchange, routing_key=routing_key)
@@ -170,8 +185,8 @@ class RabbitMQManager:
         routing_key = routing_key or queue_name
         # Binds the queue to the exchange before publishing; otherwise the broker drops
         # messages when no queue is bound yet (e.g. first scheduled request before any consumer).
-        await self.declare_queue(queue_name, routing_key=routing_key)
         async with self._lock:
+            await self._declare_queue_unlocked(queue_name, routing_key=routing_key)
             await self._exchange.publish(
                 aio_pika.Message(
                     body=message,
@@ -184,42 +199,72 @@ class RabbitMQManager:
     @reconnectable
     async def dequeue_request(self, queue_name: str, timeout: int = 30) -> Union[bytes, None]:
         """
-        Channel closed by RPC timeout.
+        Cancellation-safe short polling for aio-pika's ``Basic.Get`` RPC.
 
-        ⚠️ Warning: Do NOT set this timeout too low. This is a design flaw in aio_pika.
-        If the timeout triggers, the channel may be closed, which can crash the entire program.
+        Polls are capped at one second so Ctrl+C remains responsive.
+        The underlying RPC is shielded and settled before shutdown closes the channel.
         """
         if self.stop_event.is_set():
             raise asyncio.CancelledError("Stop event set, abort RabbitMQ pop")
         if not self._exchange:
             await self.connect()
-        queue = await self.declare_queue(queue_name)
+        poll_timeout = min(max(float(timeout), 0.1), 1.0)
+        queue = await self._get_consumer_queue(queue_name)
+        get_task = asyncio.create_task(
+            queue.get(timeout=poll_timeout, fail=False)
+        )
         try:
-            # NOTE:
-            # queue.get() can wait for a long time on empty queues.
-            # If we hold the manager-wide lock here, one empty queue can block
-            # all other spider queues (push/pop) in run_all_spiders mode.
-            # Keep publish serialized, but do not serialize long-lived dequeue waits.
-            message: aio_pika.IncomingMessage = await asyncio.wait_for(
-                queue.get(timeout=timeout),
-                timeout=timeout
-            )
+            # Every logical queue owns a channel, so start/work Basic.Get RPCs
+            # cannot block publishing or one another.
+            message: aio_pika.IncomingMessage = await asyncio.shield(get_task)
             if message:
                 async with message.process():
                     return message.body
             return None
-        except asyncio.TimeoutError:
+        except asyncio.CancelledError:
+            try:
+                message = await get_task
+                if message is not None:
+                    await message.reject(requeue=True)
+            except (asyncio.TimeoutError, QueueEmpty, ChannelClosed):
+                pass
+            raise
+        except (asyncio.TimeoutError, QueueEmpty):
             return None
-        except QueueEmpty:
-            return None
+
+    async def _get_consumer_queue(self, queue_name: str):
+        queue = self._consumer_queues.get(queue_name)
+        if queue is not None:
+            return queue
+        async with self._consumer_lock:
+            queue = self._consumer_queues.get(queue_name)
+            if queue is not None:
+                return queue
+            channel = await self._connection.channel()
+            await channel.set_qos(prefetch_count=self.prefetch_count)
+            exchange = await channel.declare_exchange(
+                self.exchange_name,
+                type=self.exchange_type,
+                durable=True,
+            )
+            queue = await channel.declare_queue(
+                queue_name,
+                durable=True,
+                auto_delete=False,
+            )
+            await queue.bind(exchange, routing_key=queue_name)
+            self._consumer_channels[queue_name] = channel
+            self._consumer_queues[queue_name] = queue
+            return queue
 
     @reconnectable
     async def llen(self, queue_name: str) -> int:
         try:
-            queue = await self._channel.declare_queue(
-                queue_name, durable=self.persist, passive=True
-            )
-            return queue.declaration_result.message_count
+            async with self._lock:
+                queue = await self._channel.declare_queue(
+                    queue_name, durable=True, auto_delete=False, passive=True
+                )
+                return queue.declaration_result.message_count
         except aio_pika.exceptions.ChannelClosed:
             await self.connect()
             return 0
@@ -231,12 +276,17 @@ class RabbitMQManager:
         if not self._channel or self._channel.is_closed:
             await self.connect()
         self._queues.pop(queue_name, None)
+        self._consumer_queues.pop(queue_name, None)
+        consumer_channel = self._consumer_channels.pop(queue_name, None)
+        if consumer_channel is not None and not consumer_channel.is_closed:
+            await consumer_channel.close()
         try:
-            await self._channel.queue_delete(
-                queue_name,
-                if_unused=False,
-                if_empty=False,
-            )
+            async with self._lock:
+                await self._channel.queue_delete(
+                    queue_name,
+                    if_unused=False,
+                    if_empty=False,
+                )
         except ChannelClosed as exc:
             if getattr(exc, "reply_code", None) == 404 or "NOT_FOUND" in str(exc):
                 return False
@@ -248,6 +298,18 @@ class RabbitMQManager:
             await self._close_transport()
 
     async def _close_transport(self):
+        consumer_channels = list(self._consumer_channels.values())
+        self._consumer_channels.clear()
+        self._consumer_queues.clear()
+        if consumer_channels:
+            await asyncio.gather(
+                *[
+                    channel.close()
+                    for channel in consumer_channels
+                    if not channel.is_closed
+                ],
+                return_exceptions=True,
+            )
         try:
             if self._channel and not self._channel.is_closed:
                 await self._channel.close()

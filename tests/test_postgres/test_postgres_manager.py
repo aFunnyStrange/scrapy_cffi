@@ -6,8 +6,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 if not importlib.util.find_spec("asyncpg"):
-    print("skip: asyncpg is not installed. Install with `pip install asyncpg` or `pip install .[postgres]`.")
-    sys.exit(0)
+    reason = (
+        "asyncpg is not installed. Install with `pip install asyncpg` "
+        "or `pip install .[postgres]`."
+    )
+    if __name__ == "__main__":
+        print("skip: " + reason)
+        sys.exit(0)
+    import pytest
+
+    pytest.skip(reason, allow_module_level=True)
 
 from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
 

@@ -1,0 +1,2 @@
+Memory Demo does not require Docker infrastructure.
+PASS: memory / single; logs: C:\Users\funnystrange\AppData\Local\Temp\scrapy-cffi-verify-2v6pp06f\memory\demo\artifacts\demo-verification\single

@@ -123,7 +123,7 @@ class SettingsInfo(BaseValidatedModel):
     # Used to warn users about custom fields not recognized by the framework; these should be maintained by the user
     def __init__(self, **data: Any):
         super().__init__(**data)
-        known_fields = set(self.model_fields.keys())
+        known_fields = set(type(self).model_fields.keys())
         extra_fields = set(data.keys()) - known_fields
         if extra_fields:
             import warnings

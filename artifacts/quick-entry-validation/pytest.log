@@ -1,0 +1,20 @@
+....................................................................     [100%]
+============================== warnings summary ===============================
+..\..\..\_download_software\py\Lib\site-packages\pydantic_core\core_schema.py:4460
+  D:\_download_software\py\Lib\site-packages\pydantic_core\core_schema.py:4460: DeprecationWarning: `FieldValidationInfo` is deprecated, use `ValidationInfo` instead.
+    warnings.warn(msg, DeprecationWarning, stacklevel=1)
+
+tests/test_kafka_scheduler.py::test_kafka_work_and_start_topics_are_separate_and_manually_acked
+tests/test_scheduler_persistence.py::test_session_cookie_hash_round_trip_preserves_cookie_attributes
+tests/test_scheduler_persistence.py::test_group_session_cookie_round_trip
+tests/test_scheduler_persistence.py::test_redis_scheduler_persists_before_enqueue_and_restores_after_dequeue
+  D:\_download_software\py\Lib\site-packages\curl_cffi\aio.py:186: CurlCffiWarning: 
+      Proactor event loop does not implement add_reader family of methods required.
+      Registering an additional selector thread for add_reader support.
+      To avoid this warning use:
+          asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+      
+    self.loop = get_selector(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+68 passed, 1 skipped, 5 warnings in 3.91s

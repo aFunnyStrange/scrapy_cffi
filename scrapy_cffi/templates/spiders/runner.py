@@ -1,5 +1,6 @@
 # runner.py
 import asyncio
+import os
 import sys
 from settings import create_settings
 from typing import Optional, Tuple, Type
@@ -86,14 +87,16 @@ async def advance_main_all(*args, **kwargs) -> Tuple[Crawler, asyncio.Task]:
 
 # ————————————————————————————————————————————————————————————————————————
 def setup_signal_handlers(loop: asyncio.AbstractEventLoop, shutdown_event: asyncio.Event):
-    if sys.platform == "win32":
-        print(">>> [info] Signal handlers not supported on Windows (fallback to KeyboardInterrupt)")
-        return
-
     import signal
-    def _handle_signal():
+
+    def _handle_signal(*_):
         print(">>> [signal] Received stop signal")
-        shutdown_event.set()
+        loop.call_soon_threadsafe(shutdown_event.set)
+
+    if sys.platform == "win32":
+        for sig in (signal.SIGINT, signal.SIGBREAK):
+            signal.signal(sig, _handle_signal)
+        return
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -113,10 +116,15 @@ if __name__ == "__main__":
         # crawler, engine_task = await advance_main()
         crawler, engine_task = await advance_main_all()
 
-        done, _ = await asyncio.wait(
-            [engine_task, asyncio.create_task(shutdown_event.wait())],
-            return_when=asyncio.FIRST_COMPLETED
-        )
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
+        if os.environ.get("SCRAPY_CFFI_VERIFY_HOLD_OPEN") == "1":
+            await shutdown_task
+            done = {shutdown_task}
+        else:
+            done, _ = await asyncio.wait(
+                [engine_task, shutdown_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
 
         if shutdown_event.is_set():
             print(">>> [main] Triggered shutdown, cleaning up...")
@@ -124,6 +132,9 @@ if __name__ == "__main__":
             print(">>> [main] Task finished normally.")
 
         await crawler.shutdown()
+        if shutdown_task is not engine_task and not shutdown_task.done():
+            shutdown_task.cancel()
+        await asyncio.gather(shutdown_task, engine_task, return_exceptions=True)
 
     try:
         loop.run_until_complete(demo_main())

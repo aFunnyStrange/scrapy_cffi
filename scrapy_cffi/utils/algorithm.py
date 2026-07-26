@@ -29,17 +29,21 @@ def do_otp(secret: str, counter: int=None, timestamp_10: int=None) -> str:
         ) from e
 
 def get_node(nodes: List[str], fingerprint: Union[str, bytes]) -> str:
-    try:
-        import jump
-        if isinstance(fingerprint, str):
-            fingerprint = fingerprint.encode("utf-8")
-        if not isinstance(fingerprint, bytes):
-            raise ValueError("fingerprint must Union[str, bytes]")
-        key_int = int(hashlib.md5(fingerprint).hexdigest(), 16)
-        idx = jump.hash(key_int, len(nodes))
-        return nodes[idx]
-    except ImportError as e:
-        raise ImportError(
-            "Missing jump dependencies. "
-            "Please install: pip install jump-consistent-hash"
-        ) from e
+    if not nodes:
+        raise ValueError("nodes cannot be empty")
+    if isinstance(fingerprint, str):
+        fingerprint = fingerprint.encode("utf-8")
+    if not isinstance(fingerprint, bytes):
+        raise ValueError("fingerprint must Union[str, bytes]")
+
+    # Pure-Python Jump Consistent Hash. Keeping this tiny implementation in the
+    # framework avoids making Redis Cluster routing depend on an optional C
+    # extension that may be unavailable on a developer or production machine.
+    key = int.from_bytes(hashlib.md5(fingerprint).digest()[:8], "big")
+    bucket = -1
+    candidate = 0
+    while candidate < len(nodes):
+        bucket = candidate
+        key = (key * 2862933555777941757 + 1) & 0xFFFFFFFFFFFFFFFF
+        candidate = int((bucket + 1) * (1 << 31) / ((key >> 33) + 1))
+    return nodes[bucket]

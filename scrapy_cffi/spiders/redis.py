@@ -31,15 +31,23 @@ class RedisSpider(BaseSpider):
         while not self.stop_event.is_set():
             get_req_task = asyncio.create_task(self.hooks.scheduler.get_start_req(spider=self))
             stop_task = asyncio.create_task(self.stop_event.wait())
-            done, pending = await asyncio.wait(
-                {get_req_task, stop_task},
-                return_when=asyncio.FIRST_COMPLETED
-            )
+            tasks = {get_req_task, stop_task}
+            try:
+                done, pending = await asyncio.wait(
+                    tasks,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+            except asyncio.CancelledError:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
             for task in pending:
                 task.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
             if stop_task in done:
+                await asyncio.gather(get_req_task, return_exceptions=True)
                 break
             if get_req_task in done:
                 data = get_req_task.result()

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scrapy_cffi.commands import geninfra
+from scrapy_cffi.commands import geninfra, infra
 
 
 SERVICE_NAMES = ("redis", "mysql", "postgres", "mongodb", "rabbitmq", "kafka")
@@ -77,3 +77,59 @@ def test_geninfra_all_generates_every_disposable_local_topology(tmp_path, monkey
     assert "[ValidateSet(" in init_script
     assert '"redis-sentinel"' in init_script
     assert "workspaceSlug" in init_script
+    kafka_cluster = (
+        target / "kafka-cluster" / "docker-compose.yml"
+    ).read_text(encoding="utf-8")
+    assert "kafka-consumer-groups.sh" in kafka_cluster
+
+
+def test_infra_cli_builds_whole_single_sentinel_and_cluster_plans(tmp_path):
+    infra_dir = tmp_path / "infra"
+
+    single = infra.build_stacks(
+        infra_dir,
+        "single",
+        ("redis", "rabbitmq", "kafka"),
+        "case",
+    )
+    assert len(single) == 1
+    assert single[0].services == ["redis", "rabbitmq", "kafka"]
+
+    sentinel = infra.build_stacks(
+        infra_dir,
+        "sentinel",
+        ("redis", "rabbitmq", "kafka"),
+        "case",
+    )
+    assert [stack.compose_file.parent.name for stack in sentinel] == [
+        "redis-sentinel",
+        "infra",
+    ]
+    assert sentinel[-1].services == ["rabbitmq", "kafka"]
+
+    cluster = infra.build_stacks(
+        infra_dir,
+        "cluster",
+        ("redis", "rabbitmq", "kafka"),
+        "case",
+    )
+    assert [stack.compose_file.parent.name for stack in cluster] == [
+        "redis-cluster",
+        "rabbitmq-cluster",
+        "kafka-cluster",
+    ]
+
+
+def test_infra_cli_plan_auto_generates_templates(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    infra.run(
+        "plan",
+        topology="cluster",
+        services=("redis", "rabbitmq", "kafka"),
+        project_name="case",
+    )
+
+    output = capsys.readouterr().out
+    assert "redis-cluster" in output
+    assert "rabbitmq-cluster" in output
+    assert "kafka-cluster" in output

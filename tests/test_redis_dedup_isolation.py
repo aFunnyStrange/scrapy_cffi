@@ -76,6 +76,7 @@ def test_redis_namespace_per_spider():
 
 def test_dedup_cleanup_keys_single_and_cluster():
     from scrapy_cffi.dupefilter.routing import DedupKeyRouter
+    from scrapy_cffi.models.databases import RedisMode
 
     single = DedupKeyRouter(
         base_new_seen="cffiFilter_new_seen",
@@ -91,13 +92,21 @@ def test_dedup_cleanup_keys_single_and_cluster():
     cluster = DedupKeyRouter(
         base_new_seen="cffiFilter_new_seen",
         base_sent_seen="cffiFilter_sent_seen",
-        redis_mode="cluster",
+        redis_mode=RedisMode.CLUSTER,
         cluster_nodes=["127.0.0.1:7000", "127.0.0.1:7001"],
         namespace="demo",
     )
     keys = cluster.cleanup_keys()
     assert len(keys) == 4
-    assert "cffiFilter_new_seen:demo:127.0.0.1:7000" in keys
+    routed = cluster.for_fingerprint("abc")
+    assert "{" in routed.new_seen
+    assert routed.new_seen[routed.new_seen.index("{"):] == routed.sent_seen[
+        routed.sent_seen.index("{"):
+    ]
+
+    from redis.crc import key_slot
+
+    assert key_slot(routed.new_seen.encode()) == key_slot(routed.sent_seen.encode())
 
 
 if __name__ == "__main__":

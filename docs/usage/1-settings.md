@@ -437,11 +437,21 @@ This configuration is used to define parameters for the `DUPEFILTER` when using 
 - **Distributed MQ rule**: RabbitMQ/Kafka always require Redis for distributed
   deduplication. With `SCHEDULER_PERSIST=False`, shutdown also deletes their
   owned start/work queues or topics, in addition to Redis state.
+- **RabbitMQ semantics**: Queue declarations stay durable and non-auto-delete
+  in both modes so external ingress publishers and crawlers can share a queue
+  safely. This flag controls RabbitMQ message delivery mode and whether the
+  framework deletes owned queues during shutdown; it does not change queue
+  declaration arguments.
+- **Failure isolation**: Broker cleanup and Redis cleanup are independent. A
+  RabbitMQ/Kafka cleanup failure is logged and retried without preventing
+  Redis dedup/session keys from being removed.
 - **Description**: Whether to persist scheduler state. If **False**, Redis data (ingress queue, work queue, dedup keys) is cleared when the crawler shuts down — including **Ctrl+C** via `runner.py` → `crawler.shutdown()`.
 
 **Notes**:
-In **cluster mode**, due to the nature of **jump hash operations** across nodes, clearing Redis data cannot be perfectly precise even if `SCHEDULER_PERSIST` is `False`.
-To mitigate this, you can use `DEDUP_TTL` to enable **TTL-based automatic expiration** in Redis.
+Cluster cleanup is deterministic: the router calculates the same tagged queue,
+session, and dedup keys used at runtime and deletes them from their owning
+cluster slots. `DEDUP_TTL` remains useful as a secondary operational safeguard
+for keys left by a hard kill, machine loss, or an older framework version.
 
 Since **0.3.2**, dedup key deletion uses `RedisDupeFilter.dedup_cleanup_keys()` (backed by `DedupKeyRouter.cleanup_keys()`). See [15-deduplication.md](./15-deduplication.md).
 
@@ -455,7 +465,9 @@ Since **0.3.2**, dedup key deletion uses `RedisDupeFilter.dedup_cleanup_keys()` 
 ### 2.5.5 DEDUP_TTL
 - **Type**: Optional[int]
 - **Default**: 0
-- **Description**: In cluster mode, `SCHEDULER_PERSIST` cannot guarantee precise cleanup of all keys. Setting `DEDUP_TTL` enables **automatic expiration** for Redis keys associated with deduplication. 
+- **Description**: Optional automatic expiry for deduplication keys. It is a
+  fallback for ungraceful process/machine loss, not a replacement for normal
+  shutdown cleanup.
 
 **Note**: 
 This TTL applies **only to deduplication keys**; it does **not** affect request object keys.

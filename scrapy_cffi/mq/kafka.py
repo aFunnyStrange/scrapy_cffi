@@ -208,9 +208,49 @@ class KafkaManager:
                     # Another worker may create the shared topic after our
                     # list_topics call and before create_topics.
                     pass
+            await self._wait_topic_ready(
+                admin,
+                topic,
+                num_partitions=num_partitions,
+                replication_factor=replication_factor,
+            )
             self._ensured_topics.add(topic)
         finally:
             await admin.close()
+
+    async def _wait_topic_ready(
+        self,
+        admin: AIOKafkaAdminClient,
+        topic: str,
+        num_partitions: int,
+        replication_factor: int,
+    ) -> None:
+        """Wait until a newly-created replicated topic is actually usable."""
+        deadline = self.loop.time() + max(5.0, self._client_kwargs["request_timeout_ms"] / 1000)
+        while self.loop.time() < deadline:
+            descriptions = await admin.describe_topics([topic])
+            description = next(
+                (item for item in descriptions if item.get("topic") == topic),
+                None,
+            )
+            partitions = description.get("partitions", []) if description else []
+            ready = (
+                description is not None
+                and description.get("error_code", 0) == 0
+                and len(partitions) >= num_partitions
+                and all(
+                    partition.get("leader", -1) >= 0
+                    and partition.get("leader") in partition.get("isr", [])
+                    and len(partition.get("replicas", [])) >= replication_factor
+                    for partition in partitions
+                )
+            )
+            if ready:
+                return
+            await asyncio.sleep(0.2)
+        raise KafkaConnectionError(
+            "Kafka topic %r was created but its partitions did not become ready" % topic
+        )
 
     @reconnectable
     async def produce(self, topic: str, message: bytes, key: bytes = None):

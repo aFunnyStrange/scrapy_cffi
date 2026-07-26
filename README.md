@@ -27,7 +27,7 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Configurable deployment**: settings system supporting `.env`, single-instance, **sentinel**, and **cluster** mode
 
-- **`scrapy-cffi geninfra`**: generate independent local Docker infrastructure for Redis / MySQL / PostgreSQL / MongoDB / RabbitMQ / Kafka
+- **`scrapy-cffi infra`**: generate and manage independent project-local Docker infrastructure for Redis / MySQL / PostgreSQL / MongoDB / RabbitMQ / Kafka
 
 - **Redis Stream ingress**: `RedisSpider` consumer groups (`XREADGROUP` / `XACK`), configurable via spider attrs or `settings.REDIS_STREAM_INFO`
 
@@ -123,14 +123,29 @@ selects a different evidence directory.
 Generate local infra templates (optional):
 
 ```bash
-scrapy-cffi geninfra
-./infra/init.sh  # or ./infra/init.ps1 on PowerShell
-scrapy-cffi geninfra --all
-./infra/init.sh --topology redis-cluster
-./infra/destroy.sh --topology redis-cluster  # remove containers and volumes after debugging
+scrapy-cffi infra generate
+scrapy-cffi infra plan --topology cluster --services redis rabbitmq kafka
+scrapy-cffi infra up --topology cluster --services redis rabbitmq kafka
+scrapy-cffi infra down --topology cluster --services redis rabbitmq kafka
 ```
 
 Generated infra is disposable, project-isolated local simulation only. In production, containerize only the crawler application; Redis/database/MQ services remain on real machines or native clusters and the crawler consumes their configured addresses directly.
+
+Framework maintainers can run the complete release check through one entry:
+
+```bash
+scrapy-cffi test single
+scrapy-cffi test sentinel
+scrapy-cffi test cluster
+scrapy-cffi test all
+scrapy-cffi test all --quick  # no Docker: tests/import/topology plans
+# Or use verify.bat / sh verify.sh with the same topology argument.
+```
+
+Every phase is summarized in `summary.md`/`summary.json`; crawler, server,
+broker, cleanup, and console logs remain under
+`artifacts/release-verification/<timestamp>/`.
+`scrapy-cffi verify` remains an all-topology compatibility alias.
 
 Example `settings.py` snippet (Redis Sentinel):
 

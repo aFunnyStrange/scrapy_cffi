@@ -327,10 +327,33 @@ class Crawler:
             if spider.name in cleaned:
                 continue
             scheduler = self.schedulers.get(spider.name)
-            cleanup = getattr(scheduler, "cleanup", None)
-            if cleanup:
-                await cleanup(spider)
-            cleaned.add(spider.name)
+            cleanup_operations = []
+            broker_cleanup = getattr(scheduler, "cleanup", None)
+            if broker_cleanup:
+                cleanup_operations.append(("broker", broker_cleanup(spider)))
+            redis_cleanup = getattr(scheduler, "cleanup_redis_state", None)
+            if redis_cleanup:
+                cleanup_operations.append(("redis", redis_cleanup(spider)))
+
+            if cleanup_operations:
+                results = await asyncio.gather(
+                    *(operation for _, operation in cleanup_operations),
+                    return_exceptions=True,
+                )
+                cleanup_succeeded = True
+                for (backend, _), result in zip(cleanup_operations, results):
+                    if isinstance(result, BaseException):
+                        cleanup_succeeded = False
+                        self.logger.error(
+                            "Failed to clean transient %s state for spider %s: %r",
+                            backend,
+                            spider.name,
+                            result,
+                        )
+                if cleanup_succeeded:
+                    cleaned.add(spider.name)
+            else:
+                cleaned.add(spider.name)
         self._cleaned_scheduler_state = cleaned
 
     async def shutdown(self):
@@ -347,31 +370,6 @@ class Crawler:
         # idempotent broker cleanup here so normal exit and Ctrl+C behave alike.
         await self._cleanup_scheduler_state()
 
-        if not self.settings.SCHEDULER_PERSIST and self.redisManager:
-            for spider in self.spiders:
-                if getattr(spider, "redis_key", None):
-                    await self.redisManager.delete(spider.redis_key)
-                sch = self.schedulers.get(spider.name)
-                if sch is None:
-                    continue
-                if getattr(sch, "is_distributed", False):
-                    await self.redisManager.delete(sch.get_queue_key(spider))
-                    get_session_state_key = getattr(sch, "get_session_state_key", None)
-                    if get_session_state_key:
-                        await self.redisManager.delete(get_session_state_key(spider))
-                df = getattr(sch, "dupefilter", None)
-                if df is not None:
-                    keys_to_delete: list[str] = []
-                    if hasattr(df, "dedup_cleanup_keys"):
-                        keys_to_delete = df.dedup_cleanup_keys()
-                    else:
-                        for attr in ("new_seen", "sent_seen"):
-                            val = getattr(df, attr, None)
-                            if isinstance(val, str):
-                                keys_to_delete.append(val)
-                    for key in keys_to_delete:
-                        await self.redisManager.delete(key)
-        
         if self.rabbitmqManager:
             await self.rabbitmqManager.close()
 

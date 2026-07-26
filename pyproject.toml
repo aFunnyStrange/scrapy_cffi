@@ -48,3 +48,10 @@ include-package-data = true
 
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.py[cod]"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    "tests/debug",
+    "tests/project",
+    "tests/unstable_workflows",
+]

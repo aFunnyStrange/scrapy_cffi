@@ -10,11 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Shared single-flight reconnect controller for database/MQ adapters. Concurrent
   failures now collapse into one transport rebuild and respect crawler shutdown.
-- `scripts/verify_demo.py`, a one-command serial verifier for Memory, Redis,
-  RabbitMQ, and Kafka demos. It starts the generated HTTP/WebSocket servers,
-  performs real start and incremental requests, retains per-mode framework,
-  console, server, broker, and PASS/FAIL logs, and removes disposable
-  containers/volumes before continuing.
+- Cargo-style `scrapy-cffi test single|sentinel|cluster|all`, plus
+  `verify.bat` and `verify.sh`, provide one release-check entry for pytest and
+  Memory/Redis/RabbitMQ/Kafka crawl/interrupt cases. The verifier continues after individual
+  failures, writes Markdown/JSON summaries and per-phase logs, and always
+  attempts cleanup. `--quick` provides a Docker-free daily check;
+  `scrapy-cffi verify` and the old `scripts/verify_demo.py` path remain
+  all-topology compatibility aliases.
+- Generated demos now include `docker-demo.bat` and `docker-demo.sh`. Their
+  shared manager supports plan/up/status/reset/down and retained-log
+  verification for single-node, Redis Sentinel, and full Redis/MQ cluster
+  topologies.
+- Generated Demo managers also provide `verify-interrupt` and
+  `verify-interrupt-all`, which send a real process-level console interrupt and
+  retain cleanup evidence for every supported topology.
+- `scrapy-cffi infra` unifies local template generation, Compose planning,
+  configuration, startup, status, reset, shutdown, destruction, and cleanup by
+  topology and service. The older `geninfra` command remains compatible.
 - `KafkaSpider` / `KafkaScheduler` with separate start and work topics, compressed request payloads, Redis-backed dedup/session state, and manual contiguous offset commits.
 - Persistent Session Cookie Hash state and adaptive request-state compression.
 - Independent `geninfra` development stack for Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka, with PowerShell/shell `init`, `reset`, and `destroy` scripts.
@@ -33,8 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Demo broker modes exercise this cleanup by default.
 - RabbitMQ exchange durability is now stable across persistent and transient
   schedulers, allowing both modes to share an exchange without AMQP
-  `PRECONDITION_FAILED`; queue/message durability still follows
-  `SCHEDULER_PERSIST`.
+  `PRECONDITION_FAILED`; message delivery mode and shutdown cleanup still
+  follow `SCHEDULER_PERSIST`.
+- RabbitMQ queue declarations are now stable (`durable=True`,
+  `auto_delete=False`) across ingress publishers and crawler persistence modes.
+  `SCHEDULER_PERSIST` controls message delivery mode and shutdown cleanup, so
+  switching the flag no longer closes the channel with queue
+  `PRECONDITION_FAILED`.
 - Local RabbitMQ healthchecks now wait for AMQP port connectivity instead of
   reporting healthy while the broker is still starting its listeners.
 - Crawler shutdown preparation is now locked and idempotent. Concurrent normal
@@ -53,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Ctrl+C now cancels active work before broker shutdown, requeues unfinished Redis/RabbitMQ requests, leaves Kafka offsets uncommitted, and snapshots Session cookies before Redis writes are disabled.
+- Non-persistent Redis cleanup now runs before the global stop flag and
+  independently from RabbitMQ/Kafka cleanup. A broker cleanup failure can no
+  longer skip dedup/session key deletion, and failed cleanup is retried once by
+  the idempotent shutdown path.
+- RabbitMQ dequeue uses cancellation-safe, shielded short polling. Ctrl+C no
+  longer cancels aio-pika's in-flight `Basic.Get` RPC, corrupts the channel, or
+  loses a delivery that raced with shutdown.
 - `KafkaInfo(HOST=..., PORT=...)` now produces a native `host:port` bootstrap endpoint instead of inheriting the AMQP URL scheme.
 - Package metadata now declares the actual Python 3.9 minimum, uses the `python-dotenv` distribution name, and avoids Python 3.10-only union annotations.
 - Response/exception interceptor chains now continue correctly on `None` and preserve exceptions after every interceptor declines to handle them.
@@ -65,6 +89,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scheduler state decoding uses bounded streaming decompression and rejects logical payloads above 16 MiB, preventing oversized broker messages or compression bombs from exhausting crawler memory.
 - `demo -r` works with current redis-py: plain `redis://` connections no longer receive an invalid `ssl=False` keyword, and RESP2 is selected by default for compatibility across Redis server versions.
 - `genspider` and every demo variant bind `runner.DEFAULT_SPIDER` to an existing generated class instead of the removed hard-coded `spiders.CustomSpider` string.
+- Redis Cluster routing now normalizes enum modes, uses one hash tag for
+  multi-key Lua operations, avoids blocking start-request starvation, and
+  announces Docker node hostnames that the generated client remaps locally.
+- RabbitMQ cluster consumption now uses independent queue consumer channels,
+  preventing long-polling start/work queues from starving publishing on the
+  shared management channel.
+- Kafka topic creation now waits for every partition leader to enter ISR before
+  admitting producers/consumers, without blocking an existing under-replicated
+  topic that still has a valid leader; cluster healthchecks also include the
+  consumer group coordinator. Kafka/Redis ingress child tasks are now always
+  cancelled and awaited during shutdown.
+- Generated Windows runners register SIGINT/SIGBREAK and route Ctrl+C or
+  Ctrl+Break through the same idempotent `crawler.shutdown()` path used on
+  POSIX.
 
 ---
 ## [0.3.2] - 2026-05-29

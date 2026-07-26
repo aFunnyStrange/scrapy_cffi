@@ -1,0 +1,6 @@
+status=PASS
+mode=redis
+topology=sentinel
+interrupt=True
+http_port=18002
+websocket_port=18765

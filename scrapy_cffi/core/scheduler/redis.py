@@ -120,6 +120,29 @@ class RedisScheduler(BaseScheduler):
                 requeued += 1
         return requeued
 
+    async def cleanup_redis_state(self, spider: "Spider") -> int:
+        """Delete this scheduler's transient Redis state before shutdown."""
+        keys = set()
+        redis_ingress_key = getattr(spider, "redis_key", None)
+        if redis_ingress_key:
+            keys.add(redis_ingress_key)
+        keys.add(self.get_queue_key(spider))
+        keys.add(self.get_session_state_key(spider))
+
+        cleanup_keys = getattr(self.dupefilter, "dedup_cleanup_keys", None)
+        if cleanup_keys:
+            keys.update(cleanup_keys())
+        else:
+            for attr in ("new_seen", "sent_seen"):
+                value = getattr(self.dupefilter, attr, None)
+                if isinstance(value, str):
+                    keys.add(value)
+
+        deleted = 0
+        for key in sorted(keys):
+            deleted += int(await self.redisManager.delete(key))
+        return deleted
+
     async def _restore_request_session(self, request: "Request", spider: "Spider") -> None:
         if getattr(self.settings, "SCHEDULER_PERSIST", False) is True:
             await self.sessions.restore_session(

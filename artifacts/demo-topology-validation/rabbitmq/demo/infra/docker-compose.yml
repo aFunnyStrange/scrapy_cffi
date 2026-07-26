@@ -1,0 +1,132 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-rootpassword}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-app_db}"
+      MYSQL_USER: "${MYSQL_USER:-app_user}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-app_pass}"
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-app_db}"
+      POSTGRES_USER: "${POSTGRES_USER:-app_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-app_pass}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME:-root}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:-rootpassword}"
+      MONGO_INITDB_DATABASE: "${MONGO_DATABASE:-app_db}"
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --username "$${MONGO_INITDB_ROOT_USERNAME}"
+          --password "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin
+          --eval "quit(db.adminCommand('ping').ok ? 0 : 2)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:-guest}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:-guest}"
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:4.3.1
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: CONTROLLER://:29093,INTERNAL://:19092,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:19092,EXTERNAL://${KAFKA_ADVERTISED_HOST:-127.0.0.1}:${KAFKA_PORT:-9092}"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID:-4L6g3nShT-eMCtK--X86sw}"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "127.0.0.1:9092", "--list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  mysql_data:
+  postgres_data:
+  mongodb_data:
+  rabbitmq_data:
+  kafka_data:

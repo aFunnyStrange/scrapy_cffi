@@ -13,7 +13,7 @@ user_table = Table(
     Column("name", String(50)),
 )
 
-async def test():
+async def main():
     # Initialize the MySQL manager
     await mysql.init()
 
@@ -54,4 +54,4 @@ if __name__ == "__main__":
         user="root",
         password="123456"
     )
-    asyncio.run(test())
+    asyncio.run(main())

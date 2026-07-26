@@ -72,7 +72,7 @@ async def run_crud(redis_manager: RedisManager, prefix: str) -> None:
     print("crud ok")
 
 
-async def test_single() -> None:
+async def run_single() -> None:
     manager = RedisManager(
         stop_event=asyncio.Event(),
         redis_url=redis_single_url(),
@@ -87,7 +87,7 @@ async def test_single() -> None:
             await manager.close()
 
 
-async def test_sentinel() -> None:
+async def run_sentinel() -> None:
     host, port = redis_sentinel_master_override()
     manager = RedisManager(
         stop_event=asyncio.Event(),
@@ -105,7 +105,7 @@ async def test_sentinel() -> None:
             await manager.close()
 
 
-async def test_cluster() -> None:
+async def run_cluster() -> None:
     manager = RedisManager(
         stop_event=asyncio.Event(),
         redis_url=redis_cluster_nodes(),
@@ -132,15 +132,15 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     async def run() -> None:
         if args.mode == "single":
-            await test_single()
+            await run_single()
         elif args.mode == "sentinel":
-            await test_sentinel()
+            await run_sentinel()
         elif args.mode == "cluster":
-            await test_cluster()
+            await run_cluster()
         else:
-            await test_single()
-            await test_sentinel()
-            await test_cluster()
+            await run_single()
+            await run_sentinel()
+            await run_cluster()
 
     asyncio.run(run())
 

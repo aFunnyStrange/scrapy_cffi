@@ -1,0 +1,3 @@
+[default]
+project_name = "demo"
+use_redis = true

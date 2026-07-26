@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-07-26T16:01:50",
+  "work_root": null,
+  "results": [
+    {
+      "scope": "framework",
+      "phase": "pytest",
+      "passed": true,
+      "seconds": 4.0,
+      "log": "pytest.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.7339999999385327,
+      "log": "redis/generated-project.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "plan-cluster",
+      "passed": true,
+      "seconds": 0.2970000000204891,
+      "log": "redis/plan-cluster.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.6720000000204891,
+      "log": "kafka/generated-project.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "plan-cluster",
+      "passed": true,
+      "seconds": 0.31200000003445894,
+      "log": "kafka/plan-cluster.log"
+    }
+  ]
+}

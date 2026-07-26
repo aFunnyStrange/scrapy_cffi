@@ -161,6 +161,53 @@ def test_kafka_work_and_start_topics_are_separate_and_manually_acked():
     asyncio.run(run())
 
 
+def test_kafka_topic_waits_for_partition_leaders_and_full_isr():
+    from scrapy_cffi.mq.kafka import KafkaManager
+
+    async def run():
+        manager = object.__new__(KafkaManager)
+        manager.loop = asyncio.get_running_loop()
+        manager._client_kwargs = {"request_timeout_ms": 1000}
+        admin = SimpleNamespace(
+            describe_topics=AsyncMock(
+                side_effect=[
+                    [
+                        {
+                            "topic": "requests",
+                            "error_code": 0,
+                            "partitions": [
+                                {"leader": -1, "isr": []},
+                            ],
+                        }
+                    ],
+                    [
+                        {
+                            "topic": "requests",
+                            "error_code": 0,
+                            "partitions": [
+                                {
+                                    "leader": 1,
+                                    "replicas": [1, 2, 3],
+                                    "isr": [1],
+                                },
+                            ],
+                        }
+                    ],
+                ]
+            )
+        )
+
+        await manager._wait_topic_ready(
+            admin,
+            "requests",
+            num_partitions=1,
+            replication_factor=3,
+        )
+        assert admin.describe_topics.await_count == 2
+
+    asyncio.run(run())
+
+
 def test_redis_scheduler_requeues_unfinished_request_for_ctrl_c():
     from scrapy_cffi.core.downloader.internet import HttpRequest
     from scrapy_cffi.core.scheduler.redis import RedisScheduler
@@ -462,6 +509,139 @@ def test_crawler_nonpersistent_cleanup_runs_once_before_broker_close():
 
         await crawler.shutdown()
         assert events == ["cleanup", "rabbit_close"]
+
+    asyncio.run(run())
+
+
+def test_crawler_redis_cleanup_survives_broker_cleanup_failure():
+    from scrapy_cffi.crawler import Crawler
+    from scrapy_cffi.settings import SettingsInfo
+
+    async def run():
+        events = []
+
+        class Scheduler:
+            async def cleanup(self, spider):
+                events.append("broker_cleanup")
+                if events.count("broker_cleanup") == 1:
+                    raise RuntimeError("broker unavailable")
+
+            async def cleanup_redis_state(self, spider):
+                events.append("redis_cleanup")
+                return 2
+
+        crawler = Crawler()
+        crawler.settings = SettingsInfo(SCHEDULER_PERSIST=False)
+        crawler.spiders = [SimpleNamespace(name="demo")]
+        crawler.schedulers = {"demo": Scheduler()}
+        crawler.logger = SimpleNamespace(
+            error=lambda *args, **kwargs: events.append("cleanup_error")
+        )
+
+        await crawler._cleanup_scheduler_state()
+        assert events == [
+            "broker_cleanup",
+            "redis_cleanup",
+            "cleanup_error",
+        ]
+
+        # A failed backend is retried, while Redis cleanup remains harmless.
+        await crawler._cleanup_scheduler_state()
+        assert events == [
+            "broker_cleanup",
+            "redis_cleanup",
+            "cleanup_error",
+            "broker_cleanup",
+            "redis_cleanup",
+        ]
+        await crawler._cleanup_scheduler_state()
+        assert events == [
+            "broker_cleanup",
+            "redis_cleanup",
+            "cleanup_error",
+            "broker_cleanup",
+            "redis_cleanup",
+        ]
+
+    asyncio.run(run())
+
+
+def test_rabbit_queue_declaration_is_stable_across_persist_modes():
+    from scrapy_cffi.mq.rabbitmq import RabbitMQManager
+
+    async def run():
+        declarations = []
+
+        class Queue:
+            async def bind(self, exchange, routing_key):
+                return None
+
+        class Channel:
+            async def declare_queue(self, name, **kwargs):
+                declarations.append((name, kwargs))
+                return Queue()
+
+        for persist in (False, True):
+            manager = RabbitMQManager(
+                stop_event=asyncio.Event(),
+                rabbitmq_url="amqp://guest:guest@127.0.0.1:5672/",
+                persist=persist,
+            )
+            manager._channel = Channel()
+            manager._exchange = object()
+            await manager.declare_queue("shared")
+
+        assert declarations == [
+            ("shared", {"durable": True, "auto_delete": False}),
+            ("shared", {"durable": True, "auto_delete": False}),
+        ]
+
+    asyncio.run(run())
+
+
+def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
+    from scrapy_cffi.mq.rabbitmq import RabbitMQManager
+
+    async def run():
+        get_started = asyncio.Event()
+        finish_get = asyncio.Event()
+        rejected = []
+
+        class Message:
+            async def reject(self, requeue):
+                rejected.append(requeue)
+
+        class Queue:
+            async def get(self, timeout, fail):
+                assert timeout == 1.0
+                assert fail is False
+                get_started.set()
+                await finish_get.wait()
+                return Message()
+
+        manager = RabbitMQManager(
+            stop_event=asyncio.Event(),
+            rabbitmq_url="amqp://guest:guest@127.0.0.1:5672/",
+            persist=False,
+        )
+        manager._exchange = object()
+        manager._consumer_queues["shared"] = Queue()
+
+        task = asyncio.create_task(
+            manager.dequeue_request("shared", timeout=30)
+        )
+        await get_started.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        finish_get.set()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("dequeue must propagate cancellation")
+        assert rejected == [True]
 
     asyncio.run(run())
 

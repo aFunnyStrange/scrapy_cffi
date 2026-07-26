@@ -1,0 +1,160 @@
+uvloop not available on Windows
+2026-07-26 16:02:02 [scrapy_cffi.crawler] DEBUG: {
+    "taskManager": "scrapy_cffi.core.tasks.TaskManager",
+    "sessions": "scrapy_cffi.core.sessions.SessionManager",
+    "schedulers": {
+        "customSpider": "scrapy_cffi.core.scheduler.base.Scheduler"
+    },
+    "downloader": "scrapy_cffi.core.downloader.fetch.Downloader",
+    "spiderInterceptor_chain": [
+        "scrapy_cffi.interceptors.spiders.RobotSpiderInterceptor",
+        "scrapy_cffi.interceptors.spiders.UpdateRequestSpiderInterceptor"
+    ],
+    "downloadInterceptor_chain": [
+        "interceptors.interceptors.CustomDownloadInterceptor2",
+        "interceptors.interceptors.CustomDownloadInterceptor1"
+    ],
+    "pipelines_chain": [
+        "scrapy_cffi.pipelines.base.Pipeline",
+        "pipelines.pipeline.CustomPipeline2",
+        "pipelines.pipeline.CustomPipeline1"
+    ],
+    "extensions": [
+        "extensions.extension.CustomExtension"
+    ],
+    "core": [
+        {
+            "spider": "spiders.customSpider.CustomSpider",
+            "engine": "scrapy_cffi.core.engine.Engine"
+        }
+    ]
+}
+2026-07-26 16:02:02 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595584 -> 11£ºrun_spider_start[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595584 -> 11£ºrun_spider_start[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595776 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595968 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458596160 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458596352 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458596544 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458596736 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458596928 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458597312 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458597696 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458597888 -> 11£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458598656 -> 11£ºget_spider_output[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458598656 -> 11£ºget_spider_output[1898458279872]
+CustomExtension -> engine started: 1785052922.9965086
+CustomExtension -> spider opened: customSpider, start_time: 1785052922.9965086
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898456891200 -> 11£ºmanager_spiderinterceptors_result[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898456891200 -> 11£ºmanager_spiderinterceptors_result[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595584 -> 11£ºenqueue_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595584 -> 10£ºenqueue_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898456891200 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898456891200 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595584 -> 11£ºprocess_downloader[1898458279872]
+CustomExtension -> request scheduled: http://127.0.0.1:18002, signal_time£º1785052923.0023615
+CustomExtension -> request reached downloader: http://127.0.0.1:18002, signal_time£º1785052923.0053184
+2026-07-26 16:02:03 [scrapy_cffi.core.downloader.fetch] DEBUG: request for http://127.0.0.1:18002 result -> status_code: 200
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595584 -> 11£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595392 -> 11£ºget_spider_output[1898458279872]
+ {"method":"GET","params":{}}
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595392 -> 10£ºget_spider_output[1898458279872]
+CustomExtension -> response received: <scrapy_cffi.core.downloader.internet.response.HttpResponse object at 0x000001BA04DF3680>, request: http://127.0.0.1:18002, signal_time£º1785052923.0107799
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458599808 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458599808 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595392 -> 11£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595392 -> 11£ºprocess_downloader[1898458279872]
+CustomExtension -> request scheduled: ws://127.0.0.1:18765, signal_time£º1785052923.0136461
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458595584 -> 11£ºprocess_websocket_request[1898458279872]
+CustomExtension -> request reached downloader: ws://127.0.0.1:18765, signal_time£º1785052923.0146484
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458602688 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458602688 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+CustomExtension -> response received: <scrapy_cffi.core.downloader.internet.response.WebSocketResponse object at 0x000001BA04F23EC0>, request: ws://127.0.0.1:18765, signal_time£º1785052923.0357442
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458602112 -> 12£ºget_spider_output[1898458279872]
+spider customSpider callback received£º0
+{'session_id': '7666743926481711661', 'data': 'welcome to /'}
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458602112 -> 11£ºget_spider_output[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603072 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603072 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458602112 -> 12£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458602112 -> 12£ºprocess_downloader[1898458279872]
+CustomExtension -> request scheduled: ws://127.0.0.1:18765, signal_time£º1785052923.1533077
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603264 -> 12£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603264 -> 11£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458602880 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458602880 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+CustomExtension -> response received: <scrapy_cffi.core.downloader.internet.response.WebSocketResponse object at 0x000001BA04586360>, request: ws://127.0.0.1:18765, signal_time£º1785052923.1543148
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601152 -> 12£ºget_spider_output[1898458279872]
+spider customSpider callback received£º1
+{'session_id': '7666743926481711661', 'data': '[/] send: connect send test'}
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601152 -> 11£ºget_spider_output[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603456 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603456 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601152 -> 12£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601152 -> 12£ºprocess_downloader[1898458279872]
+CustomExtension -> request scheduled: ws://127.0.0.1:18765, signal_time£º1785052923.2213728
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603840 -> 12£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603840 -> 11£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601152 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601152 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+CustomExtension -> response received: <scrapy_cffi.core.downloader.internet.response.WebSocketResponse object at 0x000001BA03650380>, request: ws://127.0.0.1:18765, signal_time£º1785052923.2213728
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601920 -> 12£ºget_spider_output[1898458279872]
+spider customSpider callback received£º2
+{'session_id': '7666743926481711661', 'data': '[/] send: hello£º0 -> 0.7384903173860712'}
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601920 -> 11£ºget_spider_output[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603648 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603648 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601920 -> 12£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601920 -> 12£ºprocess_downloader[1898458279872]
+CustomExtension -> request scheduled: ws://127.0.0.1:18765, signal_time£º1785052923.3026724
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458604032 -> 12£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458604032 -> 11£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601920 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601920 -> 12£ºprocess_downloadInterceptor_chain[1898458279872]
+CustomExtension -> response received: <scrapy_cffi.core.downloader.internet.response.WebSocketResponse object at 0x000001BA04F224E0>, request: ws://127.0.0.1:18765, signal_time£º1785052923.30424
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458603264 -> 12£ºget_spider_output[1898458279872]
+spider customSpider callback received£º3
+[CustomPipeline2] Processing item: {'session_id': '7666743926481711661', 'data': '[/] send: hello£º1 -> 1.4690681513347887'}
+[CustomPipeline1] Processing item: {'session_id': '7666743926481711661', 'data': '[/] send: hello£º1 -> 1.4690681513347887', 'cumtom2': 'CustomPipeline2'}
+[CustomPipeline2] Processing item: {'session_id': '7666743926481711661', 'data': 'spider end'}
+[CustomPipeline1] Processing item: {'session_id': '7666743926481711661', 'data': 'spider end', 'cumtom2': 'CustomPipeline2'}
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458603264 -> 11£ºget_spider_output[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595584 -> 11£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458605376 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458605376 -> 11£ºprocess_downloadInterceptor_chain[1898458279872]
+CustomExtension -> item scraped: {'session_id': '7666743926481711661', 'data': '[/] send: hello£º1 -> 1.4690681513347887', 'cumtom2': 'CustomPipeline2', 'cumtom1': 'CustomPipeline1'}, spider_name: customSpider, signal_time£º1785052923.3740907
+CustomExtension -> item scraped: {'session_id': '7666743926481711661', 'data': 'spider end', 'cumtom2': 'CustomPipeline2', 'cumtom1': 'CustomPipeline1'}, spider_name: customSpider, signal_time£º1785052923.3740907
+CustomExtension -> request scheduled: ws://127.0.0.1:18765, signal_time£º1785052923.3740907
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458601920 -> 11£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458601920 -> 11£ºprocess_downloader[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: add task 1898458602304 -> 11£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.tasks] DEBUG: end task 1898458602304 -> 10£ºprocess_websocket_request[1898458279872]
+2026-07-26 16:02:03 [scrapy_cffi.core.sessions] DEBUG: [WebSocketEntry] Listener task cancelled for ws://127.0.0.1:18765
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458597312 -> 9£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595776 -> 8£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458597888 -> 7£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458597696 -> 6£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458596928 -> 5£º_local_scheduler_loop[1898458279872]
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458595968 -> 4£º_local_scheduler_loop[1898458279872]
+CustomExtension -> scheduler empty: 1785052924.012582
+CustomExtension -> scheduler empty: 1785052924.0131223
+CustomExtension -> scheduler empty: 1785052924.0131223
+CustomExtension -> scheduler empty: 1785052924.0131223
+CustomExtension -> scheduler empty: 1785052924.0131223
+CustomExtension -> scheduler empty: 1785052924.0131223
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458596160 -> 3£º_local_scheduler_loop[1898458279872]
+CustomExtension -> scheduler empty: 1785052924.1647565
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458596352 -> 2£º_local_scheduler_loop[1898458279872]
+CustomExtension -> scheduler empty: 1785052924.218674
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458596544 -> 1£º_local_scheduler_loop[1898458279872]
+CustomExtension -> scheduler empty: 1785052924.2974372
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: end task 1898458596736 -> 0£º_local_scheduler_loop[1898458279872]
+CustomExtension -> scheduler empty: 1785052924.3802505
+[CustomPipeline2] customSpider closed.
+[CustomPipeline1] customSpider closed.
+CustomExtension -> spider closed: customSpider, end_time: 1785052924.3802505
+CustomExtension -> engine stopped: 1785052924.3802505
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] INFO: Cancel all tasks ...
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] DEBUG: Cancel tasks list: []
+2026-07-26 16:02:04 [scrapy_cffi.core.tasks] INFO: Cancelled 0 coroutine tasks
+2026-07-26 16:02:04 [scrapy_cffi.core.sessions] DEBUG: [SessionManager] Closing session: 7666743926481711661

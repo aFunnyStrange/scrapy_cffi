@@ -1,7 +1,7 @@
 import asyncio
 from scrapy_cffi.databases.mongodb import MongoDBManager
 
-async def test():
+async def main():
     # Initialize MongoDBManager
     mongo = MongoDBManager(asyncio.Event(), "mongodb://localhost:27017", "test_db")
     await mongo.init()
@@ -31,4 +31,4 @@ async def test():
     await mongo.close()
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    asyncio.run(main())

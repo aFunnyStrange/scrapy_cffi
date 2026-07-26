@@ -58,7 +58,7 @@ async def run_queue_crud(manager: RabbitMQManager, queue_name: str) -> None:
     print("crud ok")
 
 
-async def test_single() -> None:
+async def run_single() -> None:
     manager = RabbitMQManager(
         stop_event=asyncio.Event(),
         rabbitmq_url=amqp_single_url(),
@@ -68,7 +68,7 @@ async def test_single() -> None:
     await run_queue_crud(manager, "broker.rabbit.single")
 
 
-async def test_cluster() -> None:
+async def run_cluster() -> None:
     manager = RabbitMQManager(
         stop_event=asyncio.Event(),
         rabbitmq_url=amqp_cluster_urls(),
@@ -85,12 +85,12 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     async def run() -> None:
         if args.mode == "single":
-            await test_single()
+            await run_single()
         elif args.mode == "cluster":
-            await test_cluster()
+            await run_cluster()
         else:
-            await test_single()
-            await test_cluster()
+            await run_single()
+            await run_cluster()
 
     asyncio.run(run())
 

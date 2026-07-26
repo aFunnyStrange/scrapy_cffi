@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List
 from ._template_build import copytree_merge_text_safe, read_text_template, write_utf8_file
 from .genspider import update_runner_default_spider
+from . import geninfra
 
 
 def copytree_merge(src: Path, dst: Path) -> None:
@@ -18,6 +19,28 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
 
     project_path = find_project_root(is_demo=True)
     check_config(project_path, use_redis=use_redis, use_rabbitmq=use_rabbitmq, use_kafka=use_kafka)
+    demo_mode = (
+        "kafka"
+        if use_kafka
+        else "rabbitmq"
+        if use_rabbitmq
+        else "redis"
+        if use_redis
+        else "memory"
+    )
+
+    geninfra.run(output_dir=str(target / "infra"), generate_all=True)
+    management_dir = template_dir / "demo_management"
+    copytree_merge(management_dir, target)
+    topology_module = target / "demo_topology.py"
+    topology_code = read_text_template(topology_module).replace(
+        "__SCRAPY_CFFI_DEMO_MODE__",
+        demo_mode,
+    )
+    write_utf8_file(topology_module, topology_code)
+    shell_manager = target / "docker-demo.sh"
+    if shell_manager.exists():
+        shell_manager.chmod(0o755)
 
     spider_dir = target / "spiders"
     demo_spiders_dir = template_dir / "demo_spider"

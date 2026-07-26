@@ -1,0 +1,112 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-07-26T15:55:17",
+  "work_root": null,
+  "results": [
+    {
+      "scope": "framework",
+      "phase": "pytest",
+      "passed": true,
+      "seconds": 4.547000000020489,
+      "log": "pytest.log"
+    },
+    {
+      "scope": "memory",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.7660000000614673,
+      "log": "memory/generated-project.log"
+    },
+    {
+      "scope": "memory",
+      "phase": "plan",
+      "passed": true,
+      "seconds": 0.3279999999795109,
+      "log": "memory/plan.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.6720000000204891,
+      "log": "redis/generated-project.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "plan",
+      "passed": true,
+      "seconds": 0.3279999999795109,
+      "log": "redis/plan.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "plan-sentinel",
+      "passed": true,
+      "seconds": 0.2970000000204891,
+      "log": "redis/plan-sentinel.log"
+    },
+    {
+      "scope": "redis",
+      "phase": "plan-cluster",
+      "passed": true,
+      "seconds": 0.2970000000204891,
+      "log": "redis/plan-cluster.log"
+    },
+    {
+      "scope": "rabbitmq",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.6719999999040738,
+      "log": "rabbitmq/generated-project.log"
+    },
+    {
+      "scope": "rabbitmq",
+      "phase": "plan",
+      "passed": true,
+      "seconds": 0.31200000003445894,
+      "log": "rabbitmq/plan.log"
+    },
+    {
+      "scope": "rabbitmq",
+      "phase": "plan-sentinel",
+      "passed": true,
+      "seconds": 0.2970000000204891,
+      "log": "rabbitmq/plan-sentinel.log"
+    },
+    {
+      "scope": "rabbitmq",
+      "phase": "plan-cluster",
+      "passed": true,
+      "seconds": 0.3279999999795109,
+      "log": "rabbitmq/plan-cluster.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "generate/import",
+      "passed": true,
+      "seconds": 0.7349999999860302,
+      "log": "kafka/generated-project.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "plan",
+      "passed": true,
+      "seconds": 0.31200000003445894,
+      "log": "kafka/plan.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "plan-sentinel",
+      "passed": true,
+      "seconds": 0.31299999996554106,
+      "log": "kafka/plan-sentinel.log"
+    },
+    {
+      "scope": "kafka",
+      "phase": "plan-cluster",
+      "passed": true,
+      "seconds": 0.2970000000204891,
+      "log": "kafka/plan-cluster.log"
+    }
+  ]
+}

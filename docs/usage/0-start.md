@@ -79,46 +79,60 @@ scrapy-cffi demo -r
 scrapy-cffi demo -m
 ```
 
-Framework development can validate Memory, Redis, RabbitMQ, and Kafka demos
-serially (with isolated local infra and automatic data reset) in one command:
+Framework development has one verification entry point:
 
 ```bash
-python scripts/verify_demo.py
+# Rust/Cargo-style test entry
+scrapy-cffi test single
+scrapy-cffi test sentinel
+scrapy-cffi test cluster
+scrapy-cffi test all
+
+# Windows/Linux one-click wrappers
+verify.bat single
+sh verify.sh cluster
+
+# Fast daily check without starting Docker
+scrapy-cffi test all --quick
 ```
 
-The script starts the generated HTTP/WebSocket servers and performs a real
-start-request plus incremental WebSocket crawl for every mode. It retains
-`demo.log`, crawler console, server, broker, and PASS/FAIL evidence under
-`artifacts/demo-verification/<timestamp>/`. Use `--log-dir <path>` to choose the
-evidence directory, or `--skip-infra` for generated-project and unit-level
-scheduler checks only.
+The full verifier generates all four Demo projects, starts the selected
+project-local Docker topologies serially, performs real HTTP/WebSocket crawls,
+checks non-persistent cleanup, sends real process interrupts, runs pytest, and
+always attempts topology cleanup. It writes `summary.md`, `summary.json`, and
+per-phase logs under `artifacts/release-verification/<timestamp>/`.
 
-# 5.geninfra
+Use repeated `--mode` options to narrow the matrix, `--no-interrupt` to omit
+the interrupt phase, `--log-dir` to select the evidence directory, and
+`--keep-workdir` to retain generated projects. Full verification requires its
+documented local Docker ports to be available; `--quick` does not use Docker.
+Memory is included only in `single`/`all`, because it has no infrastructure
+topology. `scrapy-cffi verify` and the old
+`python scripts/verify_demo.py` command remain all-topology aliases.
+
+# 5.infra
 Generate an independent local-development Docker Compose stack into `infra/` (or `--output-dir`). It includes Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka; it is deliberately separate from the crawler application image.
 
 ```bash
-# Baseline single-node development stack
-scrapy-cffi geninfra
+# Generate the single/Sentinel/cluster templates
+scrapy-cffi infra generate
 
-# Initialize all services (PowerShell; use ./infra/init.sh on Linux/macOS)
-./infra/init.ps1
+# Inspect the exact Compose projects before changing Docker state
+scrapy-cffi infra plan --topology cluster --services redis rabbitmq kafka
 
-# Delete this stack's volumes and recreate all services
-./infra/reset.ps1
+# Start, inspect, reset, and remove project-local development services
+scrapy-cffi infra up --topology single
+scrapy-cffi infra status --topology sentinel --services redis
+scrapy-cffi infra reset --topology cluster --services redis rabbitmq kafka
+scrapy-cffi infra down --topology cluster --services redis rabbitmq kafka
 
-# Generate every local topology simulation
-scrapy-cffi geninfra --all
-
-# Start/reset one simulated topology
-./infra/init.ps1 -Topology redis-sentinel
-./infra/reset.ps1 -Topology redis-sentinel
-
-# Finished debugging: remove only this project's selected topology and volumes
-./infra/destroy.ps1 -Topology redis-sentinel
-
-# Remove previously generated artifacts
-scrapy-cffi geninfra --clean
+# Remove generated templates; developer-owned infra/.env is preserved
+scrapy-cffi infra clean
 ```
+
+`scrapy-cffi geninfra` remains as a compatibility command. New projects should
+prefer the unified `infra` command so generation and lifecycle operations share
+the same topology/service selection.
 
 Generated layout:
 - `docker-compose.yml`, `.env.example` — independent single-node development infrastructure

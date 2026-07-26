@@ -1,0 +1,6 @@
+status=PASS
+mode=rabbitmq
+topology=single
+interrupt=True
+http_port=18002
+websocket_port=18765

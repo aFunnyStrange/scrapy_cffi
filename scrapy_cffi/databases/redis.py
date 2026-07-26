@@ -326,13 +326,22 @@ class RedisManager(redis.Redis):
         return await self.eval(script, 2, key_new_seen, key_is_req, indices_json)
 
     async def dequeue_request(self, queue_key, timeout=2, decode_responses=False): # Pop a request from the queue, with optional timeout and decoding.
-        result = await self.blpop(queue_key, timeout=timeout)
-        if result:
+        if self.redis_mode == "cluster":
+            # Multiple BLPOP consumers aimed at one cluster node can occupy the
+            # node pool and starve a different start queue indefinitely. Short
+            # non-blocking polling keeps start/work queues fair across slots.
+            request = await self.lpop(queue_key)
+            if request is None:
+                await asyncio.sleep(min(float(timeout), 0.2))
+                return None
+        else:
+            result = await self.blpop(queue_key, timeout=timeout)
+            if not result:
+                return None
             _, request = result
-            if decode_responses and isinstance(request, bytes):
-                request = request.decode('utf-8')
-            return request
-        return None
+        if decode_responses and isinstance(request, bytes):
+            request = request.decode('utf-8')
+        return request
 
     async def dequeue_stream_request(
         self,

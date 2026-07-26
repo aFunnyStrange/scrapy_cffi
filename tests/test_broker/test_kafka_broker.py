@@ -100,12 +100,12 @@ async def run_request_queue_flow(bootstrap: Union[str, List[str]], replication_f
     print("request queue offsets ok")
 
 
-async def test_single() -> None:
+async def run_single() -> None:
     await run_kafka_flow(kafka_single_bootstrap(), replication_factor=1)
     await run_request_queue_flow(kafka_single_bootstrap(), replication_factor=1)
 
 
-async def test_cluster() -> None:
+async def run_cluster() -> None:
     await run_kafka_flow(kafka_cluster_bootstrap(), replication_factor=3)
     await run_request_queue_flow(kafka_cluster_bootstrap(), replication_factor=3)
 
@@ -117,12 +117,12 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     async def run() -> None:
         if args.mode == "single":
-            await test_single()
+            await run_single()
         elif args.mode == "cluster":
-            await test_cluster()
+            await run_cluster()
         else:
-            await test_single()
-            await test_cluster()
+            await run_single()
+            await run_cluster()
 
     asyncio.run(run())
 
