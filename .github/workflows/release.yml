@@ -1,51 +1,89 @@
-name: Publish to PyPI or TestPyPI
+name: Publish to PyPI
 
 on:
   push:
     tags:
-      - 'test*'
-      - 'release*'
+      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout release source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: "3.12"
 
-      - name: Install build tools
+      - name: Install build and test tools
+        run: python -m pip install --upgrade pip build twine pytest
+
+      - name: Verify tag matches project version
+        run: >-
+          python -c "import os, pathlib, tomllib;
+          version = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'];
+          assert os.environ['GITHUB_REF_NAME'] == 'v' + version,
+          (os.environ['GITHUB_REF_NAME'], version)"
+
+      - name: Run source tests
         run: |
-          python -m pip install --upgrade pip build twine
+          python -m pip install -e ".[kafka,rabbitmq,mysql,postgres,mongodb]"
+          python -m pytest -q
 
-      - name: Clean __pycache__ and *.pyc files
-        run: |
-          find . -type d -name '__pycache__' -exec rm -rf {} +
-          find . -type f -name '*.py[co]' -delete
-
-      - name: Build the package
+      - name: Build distributions
         run: python -m build
 
-      - name: Conditional Publish
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD_TEST: ${{ secrets.SCRAPY_CFFI_TEST }}
-          TWINE_PASSWORD_RELEASE: ${{ secrets.SCRAPY_CFFI }}
+      - name: Check distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Test wheel installation
         run: |
-          echo "Git tag: $GITHUB_REF_NAME"
-          if [[ "$GITHUB_REF_NAME" == test* ]]; then
-            echo "Publishing to TestPyPI..."
-            export TWINE_PASSWORD=$TWINE_PASSWORD_TEST
-            twine upload --repository-url https://test.pypi.org/legacy/ dist/*
-          elif [[ "$GITHUB_REF_NAME" == release* ]]; then
-            echo "Publishing to PyPI..."
-            export TWINE_PASSWORD=$TWINE_PASSWORD_RELEASE
-            twine upload dist/*
-          else
-            echo "Tag does not match test* or release*, skipping PyPI upload."
-          fi
+          python -m venv .venv-wheel
+          .venv-wheel/bin/python -m pip install --upgrade pip
+          .venv-wheel/bin/python -m pip install dist/*.whl
+          .venv-wheel/bin/python -m pip check
+          .venv-wheel/bin/python -c "import os, scrapy_cffi; assert 'v' + scrapy_cffi.__version__ == os.environ['GITHUB_REF_NAME']"
+          .venv-wheel/bin/scrapy-cffi --help
+
+      - name: Test source distribution installation
+        run: |
+          python -m venv .venv-sdist
+          .venv-sdist/bin/python -m pip install --upgrade pip
+          .venv-sdist/bin/python -m pip install dist/*.tar.gz
+          .venv-sdist/bin/python -m pip check
+          .venv-sdist/bin/python -c "import os, scrapy_cffi; assert 'v' + scrapy_cffi.__version__ == os.environ['GITHUB_REF_NAME']"
+
+      - name: Upload verified distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish immutable artifacts to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.1
+        with:
+          user: __token__
+          password: ${{ secrets.SCRAPY_CFFI }}
+          packages-dir: dist/

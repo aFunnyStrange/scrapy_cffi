@@ -45,6 +45,7 @@ def test_package_metadata_declares_real_python_minimum():
         (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
     assert project["requires-python"] == ">=3.9"
+    assert "curl_cffi>=0.7.4,<=0.13.0" in project["dependencies"]
     assert "python-dotenv" in project["dependencies"]
     assert "dotenv" not in project["dependencies"]
     extras = project["optional-dependencies"]
@@ -120,7 +121,7 @@ def test_class_based_settings_export_to_recoverable_env_paths():
         SCHEDULER=RedisScheduler,
         ITEM_PIPELINES_PATH=[Pipeline],
     )
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+    with tempfile.TemporaryDirectory() as directory:
         env_path = Path(directory) / ".env"
         settings_to_env(settings, env_path)
         env_text = env_path.read_text(encoding="utf-8")

@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.2** release: [docs/RELEASE-0.3.2.md](docs/RELEASE-0.3.2.md) · **0.3.1** tools: [docs/RELEASE-0.3.1.md](docs/RELEASE-0.3.1.md)
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.3** release: [docs/RELEASE-0.3.3.md](docs/RELEASE-0.3.3.md) · **0.3.2** release: [docs/RELEASE-0.3.2.md](docs/RELEASE-0.3.2.md)
 
 ## [Unreleased]
+
+## [0.3.3] - 2026-08-01
 ### Added
 - Shared single-flight reconnect controller for database/MQ adapters. Concurrent
   failures now collapse into one transport rebuild and respect crawler shutdown.
@@ -41,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `production-endpoints.example.toml` and production connection settings for real infrastructure hosts: Redis ACL/Sentinel auth/TLS/timeouts/address remap, RabbitMQ timeout/heartbeat, and Kafka SASL/TLS/client timeout.
 
 ### Changed
+- Constrain `curl_cffi` to the currently qualified range
+  `>=0.7.4,<=0.13.0`; 0.15.0 remains excluded pending an upstream API
+  compatibility review of the HTTP and WebSocket adapters.
+- Expand CI coverage to full-feature Python 3.9 through 3.13 environments and
+  a Python 3.14 core-package smoke test. Python 3.9 tests no longer rely on
+  Python 3.10-only temporary-directory or event-loop behavior.
 - New projects persist the editable Compose prefix
   `default.infra_project_name = "scrapy_cffi"` in `scrapy_cffi.toml`;
   developers change this one value and keep it unique across concurrently

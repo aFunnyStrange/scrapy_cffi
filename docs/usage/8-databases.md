@@ -1,5 +1,11 @@
 # 1.Introduction
 scrapy_cffi.databases provides adapter frameworks with automatic retry and reconnection utility classes for `Redis`, `MySQL`, `PostgreSQL`, and `MongoDB`. By default, `Redis` is included. For using the SQL or MongoDB utility classes, you need to install the dependencies manually:
+
+Python 3.9 through 3.13 are release-tested with all database extras. The core
+framework and the non-MySQL extras also pass on Python 3.14, but the current
+`asyncmy` release does not yet provide a usable Python 3.14 wheel in the tested
+WSL environment. Treat the MySQL extra on Python 3.14 as provisional until its
+driver support is available.
 ```bash
 pip install "scrapy_cffi[mysql]"
 pip install "scrapy_cffi[postgres]"

@@ -275,10 +275,11 @@ def test_kafka_manager_produce_mock():
     _install_aiokafka_stubs()
     from scrapy_cffi.mq.kafka import KafkaManager
 
-    stop = asyncio.Event()
-    manager = KafkaManager(stop_event=stop, kafka_url="127.0.0.1:9092")
-
     async def run():
+        manager = KafkaManager(
+            stop_event=asyncio.Event(),
+            kafka_url="127.0.0.1:9092",
+        )
         mock_producer = MagicMock()
         mock_producer.start = AsyncMock()
         mock_producer.send_and_wait = AsyncMock(return_value=True)

@@ -16,7 +16,6 @@ def test_redis_put_skips_dedup_for_start_url():
     from scrapy_cffi.core.scheduler.redis import RedisScheduler
     from scrapy_cffi.core.downloader.internet import HttpRequest
 
-    stop = asyncio.Event()
     settings = MagicMock()
     settings.DUPEFILTER = None
     settings.FILTER_KEY = "cffiFilter"
@@ -28,24 +27,23 @@ def test_redis_put_skips_dedup_for_start_url():
     redis_mgr = MagicMock()
     redis_mgr.rpush = AsyncMock(return_value=1)
 
-    sch = RedisScheduler(
-        spiders_name=["customRedisSpider"],
-        stop_event=stop,
-        settings=settings,
-        sessions=MagicMock(),
-        sessions_lock=asyncio.Lock(),
-        signalManager=MagicMock(),
-        redisManager=redis_mgr,
-    )
-    sch.dupefilter = MagicMock()
-    sch.dupefilter.request_seen = AsyncMock(return_value=True)
-
     spider = MagicMock()
     spider.name = "customRedisSpider"
     req = HttpRequest(url="http://127.0.0.1:8002", method="GET")
     req.meta["is_start_url"] = True
 
     async def run():
+        sch = RedisScheduler(
+            spiders_name=["customRedisSpider"],
+            stop_event=asyncio.Event(),
+            settings=settings,
+            sessions=MagicMock(),
+            sessions_lock=asyncio.Lock(),
+            signalManager=MagicMock(),
+            redisManager=redis_mgr,
+        )
+        sch.dupefilter = MagicMock()
+        sch.dupefilter.request_seen = AsyncMock(return_value=True)
         ok = await sch.put(req, spider)
         assert ok is True
         sch.dupefilter.request_seen.assert_not_called()

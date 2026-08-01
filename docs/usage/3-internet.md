@@ -1,6 +1,11 @@
 # 1.Introduction
 `scrapy_cffi` is built on top of the `curl_cffi` request library. The primary motivation behind this choice is that `curl_cffi` offers an API that's very similar to the popular `requests` library, making it easier to use.
 
+The currently qualified dependency range is `curl_cffi>=0.7.4,<=0.13.0`.
+Version 0.15.0 is intentionally excluded because its upstream API compatibility
+still needs to be reviewed against the framework's HTTP and WebSocket adapters.
+Do not force-upgrade `curl_cffi` beyond 0.13.0 until that review is complete.
+
 **Key features of** `curl_cffi`:
 - Supports both synchronous and asynchronous requests.
 - Handles `HTTP`, `HTTPS`, `WebSocket (WS/WSS)` protocols.
