@@ -11,7 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scrapy_cffi.mq.rabbitmq import RabbitMQManager  # noqa: E402
+from scrapy_cffi.infra.rabbitmq import RabbitMQClient  # noqa: E402
 
 
 def amqp_single_url() -> str:
@@ -33,7 +33,7 @@ def exchange_name() -> str:
     return os.environ.get("SCRAPY_CFFI_AMQP_EXCHANGE", "scrapy_cffi")
 
 
-async def run_queue_crud(manager: RabbitMQManager, queue_name: str) -> None:
+async def run_queue_crud(manager: RabbitMQClient, queue_name: str) -> None:
     await manager.connect()
     queue = await manager.declare_queue(queue_name)
 
@@ -59,8 +59,7 @@ async def run_queue_crud(manager: RabbitMQManager, queue_name: str) -> None:
 
 
 async def run_single() -> None:
-    manager = RabbitMQManager(
-        stop_event=asyncio.Event(),
+    manager = RabbitMQClient(
         rabbitmq_url=amqp_single_url(),
         exchange_name=exchange_name(),
         persist=True,
@@ -69,8 +68,7 @@ async def run_single() -> None:
 
 
 async def run_cluster() -> None:
-    manager = RabbitMQManager(
-        stop_event=asyncio.Event(),
+    manager = RabbitMQClient(
         rabbitmq_url=amqp_cluster_urls(),
         exchange_name=exchange_name(),
         persist=True,

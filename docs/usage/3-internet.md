@@ -1,10 +1,18 @@
 # 1.Introduction
-`scrapy_cffi` is built on top of the `curl_cffi` request library. The primary motivation behind this choice is that `curl_cffi` offers an API that's very similar to the popular `requests` library, making it easier to use.
+`scrapy_cffi` uses `curl_cffi` through a framework-owned asynchronous platform
+adapter. Crawler code depends on stable HTTP, streaming, and WebSocket
+Protocols instead of importing `curl_cffi.requests.AsyncSession` directly.
 
-The currently qualified dependency range is `curl_cffi>=0.7.4,<=0.13.0`.
-Version 0.15.0 is intentionally excluded because its upstream API compatibility
-still needs to be reviewed against the framework's HTTP and WebSocket adapters.
-Do not force-upgrade `curl_cffi` beyond 0.13.0 until that review is complete.
+Qualified dependency ranges:
+
+- Python 3.9: `curl_cffi>=0.7.4,<0.14`
+- Python 3.10+: `curl_cffi>=0.7.4,<0.16`
+
+This keeps Python 3.9 support while allowing curl_cffi 0.14/0.15 on runtimes
+supported by those releases. The adapter normalizes their WebSocket lifecycle
+and sync/async method differences. A future request implementation can satisfy
+the same `scrapy_cffi.platform.AsyncHttpSessionProtocol` without changing the
+crawler engine.
 
 **Key features of** `curl_cffi`:
 - Supports both synchronous and asynchronous requests.
@@ -49,6 +57,7 @@ Additional Framework-specific Parameters:
 | **errback** | Error handler if the request fails. |
 | **desc_text** | Human-readable string for identifying the request in logs or callbacks. |
 | **no_proxy** | Disables proxy for this specific request, even if global proxy settings are active. |
+| **stream** | Keep the response body open for incremental consumption through `StreamResponse`. |
 
 Advanced options via `**kwargs` (passed directly to `curl_cffi`, no autocomplete):
 
@@ -67,7 +76,6 @@ quote: Union[str, Literal[False]] = "",
 http_version: Optional[CurlHttpVersion] = None,
 interface: Optional[str] = None,
 cert: Optional[Union[str, Tuple[str, str]]] = None,
-stream: bool = False,
 max_recv_speed: int = 0,
 multipart: Optional[CurlMime] = None,
 ```
@@ -81,9 +89,48 @@ multipart: Optional[CurlMime] = None,
 | **method** | HTTP method (`GET`, `POST`, `PUT`, etc.) – case-insensitive |
 | **data** | Request body: `Dict`, `List`, `str`, `BytesIO`, or `bytes` |
 | **json** | JSON body: `Dict[str, Union[str, int]]` only (bytes not supported) |
+| **stream** | When true, the callback receives `StreamResponse` instead of a buffered `HttpResponse`. |
 
-### 2.2.2 Methods
-#### 2.2.2.1 protobuf_encode(self, typedef: Dict)
+### 2.2.2 Streaming and SSE
+
+Streaming requests keep one bounded downloader slot until the callback finishes
+or the response is explicitly closed. Cancellation and crawler shutdown close
+the underlying connection automatically.
+
+```python
+from scrapy_cffi.internet import HttpRequest, StreamResponse
+
+
+async def start(self):
+    yield HttpRequest(
+        url="https://example.com/v1/chat/completions",
+        method="POST",
+        json={"stream": True},
+        stream=True,
+        callback=self.parse_stream,
+    )
+
+
+async def parse_stream(self, response: StreamResponse):
+    async for event in response.aiter_sse():
+        if event.data == "[DONE]":
+            break
+        yield {"event": event.event, "data": event.data}
+```
+
+Available stream APIs:
+
+- `aiter_bytes(chunk_size=None)` for binary chunks;
+- `aiter_lines()` for UTF-8 decoded lines;
+- `aiter_sse(max_event_size=1048576)` for bounded Server-Sent Events;
+- `aclose()` for early explicit release. It is idempotent.
+
+`SSEEvent` exposes `data`, `event`, `id`, and `retry`. Multiple `data:` lines
+are joined with a newline. The default one-event limit prevents an unterminated
+or malicious event from growing memory without a bound.
+
+### 2.2.3 Methods
+#### 2.2.3.1 protobuf_encode(self, typedef: Dict)
 Encodes the request body (`data`) into a binary Protobuf payload using the given type definition. The method modifies the request in-place and returns the updated `HttpRequest` object for chaining.
 
 **Parameters**: 
@@ -98,7 +145,7 @@ yield HttpRequest(
 ).protobuf_encode({...})
 ```
 
-#### 2.2.2.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
+#### 2.2.3.2 grpc_encode(self, typedef_or_stream: Union[Dict, List[Tuple[Dict, Dict]]], is_gzip: bool=False)
 Encodes the request body (`data`) into a valid gRPC framed message and returns the updated request object for chaining.
 
 **Parameters**: 
@@ -246,14 +293,18 @@ Starting from version >=0.2.2, `protobuf_encode` and `grpc_encode` are bound to 
 
 The `grpc_stream_encode` method now encodes and concatenates all byte messages from `send_message` into a single streaming byte message. Since protobuf/grpc encoding is already handled within `WebSocketMsg`, `grpc_stream_encode` no longer accepts input parameters.
 
-Based on the `curl_cffi` API for `ws.send`, the first argument must be of type `bytes`. Additionally, a `flags` parameter can be specified to indicate the message type. You can check available flags via `from curl_cffi.const import CurlWsFlag`.  
+The first argument to `ws.send` must be `bytes`. Use the framework-owned
+`from scrapy_cffi.platform import WebSocketFlag`; the curl adapter converts it
+to the vendor-specific flag. Existing `CurlWsFlag` values remain accepted.
 
 Example:
 ```python
+from scrapy_cffi.platform import WebSocketFlag
+
 yield WebSocketRequest(
     send_message=[
-        WebSocketMsg(data={"1": b"hello"}, flags=CurlWsFlag.BINARY).protobuf_encode(typedef={"1": "bytes"}),
-        WebSocketMsg(data=b"hi", flags=CurlWsFlag.BINARY),
+        WebSocketMsg(data={"1": b"hello"}, flags=WebSocketFlag.BINARY).protobuf_encode(typedef={"1": "bytes"}),
+        WebSocketMsg(data=b"hi", flags=WebSocketFlag.BINARY),
     ]
 ).grpc_stream_encode()
 ```

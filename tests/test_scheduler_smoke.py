@@ -126,43 +126,30 @@ async def _init_crawler(
 ):
     from scrapy_cffi.crawler import Crawler
 
-    patches = []
+    resources = MagicMock()
+    resources.redis = None
+    resources.rabbitmq = None
+    resources.kafka = None
+    resources.mysql = None
+    resources.postgres = None
+    resources.mongodb = None
+    resources.start = AsyncMock()
+    resources.close = AsyncMock()
     if mock_redis:
-        mock_rm = MagicMock()
-        mock_rm.from_crawler = MagicMock(return_value=mock_rm)
-        patches.append(patch("scrapy_cffi.databases.redis.RedisManager.from_crawler", mock_rm.from_crawler))
+        resources.redis = MagicMock(redis_mode="single", cluster_nodes=[])
     if mock_rabbit:
-        aio_pika_mock = MagicMock()
-        sys.modules.setdefault("aio_pika", aio_pika_mock)
-        sys.modules.setdefault("aio_pika.exceptions", MagicMock())
-        import scrapy_cffi.mq.rabbitmq as rabbit_mod
-
-        mock_mq = MagicMock()
-        mock_mq.from_crawler = MagicMock(return_value=mock_mq)
-        patches.append(
-            patch.object(rabbit_mod.RabbitMQManager, "from_crawler", mock_mq.from_crawler)
-        )
+        resources.rabbitmq = MagicMock()
     if mock_kafka:
-        _install_aiokafka_stubs()
-        import scrapy_cffi.mq.kafka as kafka_mod
+        resources.kafka = MagicMock()
+        resources.kafka.push = AsyncMock(return_value=True)
 
-        mock_km = MagicMock()
-        mock_km.produce = AsyncMock(return_value=True)
-        mock_km.produce_async = AsyncMock()
-        mock_km.from_crawler = MagicMock(return_value=mock_km)
-        patches.append(
-            patch.object(kafka_mod.KafkaManager, "from_crawler", mock_km.from_crawler)
-        )
-
-    for p in patches:
-        p.start()
-    try:
+    with patch(
+        "scrapy_cffi.composition.build_resource_service",
+        return_value=resources,
+    ):
         crawler = Crawler()
         await crawler.do_initialization(settings=settings, start_type=start_type)
         return crawler
-    finally:
-        for p in patches:
-            p.stop()
 
 
 def test_memory_scheduler_init(tmp_path):
@@ -237,15 +224,14 @@ def test_kafka_scheduler_init(tmp_path):
     assert sch.get_start_topic(crawler.spiders[0]) == "demo.start"
 
 
-def test_databases_lazy_sqlalchemy():
-    """Redis import path must not require SQLAlchemy."""
+def test_repository_package_keeps_optional_drivers_lazy():
+    """Repository discovery must not import optional driver implementations."""
     import importlib
 
-    sys.modules.pop("scrapy_cffi.databases", None)
-    mod = importlib.import_module("scrapy_cffi.databases")
-    assert mod.RedisManager is not None
-    # Lazy attr resolves only when accessed
-    assert "SQLAlchemyMySQLManager" in mod.__all__
+    sys.modules.pop("scrapy_cffi.repo", None)
+    mod = importlib.import_module("scrapy_cffi.repo")
+    assert "RedisRepository" in mod.__all__
+    assert "SQLRepository" in mod.__all__
 
 
 def test_kafka_crawler_init(tmp_path):
@@ -256,7 +242,7 @@ def test_kafka_crawler_init(tmp_path):
     settings = _base_settings(spiders)
     settings.KAFKA_INFO.URL = "127.0.0.1:9092"
     crawler = asyncio.run(_init_crawler(settings, mock_kafka=True))
-    assert crawler.kafkaManager is not None
+    assert crawler.resources.kafka is not None
     assert any(
         isinstance(h, KafkaLoggingHandler) for h in crawler.logger.handlers
     )
@@ -267,17 +253,16 @@ def test_memory_with_kafka_does_not_require_redis(tmp_path):
     settings = _base_settings(spiders)
     settings.KAFKA_INFO.URL = "127.0.0.1:9092"
     crawler = asyncio.run(_init_crawler(settings, mock_kafka=True))
-    assert crawler.redisManager is None
+    assert crawler.resources.redis is None
     assert type(crawler.schedulers["demo"]).__name__ == "Scheduler"
 
 
-def test_kafka_manager_produce_mock():
+def test_kafka_client_produce_mock():
     _install_aiokafka_stubs()
-    from scrapy_cffi.mq.kafka import KafkaManager
+    from scrapy_cffi.infra.kafka import KafkaClient
 
     async def run():
-        manager = KafkaManager(
-            stop_event=asyncio.Event(),
+        manager = KafkaClient(
             kafka_url="127.0.0.1:9092",
         )
         mock_producer = MagicMock()
@@ -302,8 +287,8 @@ if __name__ == "__main__":
         test_redis_scheduler_init(p / "redis")
         test_rabbitmq_scheduler_init(p / "rabbit")
         test_kafka_scheduler_init(p / "kafka_scheduler")
-    test_databases_lazy_sqlalchemy()
+    test_repository_package_keeps_optional_drivers_lazy()
     test_kafka_crawler_init(p / "kafka_crawler")
     test_memory_with_kafka_does_not_require_redis(p / "kafka_mem")
-    test_kafka_manager_produce_mock()
+    test_kafka_client_produce_mock()
     print("ok")

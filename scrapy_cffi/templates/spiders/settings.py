@@ -88,7 +88,7 @@ def create_settings(
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
         settings.SCHEDULER_PERSIST = False
         # Optional: shared Redis Stream consumer-group defaults for RedisSpider (spider attrs override)
-        # from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+        # from scrapy_cffi.config import RedisStreamConsumerInfo, RedisIngressMode
         # settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
         #     MODE=RedisIngressMode.STREAM,
         #     STREAM_KEY="demo:stream",

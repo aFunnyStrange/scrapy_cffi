@@ -1,13 +1,24 @@
 from functools import cached_property
-from curl_cffi.requests import Response as CffiResponse
 from ..selector import Selector
 from ....utils import ProtobufFactory
-from typing import Tuple, Dict, List, Union
+from ....platform.http import AsyncHttpStreamProtocol, HttpResponseProtocol
+from dataclasses import dataclass
+from typing import AsyncIterator, Callable, Tuple, Dict, List, Optional, Union
+
+
+@dataclass(frozen=True)
+class SSEEvent:
+    """Represent one parsed Server-Sent Event."""
+
+    data: str
+    event: str = "message"
+    id: Optional[str] = None
+    retry: Optional[int] = None
 
 class Response(object):
     def __init__(self,
         session_id="",
-        raw_response: CffiResponse=None,
+        raw_response: HttpResponseProtocol=None,
         meta=None,
         dont_filter=None,
         callback=None,
@@ -29,7 +40,7 @@ class Response(object):
 class HttpResponse(Response):
     def __init__(self, 
         session_id="",
-        raw_response: CffiResponse=None,
+        raw_response: HttpResponseProtocol=None,
         meta=None,
         dont_filter=None,
         callback=None,
@@ -91,6 +102,96 @@ class HttpResponse(Response):
     
     def grpc_decode(self) -> Union[Tuple[Dict, Dict], List[Tuple[Dict, Dict]]]:
         return self.selector.grpc_decode()
+
+
+class StreamResponse(Response):
+    """Expose a live HTTP response stream with bytes, lines, and SSE iteration."""
+
+    def __init__(
+        self,
+        stream: AsyncHttpStreamProtocol,
+        release: Optional[Callable[[], None]] = None,
+        **kwargs
+    ) -> None:
+        """Take ownership of a platform stream until ``aclose`` is called."""
+        super().__init__(raw_response=stream, **kwargs)
+        self._stream = stream
+        self._release = release
+        self._closed = False
+        self.status_code = stream.status_code
+        self.headers = stream.headers
+
+    async def aiter_bytes(self, chunk_size: Optional[int] = None) -> AsyncIterator[bytes]:
+        """Yield raw response body chunks without full buffering."""
+        async for chunk in self._stream.aiter_bytes(chunk_size=chunk_size):
+            yield chunk
+
+    async def aiter_lines(self) -> AsyncIterator[str]:
+        """Yield decoded response lines."""
+        async for line in self._stream.aiter_lines():
+            yield line
+
+    async def aiter_sse(self, max_event_size: int = 1048576) -> AsyncIterator[SSEEvent]:
+        """Parse a bounded ``text/event-stream`` body into SSE events."""
+        data_lines: List[str] = []
+        event_name = "message"
+        event_id = None
+        retry = None
+        event_size = 0
+
+        async for line in self.aiter_lines():
+            line = line.rstrip("\r")
+            if line == "":
+                if data_lines:
+                    yield SSEEvent(
+                        data="\n".join(data_lines),
+                        event=event_name,
+                        id=event_id,
+                        retry=retry,
+                    )
+                data_lines = []
+                event_name = "message"
+                retry = None
+                event_size = 0
+                continue
+            if line.startswith(":"):
+                continue
+
+            field, separator, value = line.partition(":")
+            if separator and value.startswith(" "):
+                value = value[1:]
+            event_size += len(value.encode("utf-8"))
+            if event_size > max_event_size:
+                raise ValueError("SSE event exceeded max_event_size")
+            if field == "data":
+                data_lines.append(value)
+            elif field == "event":
+                event_name = value or "message"
+            elif field == "id" and "\x00" not in value:
+                event_id = value
+            elif field == "retry" and value.isdigit():
+                retry = int(value)
+
+        if data_lines:
+            yield SSEEvent(
+                data="\n".join(data_lines),
+                event=event_name,
+                id=event_id,
+                retry=retry,
+            )
+
+    async def aclose(self) -> None:
+        """Close the platform stream and release downloader capacity once."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._stream.close()
+        finally:
+            if self._release is not None:
+                release = self._release
+                self._release = None
+                release()
     
 class WebSocketResponse(Response):
     def __init__(self, 

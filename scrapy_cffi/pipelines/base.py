@@ -5,42 +5,27 @@ if TYPE_CHECKING:
     from ..item import Item
     from ..crawler import Crawler
     from ..spiders import Spider
-    from ..databases import RedisManager
-    from ..databases.mysql import SQLAlchemyMySQLManager
-    from ..databases.postgres import SQLAlchemyPostgresManager
-    from ..databases.mongodb import MongoDBManager
+    from ..service import ResourceService
     from ..settings import SettingsInfo
     from ..hooks.pipelines import PipelinesHooks
-    from ..mq.rabbitmq import RabbitMQManager
-    from ..mq.kafka import KafkaManager
 
 class Pipeline:
     def __init__(
         self, 
         stop_event: asyncio.Event=None,
         settings: "SettingsInfo"=None, 
-        redisManager: "RedisManager"=None, 
-        mysqlManager: "SQLAlchemyMySQLManager"=None,
-        postgresManager: "SQLAlchemyPostgresManager"=None,
-        mongodbManager: "MongoDBManager"=None,
-        rabbitmqManager: "RabbitMQManager"=None,
-        kafkaManager: "KafkaManager"=None,
+        resources: "ResourceService"=None,
         hooks: "PipelinesHooks"=None
     ):
         self.stop_event = stop_event
         self.settings = settings
-        self.redisManager = redisManager
-        self.mysqlManager = mysqlManager
-        self.postgresManager = postgresManager
-        self.mongodbManager = mongodbManager
-        self.rabbitmqManager = rabbitmqManager
-        self.kafkaManager = kafkaManager
+        self.resources = resources
         self.hooks = hooks
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if resources and resources.kafka:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=resources.kafka, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
@@ -48,12 +33,7 @@ class Pipeline:
         return cls(
             stop_event=crawler.stop_event,
             settings=crawler.settings,
-            redisManager=crawler.redisManager,
-            mysqlManager=crawler.mysqlManager,
-            postgresManager=crawler.postgresManager,
-            mongodbManager=crawler.mongodbManager,
-            rabbitmqManager=crawler.rabbitmqManager,
-            kafkaManager=crawler.kafkaManager,
+            resources=crawler.resources,
             hooks=pipelines_hooks(crawler)
         )
 

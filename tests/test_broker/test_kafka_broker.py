@@ -12,7 +12,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scrapy_cffi.mq.kafka import KafkaManager  # noqa: E402
+from scrapy_cffi.infra.kafka import KafkaClient  # noqa: E402
 
 
 def kafka_single_bootstrap() -> str:
@@ -33,8 +33,7 @@ async def run_kafka_flow(bootstrap: Union[str, List[str]], replication_factor: i
     stop_event = asyncio.Event()
     received: List[str] = []
 
-    manager = KafkaManager(
-        stop_event=stop_event,
+    manager = KafkaClient(
         kafka_url=bootstrap,
         consumer_group=group,
     )
@@ -70,7 +69,7 @@ async def run_request_queue_flow(bootstrap: Union[str, List[str]], replication_f
     topic = f"scheduler_requests_{int(time.time() * 1000)}"
     group = f"scheduler-workers-{int(time.time() * 1000)}"
 
-    manager = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    manager = KafkaClient(bootstrap, consumer_group=group)
     await manager.connect()
     await manager.ensure_topic(topic, num_partitions=1, replication_factor=replication_factor)
     await manager.produce(topic, b"request-1")
@@ -81,19 +80,31 @@ async def run_request_queue_flow(bootstrap: Union[str, List[str]], replication_f
     assert [first.value, second.value] == [b"request-1", b"request-2"]
 
     # Completing a later offset must not commit across the earlier lease.
-    await manager.ack_request(second)
+    await manager.ack_request(
+        second.topic, second.consumer_group, second.partition, second.offset
+    )
     await manager.close()
 
-    replay = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    replay = KafkaClient(bootstrap, consumer_group=group)
     replay_first = await replay.dequeue_request(topic, group, timeout=10)
     replay_second = await replay.dequeue_request(topic, group, timeout=10)
     assert replay_first and replay_second
     assert [replay_first.value, replay_second.value] == [b"request-1", b"request-2"]
-    await replay.ack_request(replay_second)
-    await replay.ack_request(replay_first)
+    await replay.ack_request(
+        replay_second.topic,
+        replay_second.consumer_group,
+        replay_second.partition,
+        replay_second.offset,
+    )
+    await replay.ack_request(
+        replay_first.topic,
+        replay_first.consumer_group,
+        replay_first.partition,
+        replay_first.offset,
+    )
     await replay.close()
 
-    drained = KafkaManager(asyncio.Event(), bootstrap, consumer_group=group)
+    drained = KafkaClient(bootstrap, consumer_group=group)
     assert await drained.dequeue_request(topic, group, timeout=3) is None
     await drained.delete_topics([topic])
     await drained.close()

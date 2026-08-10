@@ -1,4 +1,4 @@
-from .downloader import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, WebSocketResponse
+from .downloader import Request, HttpRequest, MediaRequest, WebSocketRequest, Response, HttpResponse, SSEEvent, StreamResponse, WebSocketResponse
 from .sessions import CloseSignal
 
 __all__ = [
@@ -8,6 +8,8 @@ __all__ = [
     "WebSocketRequest",
     "Response",
     "HttpResponse",
+    "SSEEvent",
+    "StreamResponse",
     "WebSocketResponse",
     "CloseSignal"
 ]

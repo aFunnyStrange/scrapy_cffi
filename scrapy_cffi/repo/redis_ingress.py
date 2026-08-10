@@ -1,16 +1,20 @@
+"""Resolve RedisSpider list or Stream ingress and acknowledgement behavior."""
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, Union
 
-from ..models.redis_stream import RedisIngressMode, RedisStreamConsumerInfo
+from ..config.redis_stream import RedisIngressMode, RedisStreamConsumerInfo
 
 if TYPE_CHECKING:
-    from ..databases.redis import RedisManager, RedisStreamMessage
+    from .contracts import RedisRepositoryProtocol
+    from .redis import RedisStreamMessage
     from ..settings import SettingsInfo
     from ..spiders import Spider
 
 
 @dataclass(frozen=True)
 class RedisIngressConfig:
+    """Store the resolved Redis ingress contract for one spider."""
     stream_key: str
     mode: RedisIngressMode
     group_name: Optional[str] = None
@@ -25,10 +29,12 @@ class RedisIngressConfig:
 
     @property
     def is_stream(self) -> bool:
+        """Return whether the ingress uses a Redis consumer group."""
         return self.mode == RedisIngressMode.STREAM
 
 
 def _pick_spider_value(spider: Any, *names: str):
+    """Return the first explicitly configured spider attribute."""
     for name in names:
         value = getattr(spider, name, None)
         if value is not None:
@@ -128,13 +134,16 @@ def resolve_redis_ingress(spider: "Spider", settings: "SettingsInfo") -> RedisIn
 
 
 async def dequeue_start_request(
-    redis_manager: "RedisManager",
+    redis_repository: "RedisRepositoryProtocol",
     config: RedisIngressConfig,
 ) -> Optional[Union[bytes, "RedisStreamMessage"]]:
+    """Receive one start request through the resolved ingress mode."""
     if config.is_stream:
         if not config.group_name:
             raise ValueError("Redis stream ingress requires group_name")
-        return await redis_manager.dequeue_stream_request(
+        if not config.consumer_name:
+            raise ValueError("Redis stream ingress requires consumer_name")
+        return await redis_repository.dequeue_stream_request(
             stream_key=config.stream_key,
             group_name=config.group_name,
             consumer_name=config.consumer_name,
@@ -145,16 +154,17 @@ async def dequeue_start_request(
             read_id=config.read_id,
             mkstream=config.mkstream,
         )
-    return await redis_manager.dequeue_request(queue_key=config.stream_key)
+    return await redis_repository.dequeue_request(queue_key=config.stream_key)
 
 
 async def ack_start_request(
-    redis_manager: "RedisManager",
+    redis_repository: "RedisRepositoryProtocol",
     config: RedisIngressConfig,
     message: "RedisStreamMessage",
 ) -> Optional[int]:
+    """Acknowledge one Stream delivery when automatic acknowledgement applies."""
     if config.is_stream and config.group_name:
-        return await redis_manager.ack_stream_request(message=message, group_name=config.group_name)
+        return await redis_repository.ack_stream_request(message=message, group_name=config.group_name)
     return None
 
 

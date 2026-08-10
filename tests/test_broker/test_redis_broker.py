@@ -11,7 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scrapy_cffi.databases import RedisManager  # noqa: E402
+from scrapy_cffi.infra.redis import RedisClient  # noqa: E402
 
 
 def redis_single_url() -> str:
@@ -41,40 +41,41 @@ def redis_cluster_nodes() -> List[str]:
     return [f"redis://127.0.0.1:{p}" for p in range(7000, 7006)]
 
 
-async def run_crud(redis_manager: RedisManager, prefix: str) -> None:
+async def run_crud(redis_client: RedisClient, prefix: str) -> None:
     key = f"{prefix}:kv"
     queue_key = f"{prefix}:queue"
 
-    await redis_manager.delete(key, queue_key)
+    await redis_client.delete(key, queue_key)
 
     # Create
-    await redis_manager.set(key, "v1")
-    v = await redis_manager.get(key)
+    await redis_client.set(key, "v1")
+    v = await redis_client.get(key)
     assert v in ("v1", b"v1"), f"Create failed: {v!r}"
 
     # Read
     print("read:", v.decode() if isinstance(v, bytes) else v)
 
     # Update
-    await redis_manager.set(key, "v2")
-    v2 = await redis_manager.get(key)
+    await redis_client.set(key, "v2")
+    v2 = await redis_client.get(key)
     assert v2 in ("v2", b"v2"), f"Update failed: {v2!r}"
 
     # Queue flow check (framework scheduler-style)
-    await redis_manager.lpush(queue_key, b"req-001")
-    popped = await redis_manager.dequeue_request(queue_key, timeout=2, decode_responses=True)
+    await redis_client.lpush(queue_key, b"req-001")
+    popped = await redis_client.lpop(queue_key)
+    if isinstance(popped, bytes):
+        popped = popped.decode("utf-8")
     assert popped == "req-001", f"Queue read failed: {popped!r}"
 
     # Delete
-    await redis_manager.delete(key, queue_key)
-    gone = await redis_manager.get(key)
+    await redis_client.delete(key, queue_key)
+    gone = await redis_client.get(key)
     assert gone is None, f"Delete failed: {gone!r}"
     print("crud ok")
 
 
 async def run_single() -> None:
-    manager = RedisManager(
-        stop_event=asyncio.Event(),
+    manager = RedisClient(
         redis_url=redis_single_url(),
         redis_mode="single",
     )
@@ -89,8 +90,7 @@ async def run_single() -> None:
 
 async def run_sentinel() -> None:
     host, port = redis_sentinel_master_override()
-    manager = RedisManager(
-        stop_event=asyncio.Event(),
+    manager = RedisClient(
         redis_url=redis_sentinel_hosts(),
         redis_mode="sentinel",
         master_name=redis_sentinel_master_name(),
@@ -106,8 +106,7 @@ async def run_sentinel() -> None:
 
 
 async def run_cluster() -> None:
-    manager = RedisManager(
-        stop_event=asyncio.Event(),
+    manager = RedisClient(
         redis_url=redis_cluster_nodes(),
         redis_mode="cluster",
     )

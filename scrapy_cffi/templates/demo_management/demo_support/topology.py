@@ -1,7 +1,7 @@
 import os
 
-from scrapy_cffi.models.databases import RedisInfo
-from scrapy_cffi.models.mq import KafkaInfo, RabbitMQInfo
+from scrapy_cffi.config.database import RedisInfo
+from scrapy_cffi.config.queue import KafkaInfo, RabbitMQInfo
 
 
 DEMO_MODE = "__SCRAPY_CFFI_DEMO_MODE__"

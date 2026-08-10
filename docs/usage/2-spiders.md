@@ -10,7 +10,7 @@ Each spider class includes several built-in attributes by default:
 | run_py_dir | A `Path` object representing the directory path of the executing `.py` script. |
 | session_id | Defaults to an empty string; used to assign a specific session ID per spider. |
 | ctx_dict | Stores all loaded JavaScript execution contexts (as specified by `js_path`). Keys are filenames, values are context objects. |
-| kafkaManager | Provides direct access to the Kafka manager, allowing spiders to produce logs or push items into additional Kafka queues. |
+| resources | Typed `ResourceService` containing configured Redis/database/request-queue repositories. |
 | hooks | An object holding all framework-registered hook plugins as attributes. It serves as a centralized entry point for spiders to access various extension hooks exposed by the framework. This allows loose coupling and future extensibility without directly exposing internal components. For more in **"10-hook.md"** |
 
 ---
@@ -94,7 +94,7 @@ class DemoRedisStreamSpider(RedisSpider):
 | `redis_consumer` / `redis_xconsumer` | Consumer name within the group |
 | `redis_stream_*` | Fine-grained stream read / ack options |
 
-`RedisScheduler.get_start_req()` and ack logic delegate to `scrapy_cffi.databases.redis_ingress` so the same rules apply whether ingress is configured on the spider or in settings.
+`RedisScheduler.get_start_req()` and ack logic delegate to `scrapy_cffi.repo.redis_ingress` so the same rules apply whether ingress is configured on the spider or in settings.
 
 `redis_xgroup` and `redis_xconsumer` are also supported as aliases. The stream message is acknowledged with `XACK` after it is converted into a start request and yielded (when `redis_stream_ack` / `AUTO_ACK` is true).
 
@@ -103,7 +103,7 @@ Spider attributes still override these values. Use this when several spiders sha
 
 ```python
 from scrapy_cffi.settings import SettingsInfo
-from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
+from scrapy_cffi.config import RedisStreamConsumerInfo, RedisIngressMode
 
 settings = SettingsInfo()
 settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(

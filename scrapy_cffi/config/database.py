@@ -1,11 +1,14 @@
+"""Define validated database and Redis connection settings."""
+
 from pydantic import model_validator, Field
 from enum import Enum
 from typing import Dict, Optional, Union, List, Tuple
-from .base import StrictValidatedModel
+from ..models.base import StrictValidatedModel
 from .redis_stream import RedisIngressMode, RedisStreamConsumerInfo
 
 
 class BaseDBInfo(StrictValidatedModel):
+    """Store shared connection fields for database-like systems."""
     URL: Optional[str] = None
     HOST: Optional[str] = None
     PORT: Optional[Union[str, int]] = None
@@ -15,10 +18,12 @@ class BaseDBInfo(StrictValidatedModel):
 
     @property
     def resolved_url(self) -> Optional[str]:
+        """Return the explicitly configured connection URL."""
         return self.URL if self.URL else None
 
 
 class SqlAlchemyEngineInfo(BaseDBInfo):
+    """Configure common SQLAlchemy async-engine behavior."""
     ECHO: bool = False
     POOL_PRE_PING: bool = True
     POOL_SIZE: int = 5
@@ -26,11 +31,13 @@ class SqlAlchemyEngineInfo(BaseDBInfo):
 
 
 class RedisMode(str, Enum):
+    """List supported Redis deployment topologies."""
     SINGLE = "single"
     SENTINEL = "sentinel"
     CLUSTER = "cluster"
     
 class RedisInfo(BaseDBInfo):
+    """Configure Redis single-node, Sentinel, or cluster access."""
     MODE: Union[RedisMode, str] = RedisMode.SINGLE
 
     SENTINELS: Optional[List[Tuple[str, int]]] = Field(default_factory=list)
@@ -50,6 +57,7 @@ class RedisInfo(BaseDBInfo):
 
     @model_validator(mode="after")
     def assemble_url(self) -> "RedisInfo":
+        """Infer topology and assemble a single-node URL when needed."""
         has_sentinels = bool(self.SENTINELS)
         has_cluster_nodes = bool(self.CLUSTER_NODES)
         if has_sentinels and has_cluster_nodes:
@@ -81,6 +89,7 @@ class RedisInfo(BaseDBInfo):
     def resolved_url(
         self,
     ) -> Optional[Union[str, List[Tuple[str, int]], List[Union[dict, str]]]]:
+        """Return the configured endpoint representation for the topology."""
         if self.MODE == RedisMode.SINGLE:
             return self.URL
         elif self.MODE == RedisMode.SENTINEL:
@@ -90,10 +99,12 @@ class RedisInfo(BaseDBInfo):
         return None
 
 class MysqlInfo(SqlAlchemyEngineInfo):
+    """Configure an asynchronous MySQL SQLAlchemy engine."""
     DRIVER: str = "mysql+asyncmy" # default driver
 
     @model_validator(mode="after")
     def assemble_url(self) -> "MysqlInfo":
+        """Assemble a MySQL URL from individual connection fields."""
         if not self.URL and self.HOST and self.PORT:
             auth_part = ""
             if self.USERNAME and self.PASSWORD:
@@ -105,10 +116,12 @@ class MysqlInfo(SqlAlchemyEngineInfo):
         return self
 
 class PostgresInfo(SqlAlchemyEngineInfo):
+    """Configure an asynchronous PostgreSQL SQLAlchemy engine."""
     DRIVER: str = "postgresql+asyncpg"
 
     @model_validator(mode="after")
     def assemble_url(self) -> "PostgresInfo":
+        """Assemble a PostgreSQL URL from individual connection fields."""
         if not self.URL and self.HOST and self.PORT:
             auth_part = ""
             if self.USERNAME and self.PASSWORD:
@@ -120,8 +133,10 @@ class PostgresInfo(SqlAlchemyEngineInfo):
         return self
 
 class MongodbInfo(BaseDBInfo):
+    """Configure an asynchronous MongoDB client."""
     @model_validator(mode="after")
     def assemble_url(self) -> "MongodbInfo":
+        """Assemble a MongoDB URL from individual connection fields."""
         if not self.URL and self.HOST and self.PORT:
             auth_part = ""
             if self.USERNAME and self.PASSWORD:

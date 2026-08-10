@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scrapy_cffi.databases.redis_ingress import resolve_redis_ingress
-from scrapy_cffi.models import RedisIngressMode, RedisStreamConsumerInfo
+from scrapy_cffi.repo.redis_ingress import resolve_redis_ingress
+from scrapy_cffi.config import RedisIngressMode, RedisStreamConsumerInfo
 from scrapy_cffi.settings import SettingsInfo
 
 

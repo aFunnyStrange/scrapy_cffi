@@ -2,17 +2,20 @@ from .models import BaseValidatedModel, StrictValidatedModel
 from pathlib import Path
 from .models.api import (
     ComponentInfo,
-    RedisInfo,
-    RedisStreamConsumerInfo,
+    CPYExtensionsConfig,
+)
+from .config import (
+    KafkaInfo,
+    MongodbInfo,
     MysqlInfo,
     PostgresInfo,
-    MongodbInfo,
     RabbitMQInfo,
-    KafkaInfo,
-    CPYExtensionsConfig,
+    RedisInfo,
+    RedisStreamConsumerInfo,
 )
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal, Type
+from .platform.http import HttpSessionFactory
 
 ComponentTarget = Union[str, Type[Any]]
 ComponentConfig = Union[
@@ -68,6 +71,9 @@ class SettingsInfo(BaseValidatedModel):
     TIMEOUT: Optional[int] = 30 # Request timeout in seconds
     MAX_REQ_TIMES: Optional[int] = 2 # Maximum number of retry attempts for a failed request
     DELAY_REQ_TIME: Optional[int] = 3 # Delay in seconds before retrying a failed request
+    HTTP_SESSION_FACTORY: Optional[Union[str, HttpSessionFactory]] = None
+    INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
     
     PROXY_URL: Optional[str] = None
     PROXIES: Optional[Dict] = None
@@ -84,7 +90,7 @@ class SettingsInfo(BaseValidatedModel):
     SCHEDULER: Optional[Union[str, Type[Any]]] = None
     DUPEFILTER: Optional[Union[str, Type[Any]]] = None
     BLOOM_INFO: Optional[BloomInfo] = BloomInfo()
-    SCHEDULER_PERSIST: Optional[bool] = False
+    SCHEDULER_PERSIST: bool = False
     SCHEDULER_SESSION_KEY: Optional[str] = None # Redis Hash key for compressed session cookies; defaults to `{queue_key}:sessions`.
     DEDUP_TTL: Optional[int] = 0
     INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
@@ -100,15 +106,15 @@ class SettingsInfo(BaseValidatedModel):
     
     LOG_INFO: Optional[LogInfo] = LogInfo()
 
-    REDIS_INFO: Optional[RedisInfo] = RedisInfo()
+    REDIS_INFO: RedisInfo = Field(default_factory=RedisInfo)
     REDIS_STREAM_INFO: Optional[RedisStreamConsumerInfo] = None
-    MYSQL_INFO: Optional[MysqlInfo] = MysqlInfo()
-    POSTGRES_INFO: Optional[PostgresInfo] = PostgresInfo()
+    MYSQL_INFO: MysqlInfo = Field(default_factory=MysqlInfo)
+    POSTGRES_INFO: PostgresInfo = Field(default_factory=PostgresInfo)
     POSTGRESS_INFO: Optional[PostgresInfo] = None # Typo-compatible alias for POSTGRES_INFO.
-    MONBODB_INFO: Optional[MongodbInfo] = MongodbInfo()
+    MONBODB_INFO: MongodbInfo = Field(default_factory=MongodbInfo)
 
-    RABBITMQ_INFO: Optional[RabbitMQInfo] = RabbitMQInfo()
-    KAFKA_INFO: Optional[KafkaInfo] = KafkaInfo()
+    RABBITMQ_INFO: RabbitMQInfo = Field(default_factory=RabbitMQInfo)
+    KAFKA_INFO: KafkaInfo = Field(default_factory=KafkaInfo)
 
     CPY_EXTENSIONS: Optional[CPYExtensionsConfig] = CPYExtensionsConfig()
     

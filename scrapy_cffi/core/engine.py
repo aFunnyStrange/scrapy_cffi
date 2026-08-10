@@ -48,9 +48,9 @@ class Engine:
 
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if crawler.kafkaManager:
+        if crawler.resources.kafka:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=crawler.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=crawler.resources.kafka, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
@@ -179,6 +179,8 @@ class Engine:
                         await self.taskManager.create(callfunc=CallFunction(func=self.manager_spiderinterceptors_result, spiderinterceptors_result=item))
             completed = True
         finally:
+            if isinstance(response, StreamResponse):
+                await response.aclose()
             if completed and source_request is not None:
                 complete = getattr(self.scheduler, "complete_request", None)
                 if complete:
@@ -322,15 +324,12 @@ class Engine:
         
         websocket_entry: "WebSocketEntry" = wrapper.get_websocket(request.url)
         if websocket_entry and request.send_message:
-            if getattr(getattr(websocket_entry.websocket, "curl", None), "_curl", None) is not None:
+            if websocket_entry.websocket is not None:
                 # WebSocket communication is deduplicated by connection only.
                 # Once connection uniqueness is ensured, subsequent messages run on a single device,
                 # so message deduplication is handled only by new_req_seen, not in is_req.
-                # Send the message asynchronously in a thread to avoid blocking.
-
-                # await run_with_timeout(ws.send, request.send_message, stop_event=self.stop_event, timeout=3)
                 for msg in request.send_message:
-                    await safe_call(websocket_entry.websocket.send, msg.data, flags=msg.flags)
+                    await websocket_entry.websocket.send(msg.data, flags=msg.flags)
 
             websocket_entry.release()
             self.sessions.release(request.session_id)

@@ -1,11 +1,11 @@
 import asyncio
 from .base import BaseSpider
 from ..core.downloader.internet.request import HttpRequest
-from ..databases.redis_ingress import resolve_redis_ingress
+from ..repo.redis_ingress import resolve_redis_ingress
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..crawler import Crawler
-    from ..databases.redis import RedisStreamMessage
+    from ..repo.redis import RedisStreamMessage
 
 class RedisSpider(BaseSpider):
     name = "redisSpider"

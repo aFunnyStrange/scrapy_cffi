@@ -8,7 +8,8 @@ from ..downloader.internet import Request
 
 if TYPE_CHECKING:
     from ...crawler import Crawler
-    from ...mq.kafka import KafkaManager, KafkaMessage
+    from ...repo.contracts import QueueMessage
+    from ...repo.contracts import RequestQueueRepositoryProtocol
     from ...settings import SettingsInfo
     from ...spiders import Spider
 
@@ -23,7 +24,7 @@ class KafkaScheduler(RedisScheduler):
     def __init__(
         self,
         spiders_name: List = None,
-        kafkaManager: "KafkaManager" = None,
+        request_queue: "RequestQueueRepositoryProtocol" = None,
         spider_classes: Optional[List[type]] = None,
         **kwargs,
     ):
@@ -32,9 +33,9 @@ class KafkaScheduler(RedisScheduler):
             spider_classes=spider_classes,
             **kwargs,
         )
-        if not kafkaManager:
+        if not request_queue:
             raise ValueError("KafkaScheduler requires settings.KAFKA_INFO to be configured")
-        self.kafkaManager = kafkaManager
+        self.request_queue = request_queue
         self._inflight_messages = {}
         self._start_messages = {}
 
@@ -54,8 +55,8 @@ class KafkaScheduler(RedisScheduler):
             sessions=crawler.sessions,
             sessions_lock=crawler.sessions_lock,
             signalManager=crawler.signalManager,
-            redisManager=crawler.redisManager,
-            kafkaManager=crawler.kafkaManager,
+            redis_repository=crawler.resources.redis,
+            request_queue=crawler.resources.kafka,
         )
 
     def get_queue_key(self, spider: "Spider") -> str:
@@ -83,15 +84,15 @@ class KafkaScheduler(RedisScheduler):
 
         request_bytes = await self._request_to_bytes(request, spider)
         key = request.session_id.encode("utf-8") if request.session_id else None
-        result = await self.kafkaManager.produce(
+        result = await self.request_queue.push(
             self.get_queue_key(spider),
             request_bytes,
             key=key,
         )
-        if result is not None:
+        if result:
             start_message = self._start_messages.pop(id(request), None)
             if start_message is not None:
-                await self.kafkaManager.ack_request(start_message)
+                await self.request_queue.ack(start_message)
             emit_request_scheduled(self.signalManager, request)
             return True
         async with self.sessions_lock:
@@ -100,8 +101,8 @@ class KafkaScheduler(RedisScheduler):
         return False
 
     async def get(self, spider: "Spider" = None, **kwargs):
-        message = await self.kafkaManager.dequeue_request(
-            topic=self.get_queue_key(spider),
+        message = await self.request_queue.pop(
+            queue_name=self.get_queue_key(spider),
             consumer_group=self.get_consumer_group(spider),
         )
         if message is None:
@@ -114,7 +115,7 @@ class KafkaScheduler(RedisScheduler):
     async def complete_request(self, request: Request, spider: "Spider" = None) -> None:
         message = self._inflight_messages.pop(id(request), None)
         if message is not None:
-            await self.kafkaManager.ack_request(message)
+            await self.request_queue.ack(message)
 
     async def requeue_inflight(self, spider: "Spider") -> int:
         # Manual Kafka offsets remain uncommitted and are replayed after the
@@ -122,20 +123,20 @@ class KafkaScheduler(RedisScheduler):
         return 0
 
     async def get_start_req(self, spider: "Spider", **kwargs):
-        return await self.kafkaManager.dequeue_request(
-            topic=self.get_start_topic(spider),
+        return await self.request_queue.pop(
+            queue_name=self.get_start_topic(spider),
             consumer_group=self.get_consumer_group(spider, start=True),
         )
 
-    def attach_start_req(self, request: Request, message: "KafkaMessage") -> None:
+    def attach_start_req(self, request: Request, message: "QueueMessage") -> None:
         self._start_messages[id(request)] = message
 
-    async def ack_start_req(self, spider: "Spider", message: "KafkaMessage", **kwargs):
-        return await self.kafkaManager.ack_request(message)
+    async def ack_start_req(self, spider: "Spider", message: "QueueMessage", **kwargs):
+        return await self.request_queue.ack(message)
 
     async def cleanup(self, spider: "Spider") -> None:
         """Remove non-persistent Kafka request state owned by this spider."""
-        await self.kafkaManager.delete_topics(
+        await self.request_queue.delete(
             [self.get_queue_key(spider), self.get_start_topic(spider)]
         )
 

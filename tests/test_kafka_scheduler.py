@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 class FakeRedis:
     redis_mode = "single"
-    _redis_url = []
+    cluster_nodes = []
 
     def __init__(self):
         self.hashes = {}
@@ -63,6 +63,21 @@ class FakeKafka:
         for topic in topics:
             self.topics.pop(topic, None)
 
+    async def push(self, queue_name, payload, key=None):
+        return await self.produce(queue_name, payload, key=key) is not None
+
+    async def pop(self, queue_name, consumer_group=None, **kwargs):
+        return await self.dequeue_request(queue_name, consumer_group, **kwargs)
+
+    async def ack(self, message):
+        return await self.ack_request(message)
+
+    async def size(self, queue_name):
+        return len(self.topics.get(queue_name, []))
+
+    async def delete(self, queue_names):
+        await self.delete_topics(queue_names)
+
 
 class FakeRabbit:
     def __init__(self):
@@ -83,6 +98,22 @@ class FakeRabbit:
         self.queues.pop(queue_name, None)
         return True
 
+    async def push(self, queue_name, payload, key=None):
+        return await self.rpush(queue_name, payload)
+
+    async def pop(self, queue_name, consumer_group=None, **kwargs):
+        return await self.dequeue_request(queue_name)
+
+    async def ack(self, message):
+        return True
+
+    async def size(self, queue_name):
+        return await self.llen(queue_name)
+
+    async def delete(self, queue_names):
+        for queue_name in queue_names:
+            await self.delete_queue(queue_name)
+
 
 class Spider:
     name = "demo"
@@ -102,8 +133,8 @@ def _scheduler(settings, sessions, redis, kafka):
         sessions=sessions,
         sessions_lock=asyncio.Lock(),
         signalManager=MagicMock(),
-        redisManager=redis,
-        kafkaManager=kafka,
+        redis_repository=redis,
+        request_queue=kafka,
     )
 
 
@@ -162,10 +193,10 @@ def test_kafka_work_and_start_topics_are_separate_and_manually_acked():
 
 
 def test_kafka_topic_waits_for_partition_leaders_and_full_isr():
-    from scrapy_cffi.mq.kafka import KafkaManager
+    from scrapy_cffi.infra.kafka import KafkaClient
 
     async def run():
-        manager = object.__new__(KafkaManager)
+        manager = object.__new__(KafkaClient)
         manager.loop = asyncio.get_running_loop()
         manager._client_kwargs = {"request_timeout_ms": 1000}
         admin = SimpleNamespace(
@@ -233,7 +264,7 @@ def test_redis_scheduler_requeues_unfinished_request_for_ctrl_c():
             sessions=sessions,
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis,
+            redis_repository=redis,
         )
         request = HttpRequest(url="https://example.com", dont_filter=True)
         assert await scheduler.put(request, Spider())
@@ -274,8 +305,8 @@ def test_rabbit_scheduler_requeues_work_and_start_requests_for_ctrl_c():
             sessions=sessions,
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis,
-            rabbitmqManager=rabbit,
+            redis_repository=redis,
+            request_queue=rabbit,
         )
         request = HttpRequest(url="https://example.com", dont_filter=True)
         assert await scheduler.put(request, RabbitSpider())
@@ -305,8 +336,8 @@ def test_rabbit_and_kafka_nonpersistent_cleanup_keeps_redis_dedup_required():
         sessions = SessionManager(asyncio.Event(), settings)
 
         for scheduler_cls, manager_kw in (
-            (RabbitMqScheduler, {"rabbitmqManager": FakeRabbit()}),
-            (KafkaScheduler, {"kafkaManager": FakeKafka()}),
+                (RabbitMqScheduler, {"request_queue": FakeRabbit()}),
+                (KafkaScheduler, {"request_queue": FakeKafka()}),
         ):
             try:
                 scheduler_cls(
@@ -316,7 +347,7 @@ def test_rabbit_and_kafka_nonpersistent_cleanup_keeps_redis_dedup_required():
                     sessions=sessions,
                     sessions_lock=asyncio.Lock(),
                     signalManager=MagicMock(),
-                    redisManager=None,
+                    redis_repository=None,
                     **manager_kw,
                 )
             except ValueError as exc:
@@ -334,8 +365,8 @@ def test_rabbit_and_kafka_nonpersistent_cleanup_keeps_redis_dedup_required():
             sessions=sessions,
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis,
-            rabbitmqManager=rabbit,
+            redis_repository=redis,
+            request_queue=rabbit,
         )
 
         class RabbitSpider:
@@ -376,22 +407,22 @@ def test_kafka_offsets_commit_only_after_contiguous_completion():
         sys.modules["aiokafka.errors"] = errors
         sys.modules["aiokafka.structs"] = structs
 
-    from scrapy_cffi.mq.kafka import KafkaManager, KafkaMessage
+    from scrapy_cffi.infra.kafka import KafkaClient, KafkaRecord
 
     async def run():
-        manager = KafkaManager(asyncio.Event(), "127.0.0.1:9092")
+        manager = KafkaClient("127.0.0.1:9092")
         consumer = MagicMock()
         consumer.commit = AsyncMock()
         manager._consumers[("work", "group")] = consumer
         manager._pending_offsets[("work", "group", 0)] = deque(
             [[10, False], [11, False]]
         )
-        later = KafkaMessage("work", "group", 0, 11, b"later")
-        earlier = KafkaMessage("work", "group", 0, 10, b"earlier")
+        later = KafkaRecord("work", "group", 0, 11, b"later")
+        earlier = KafkaRecord("work", "group", 0, 10, b"earlier")
 
-        assert await manager.ack_request(later)
+        assert await manager.ack_request(later.topic, later.consumer_group, later.partition, later.offset)
         consumer.commit.assert_not_awaited()
-        assert await manager.ack_request(earlier)
+        assert await manager.ack_request(earlier.topic, earlier.consumer_group, earlier.partition, earlier.offset)
         consumer.commit.assert_awaited_once_with({("work", 0): (12, "")})
 
     asyncio.run(run())
@@ -437,22 +468,15 @@ def test_crawler_shutdown_cancels_then_requeues_then_snapshots_before_stop():
         crawler.engines = [SimpleNamespace(taskManager=crawler.taskManager)]
         crawler.spiders = [SimpleNamespace(name="demo")]
         crawler.schedulers = {"demo": Scheduler()}
-        redis_close = AsyncMock()
-        mongodb_close = AsyncMock()
-        crawler.redisManager = SimpleNamespace(close=redis_close)
-        crawler.mongodbManager = SimpleNamespace(close=mongodb_close)
+        resources_close = AsyncMock()
+        crawler.resources = SimpleNamespace(redis=object(), close=resources_close)
         crawler.signalManager = SimpleNamespace(stop=AsyncMock())
-        crawler.rabbitmqManager = None
-        crawler.kafkaManager = None
-        crawler.mysqlManager = None
-        crawler.postgresManager = None
 
         await crawler.shutdown()
         assert events[:4] == ["freeze", "cancel", "requeue", "snapshot"]
         assert crawler.stop_event.is_set()
         assert events[-1] == "close_sessions"
-        redis_close.assert_awaited_once()
-        mongodb_close.assert_awaited_once()
+        resources_close.assert_awaited_once()
 
     asyncio.run(run())
 
@@ -498,14 +522,10 @@ def test_crawler_nonpersistent_cleanup_runs_once_before_broker_close():
         crawler.spiders = [SimpleNamespace(name="demo")]
         crawler.schedulers = {"demo": Scheduler()}
         crawler.signalManager = SimpleNamespace(stop=AsyncMock())
-        crawler.redisManager = SimpleNamespace(delete=AsyncMock(), close=AsyncMock())
-        crawler.rabbitmqManager = SimpleNamespace(
-            close=AsyncMock(side_effect=lambda: events.append("rabbit_close"))
+        crawler.resources = SimpleNamespace(
+            redis=object(),
+            close=AsyncMock(side_effect=lambda: events.append("rabbit_close")),
         )
-        crawler.kafkaManager = None
-        crawler.mysqlManager = None
-        crawler.postgresManager = None
-        crawler.mongodbManager = None
 
         await crawler.shutdown()
         assert events == ["cleanup", "rabbit_close"]
@@ -567,7 +587,7 @@ def test_crawler_redis_cleanup_survives_broker_cleanup_failure():
 
 
 def test_rabbit_queue_declaration_is_stable_across_persist_modes():
-    from scrapy_cffi.mq.rabbitmq import RabbitMQManager
+    from scrapy_cffi.infra.rabbitmq import RabbitMQClient
 
     async def run():
         declarations = []
@@ -582,8 +602,7 @@ def test_rabbit_queue_declaration_is_stable_across_persist_modes():
                 return Queue()
 
         for persist in (False, True):
-            manager = RabbitMQManager(
-                stop_event=asyncio.Event(),
+            manager = RabbitMQClient(
                 rabbitmq_url="amqp://guest:guest@127.0.0.1:5672/",
                 persist=persist,
             )
@@ -600,7 +619,7 @@ def test_rabbit_queue_declaration_is_stable_across_persist_modes():
 
 
 def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
-    from scrapy_cffi.mq.rabbitmq import RabbitMQManager
+    from scrapy_cffi.infra.rabbitmq import RabbitMQClient
 
     async def run():
         get_started = asyncio.Event()
@@ -619,8 +638,7 @@ def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
                 await finish_get.wait()
                 return Message()
 
-        manager = RabbitMQManager(
-            stop_event=asyncio.Event(),
+        manager = RabbitMQClient(
             rabbitmq_url="amqp://guest:guest@127.0.0.1:5672/",
             persist=False,
         )
@@ -675,7 +693,7 @@ def test_crawler_shutdown_preparation_is_atomic_when_callers_race():
         crawler.engines = [SimpleNamespace(taskManager=ManagedTasks())]
         crawler.spiders = [SimpleNamespace(name="demo")]
         crawler.schedulers = {"demo": Scheduler()}
-        crawler.redisManager = None
+        crawler.resources = SimpleNamespace(redis=None)
 
         await asyncio.gather(
             crawler._prepare_shutdown(),

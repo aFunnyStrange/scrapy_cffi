@@ -1,133 +1,201 @@
+"""Verify resilience is owned above concrete infrastructure clients."""
+
 import asyncio
-import inspect
 
-from scrapy_cffi.utils.reconnect import (
-    AsyncReconnectController,
-    reconnectable,
-)
+from scrapy_cffi.service import ResourceSlot, RetryPolicy
 
 
-def test_concurrent_failures_share_one_reconnect():
-    async def run():
-        stop_event = asyncio.Event()
-        state = {"connected": False, "reconnects": 0}
+class FakeResource:
+    """Represent one replaceable transport generation."""
 
-        async def reconnect():
+    def __init__(self, available: bool) -> None:
+        self.available = available
+        self.closed = False
+
+    async def connect(self) -> None:
+        """Initialize the fake transport."""
+
+    async def close(self) -> None:
+        """Record lifecycle closure."""
+        self.closed = True
+
+    async def read(self) -> str:
+        """Return a result or simulate a transport outage."""
+        if not self.available:
             await asyncio.sleep(0)
-            state["reconnects"] += 1
-            state["connected"] = True
+            raise ConnectionError("offline")
+        return "ok"
 
-        controller = AsyncReconnectController(
-            stop_event,
-            reconnect,
+
+def test_concurrent_failures_share_one_resource_replacement():
+    """Concurrent observers of one generation trigger one replacement."""
+
+    async def run() -> None:
+        builds = {"count": 0}
+
+        def factory() -> FakeResource:
+            builds["count"] += 1
+            return FakeResource(available=builds["count"] > 1)
+
+        slot = ResourceSlot(factory)
+        await slot.start()
+        policy = RetryPolicy(
+            asyncio.Event(),
             (ConnectionError,),
-            label="test",
+            max_attempts=3,
             retry_delay=0,
         )
 
-        async def operation():
-            if not state["connected"]:
-                await asyncio.sleep(0)
-                raise ConnectionError("offline")
-            return "ok"
+        async def invoke() -> str:
+            generation = slot.generation
+            return await policy.run(
+                lambda: slot.get().read(),
+                lambda: slot.replace(generation),
+            )
 
-        results = await asyncio.gather(
-            *[controller.run(operation) for _ in range(20)]
-        )
+        results = await asyncio.gather(*(invoke() for _ in range(20)))
         assert results == ["ok"] * 20
-        assert state["reconnects"] == 1
+        assert builds["count"] == 2
+        await slot.close()
 
     asyncio.run(run())
 
 
-def test_stop_event_cancels_before_operation_or_reconnect():
-    async def run():
+def test_stop_event_cancels_before_operation_or_recovery():
+    """A stopped runtime must not start an infrastructure call."""
+
+    async def run() -> None:
         stop_event = asyncio.Event()
         stop_event.set()
-        calls = {"operation": 0, "reconnect": 0}
+        calls = {"operation": 0, "recover": 0}
+        policy = RetryPolicy(stop_event, (ConnectionError,), retry_delay=0)
 
-        async def reconnect():
-            calls["reconnect"] += 1
-
-        async def operation():
+        async def operation() -> None:
             calls["operation"] += 1
 
-        controller = AsyncReconnectController(
-            stop_event,
-            reconnect,
-            (ConnectionError,),
-            label="test",
-            retry_delay=0,
-        )
+        async def recover() -> None:
+            calls["recover"] += 1
+
         try:
-            await controller.run(operation)
+            await policy.run(operation, recover)
         except asyncio.CancelledError:
             pass
         else:
-            raise AssertionError("stopped controller must cancel the operation")
-        assert calls == {"operation": 0, "reconnect": 0}
+            raise AssertionError("Stopped policy must cancel the operation")
+        assert calls == {"operation": 0, "recover": 0}
 
     asyncio.run(run())
 
 
-def test_reconnectable_preserves_explicit_method_signature():
-    class ExampleManager:
-        def __init__(self):
-            self._reconnect_controller = AsyncReconnectController(
-                asyncio.Event(),
-                self._reconnect,
-                (ConnectionError,),
-                label="example",
-                retry_delay=0,
-            )
-
-        async def _reconnect(self):
-            return None
-
-        @reconnectable
-        async def fetch(self, key: str, limit: int = 1) -> bytes:
-            return ("%s:%s" % (key, limit)).encode()
-
-    signature = inspect.signature(ExampleManager.fetch)
-    assert list(signature.parameters) == ["self", "key", "limit"]
-    assert signature.return_annotation is bytes
-
-
-def test_managers_do_not_intercept_all_attribute_access():
+def test_infrastructure_clients_do_not_own_retry_controllers():
+    """Concrete adapters expose lifecycle but no retry or reconnect controller."""
     import redis.asyncio as redis
 
-    from scrapy_cffi.databases.redis import RedisManager
-    from scrapy_cffi.databases.sqlalchemy_base import BaseSQLAlchemyManager
-    from scrapy_cffi.mq.kafka import KafkaManager
-    from scrapy_cffi.mq.rabbitmq import RabbitMQManager
+    from scrapy_cffi.infra.kafka import KafkaClient
+    from scrapy_cffi.infra.rabbitmq import RabbitMQClient
+    from scrapy_cffi.infra.redis import RedisClient
+    from scrapy_cffi.infra.sqlalchemy import SqlAlchemyClient
 
-    assert issubclass(RedisManager, redis.Redis)
-    assert "__getattribute__" not in RedisManager.__dict__
-    assert "__getattribute__" not in BaseSQLAlchemyManager.__dict__
-    assert "__getattribute__" not in KafkaManager.__dict__
-    assert "__getattribute__" not in RabbitMQManager.__dict__
+    assert issubclass(RedisClient, redis.Redis)
+    for client_type in (RedisClient, SqlAlchemyClient, KafkaClient, RabbitMQClient):
+        assert "_reconnect_controller" not in client_type.__dict__
+        assert "_reconnect" not in client_type.__dict__
 
 
-def test_explicit_recovery_also_collapses_concurrent_callers():
-    async def run():
-        stop_event = asyncio.Event()
-        reconnects = {"count": 0}
+def test_explicit_slot_replacement_collapses_concurrent_callers():
+    """The resource slot serializes replacement independently of retry policy."""
 
-        async def reconnect():
-            await asyncio.sleep(0)
-            reconnects["count"] += 1
+    async def run() -> None:
+        builds = {"count": 0}
 
-        controller = AsyncReconnectController(
-            stop_event,
-            reconnect,
+        def factory() -> FakeResource:
+            builds["count"] += 1
+            return FakeResource(True)
+
+        slot = ResourceSlot(factory)
+        await slot.start()
+        generation = slot.generation
+        await asyncio.gather(*(slot.replace(generation) for _ in range(20)))
+        assert builds["count"] == 2
+        await slot.close()
+
+    asyncio.run(run())
+
+
+def test_failed_resource_close_does_not_block_replacement():
+    """A broken old transport must not prevent constructing its replacement."""
+
+    class CloseFailingResource(FakeResource):
+        """Simulate a failed generation whose close call also fails."""
+
+        async def close(self) -> None:
+            """Raise the transport's close failure."""
+            raise ConnectionError("close failed")
+
+    async def run() -> None:
+        """Replace the broken generation and verify the next one is usable."""
+        builds = {"count": 0}
+
+        def factory() -> FakeResource:
+            """Return one broken generation followed by a healthy one."""
+            builds["count"] += 1
+            if builds["count"] == 1:
+                return CloseFailingResource(False)
+            return FakeResource(True)
+
+        slot = ResourceSlot(factory)
+        await slot.start()
+        await slot.replace(slot.generation)
+        assert await slot.get().read() == "ok"
+        assert builds["count"] == 2
+        await slot.close()
+
+    asyncio.run(run())
+
+
+def test_failed_replacement_connect_is_retried_before_next_operation():
+    """Recovery retries client construction instead of calling an empty slot."""
+
+    class ConnectFailingResource(FakeResource):
+        """Simulate one resource generation that cannot connect."""
+
+        async def connect(self) -> None:
+            """Raise a retryable connection failure."""
+            raise ConnectionError("connect failed")
+
+    async def run() -> None:
+        """Reach a healthy third generation through bounded recovery."""
+        builds = {"count": 0}
+
+        def factory() -> FakeResource:
+            """Return failed operation, failed connection, then success."""
+            builds["count"] += 1
+            if builds["count"] == 1:
+                return FakeResource(False)
+            if builds["count"] == 2:
+                return ConnectFailingResource(False)
+            return FakeResource(True)
+
+        slot = ResourceSlot(factory)
+        await slot.start()
+        policy = RetryPolicy(
+            asyncio.Event(),
             (ConnectionError,),
-            label="loop",
+            max_attempts=3,
             retry_delay=0,
         )
-        observed_generation = controller.generation
-        await asyncio.gather(
-            *[controller.recover(observed_generation) for _ in range(20)]
+
+        async def operation() -> str:
+            """Read from the current transport generation."""
+            return await slot.get().read()
+
+        observed = slot.generation
+        result = await policy.run(
+            operation,
+            lambda: slot.replace(observed),
         )
-        assert reconnects["count"] == 1
+        assert result == "ok"
+        assert builds["count"] == 3
+        await slot.close()
 
     asyncio.run(run())

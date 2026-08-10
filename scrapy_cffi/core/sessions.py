@@ -7,10 +7,17 @@
 
 import asyncio, hashlib, random
 from http.cookiejar import Cookie
-from curl_cffi import requests
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
 from .downloader.internet import MediaRequest
+from ..platform.http import (
+    AsyncHttpSessionProtocol,
+    AsyncHttpStreamProtocol,
+    AsyncWebSocketProtocol,
+    HttpResponseProtocol,
+    HttpSessionFactory,
+    HttpTransportError,
+)
 from ..utils.algorithm import create_uniqueId
 from ..utils.common import run_with_timeout
 from ..utils.concurrency import safe_call
@@ -19,9 +26,8 @@ if TYPE_CHECKING:
     from logging import Logger
     from ..crawler import Crawler
     from ..settings import SettingsInfo
-    from curl_cffi.requests import Response
     from .downloader.internet import HttpRequest, WebSocketRequest
-    from ..mq.kafka import KafkaManager
+    from ..repo.queue import KafkaQueueRepository
     from ..models.api import WebSocketMsg
 
 class CloseSignal:
@@ -59,7 +65,7 @@ class WebSocketEntry:
         self.end_tag: str = end_tag
         self.url: str = url
         self.task: asyncio.Task = task
-        self.websocket: requests.websockets.WebSocket = None
+        self.websocket: Optional[AsyncWebSocketProtocol] = None
         self.queue: asyncio.Queue = queue
         self.stop_event: asyncio.Event = asyncio.Event()
         self.stop_event.clear()
@@ -127,14 +133,9 @@ class WebSocketEntry:
                     except Exception as e:
                         self.logger.warning(f"[WebSocketEntry] Listener task raised exception for {self.url}: {e}")
 
-                ws_curl = getattr(getattr(self.websocket, "curl", None), "_curl", None)
-                if ws_curl is None:
-                    self.logger.debug(f"[WebSocketEntry] websocket already released for {self.url}")
-                    return
-
-                if hasattr(self.websocket, "close"):
+                if self.websocket is not None:
                     try:
-                        await safe_call(self.websocket.close)
+                        await self.websocket.close()
                     except Exception as e:
                         self.logger.warning(f"[WebSocketEntry] websocket.close() error for {self.url}: {e}")
         except BaseException as e:
@@ -175,7 +176,7 @@ class WebSocketPool:
             )
         return key
     
-    def set_websocket(self, url: str, websocket: requests.websockets.WebSocket) -> str: # return websocket_id
+    def set_websocket(self, url: str, websocket: AsyncWebSocketProtocol) -> str: # return websocket_id
         key = self._key(url)
         if key not in self._pool:
             raise ValueError(f'WebSocketEntry has not been initialized yet.')
@@ -231,20 +232,31 @@ class WebSocketPool:
 class SessionWrapper:
     """
     Represents a single HTTP/WS session identified by a session ID.
-    Wraps an asynchronous HTTP session (curl_cffi.requests.AsyncSession) and maintains a WebSocketPool for that session.
+    Wraps a framework HTTP session and maintains a WebSocketPool for that session.
     Supports configuring session-level cookies, retry policy, performing HTTP and WebSocket requests with retries, and closing connections.
     """
-    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo"=None, cookies: Dict=None, kafkaManager: "KafkaManager" = None):
+    def __init__(
+        self,
+        stop_event: asyncio.Event,
+        settings: "SettingsInfo" = None,
+        cookies: Dict = None,
+        kafka_repository: "KafkaQueueRepository" = None,
+        http_session_factory: HttpSessionFactory = None,
+    ):
         self.stop_event = stop_event
         self.settings = settings
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
-        self.session = requests.AsyncSession()
+        if http_session_factory is None:
+            from ..platform.curl_cffi import CurlCffiHttpSession
+
+            http_session_factory = CurlCffiHttpSession
+        self.session: AsyncHttpSessionProtocol = http_session_factory()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
         self.default_cookies = cookies or self.settings.DEFAULT_COOKIES
         self.update_session_cookies(self.default_cookies)
@@ -255,7 +267,7 @@ class SessionWrapper:
         self.retryer = AsyncRetrying(
             stop=stop_after_attempt(retry_times),
             wait=wait_fixed(retry_delay),
-            retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+            retry=retry_if_exception_type((HttpTransportError, ConnectionError, TimeoutError, OSError)),
             reraise=True
         )
 
@@ -278,15 +290,15 @@ class SessionWrapper:
         args.update({k: v for k, v in request.kwargs.items() if k != "json"})
         return args
     
-    async def do_request(self, session: requests.AsyncSession, request: Union["HttpRequest", "WebSocketRequest"], is_ws=False):
+    async def do_request(self, request: Union["HttpRequest", "WebSocketRequest"], is_ws: bool = False):
         async for attempt in self.retryer:
             with attempt:
                 if is_ws:
-                    return await self.ws_connect_once(session, request)
+                    return await self.ws_connect_once(request)
                 else:
-                    return await self.do_request_once(session, request)
+                    return await self.do_request_once(request)
                 
-    async def media_req(self, session: requests.AsyncSession, request: MediaRequest):
+    async def media_req(self, request: MediaRequest):
         all_file_data = []
         part_byte_start = 0
         part_byte_end = request.single_part_size
@@ -300,7 +312,7 @@ class SessionWrapper:
             range_key = request.find_header_key("Range")
             range_key = range_key if range_key else "Range"
             request.headers[range_key] = f"bytes={part_byte_start}-{part_byte_end}"
-            single_part_response: "Response" = await session.request(
+            single_part_response: HttpResponseProtocol = await self.session.request(
                 method=request.method, 
                 **self._build_request_args(request)
             )
@@ -313,21 +325,28 @@ class SessionWrapper:
                 break
         return single_part_response
     
-    async def do_request_once(self, session: requests.AsyncSession, request: "HttpRequest"):
+    async def do_request_once(self, request: "HttpRequest"):
         if isinstance(request, MediaRequest):
-            return await self.media_req(session=session, request=request)
+            return await self.media_req(request=request)
         
         method: Literal["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "TRACE", "PATCH"] = request.method
-        raw_response = await session.request(
+        raw_response = await self.session.request(
             method=method,
             **self._build_request_args(request)
         )
         return raw_response
+
+    async def open_stream(self, request: "HttpRequest") -> AsyncHttpStreamProtocol:
+        """Open a live HTTP stream through the configured platform session."""
+        return await self.session.open_stream(
+            method=request.method,
+            **self._build_request_args(request),
+        )
     
-    async def ws_connect_once(self, session: requests.AsyncSession, request: "WebSocketRequest"):
-        websocket: "requests.websockets.WebSocket" = await session.ws_connect(url=request.url, 
+    async def ws_connect_once(self, request: "WebSocketRequest") -> AsyncWebSocketProtocol:
+        websocket = await self.session.connect_websocket(url=request.url,
             headers=request.headers, 
-            cookies=session.cookies.get_dict(), 
+            cookies=self.session.cookies.get_dict(),
             proxies=request.proxies, 
             timeout=request.timeout,
             allow_redirects=request.allow_redirects,
@@ -348,7 +367,7 @@ class SessionWrapper:
     def init_websocket(self, url: str, task: asyncio.Task, queue: asyncio.Queue, ping_data: bytes=None, ping_interval: float=15.0) -> str: # return websocket_id
         return self.websocket_pool.init_websocket(end_tag=self.settings.WS_END_TAG, url=url, task=task, queue=queue, ping_data=ping_data, ping_interval=ping_interval)
 
-    def set_websocket(self, url: str, websocket: requests.websockets.WebSocket) -> str: # return websocket_id
+    def set_websocket(self, url: str, websocket: AsyncWebSocketProtocol) -> str: # return websocket_id
         return self.websocket_pool.set_websocket(url=url, websocket=websocket)
 
     def update_session_cookies(self, cookies_dict: Dict):
@@ -403,14 +422,15 @@ class SessionManager:
     Tracks reference counts for each session to manage usage, marks sessions as ended when tasks complete, and queues sessions for safe asynchronous cleanup via a background reaper loop.
     Provides methods to get/create sessions, batch register sessions with cookies, acquire/release sessions references, mark sessions as ended, and close sessions/groups safely without concurrency issues.
     """
-    def __init__(self, stop_event=None, settings=None, kafkaManager=None):
+    def __init__(self, stop_event=None, settings=None, kafka_repository=None, http_session_factory: HttpSessionFactory = None):
         self._default_session_id = create_uniqueId()
         self._sessions: Dict[str, SessionWrapper] = {self._default_session_id: None}
         self._group_sessions: Dict[str, List[str]] = {}
 
         self.stop_event: asyncio.Event = stop_event
         self.settings: "SettingsInfo" = settings
-        self.kafkaManager: "KafkaManager" = kafkaManager
+        self.kafka_repository: "KafkaQueueRepository" = kafka_repository
+        self.http_session_factory = http_session_factory
 
         # Tracks the current reference count (usage) for each session_id. Format: {session_id: count}
         self._ref_counts: Dict[str, int] = {} 
@@ -429,9 +449,9 @@ class SessionManager:
         self._frozen = False
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if self.kafkaManager:
+        if self.kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
@@ -439,7 +459,8 @@ class SessionManager:
         return cls(
             stop_event=crawler.stop_event, 
             settings=crawler.settings,
-            kafkaManager=crawler.kafkaManager,
+            kafka_repository=crawler.resources.kafka,
+            http_session_factory=crawler.http_session_factory,
         )
 
     def debug_sessions(self):
@@ -468,7 +489,13 @@ class SessionManager:
                 wrapper.update_session_cookies(cookies)
             return wrapper
 
-        wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies, kafkaManager=self.kafkaManager)
+        wrapper = SessionWrapper(
+            stop_event=self.stop_event,
+            settings=self.settings,
+            cookies=cookies,
+            kafka_repository=self.kafka_repository,
+            http_session_factory=self.http_session_factory,
+        )
         self._sessions[session_id] = wrapper
         return wrapper
     
@@ -481,7 +508,13 @@ class SessionManager:
 
         for session_id, cookies in user_cookies.items():
             if session_id not in self._sessions:
-                wrapper = SessionWrapper(stop_event=self.stop_event, settings=self.settings, cookies=cookies, kafkaManager=self.kafkaManager)
+                wrapper = SessionWrapper(
+                    stop_event=self.stop_event,
+                    settings=self.settings,
+                    cookies=cookies,
+                    kafka_repository=self.kafka_repository,
+                    http_session_factory=self.http_session_factory,
+                )
                 self._sessions[session_id] = wrapper
                 session_ids.append(session_id)
             else:

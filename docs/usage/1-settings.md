@@ -290,6 +290,22 @@ This ensures that download pressure cannot destabilize the framework on platform
 
 ---
 
+### 2.2.9 HTTP_SESSION_FACTORY
+
+Optional callable/class (preferred for IDE navigation) or import path that
+constructs an object satisfying `AsyncHttpSessionProtocol`. Leave it as `None`
+to use `CurlCffiHttpSession`. This is the composition point for testing or an
+alternate HTTP implementation; spiders and downloader code do not import the
+concrete request library.
+
+```python
+from my_project.http_adapter import MyHttpSession
+
+settings.HTTP_SESSION_FACTORY = MyHttpSession
+```
+
+---
+
 ## 2.3 Proxy Settings
 ### 2.3.1 PROXY_URL
 - **Type**: Optional[str]
@@ -799,7 +815,7 @@ Shared pool options inherited by `MysqlInfo` and `PostgresInfo`:
 | POOL_SIZE | int | 5 | Connection pool size |
 | MAX_OVERFLOW | int | 10 | Extra connections beyond pool size |
 
-When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawler calls `init()` on the corresponding manager at startup.
+When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the composition root creates the corresponding one-shot client and repository; `ResourceService.start()` owns startup.
 
 ---
 
@@ -807,7 +823,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.9.5.1 DRIVER
 - **Type**: str
 - **Default**: "mysql+asyncmy"
-- **Description**: The default driver prefix for integration with the `SQLAlchemyMySQLManager` provided by `scrapy_cffi` (install with `pip install "scrapy_cffi[mysql]"`). If you are using a custom MySQL manager, you may override this field to adapt the driver.
+- **Description**: The default driver prefix used by `MySQLClient` and `SQLRepository` (install with `pip install "scrapy_cffi[mysql]"`). Override it when the selected SQLAlchemy dialect requires another async driver.
 
 ---
 
@@ -815,7 +831,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.9.6.1 DRIVER
 - **Type**: str
 - **Default**: "postgresql+asyncpg"
-- **Description**: The default driver prefix for integration with the `SQLAlchemyPostgresManager` provided by `scrapy_cffi` (install with `pip install "scrapy_cffi[postgres]"`). If you are using a custom PostgreSQL manager, you may override this field to adapt the driver.
+- **Description**: The default driver prefix used by `PostgresClient` and `SQLRepository` (install with `pip install "scrapy_cffi[postgres]"`). Override it when the selected SQLAlchemy dialect requires another async driver.
 
 ---
 
@@ -825,7 +841,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 ---
 
 ## 2.10 Message Queue
-### 2.10.1 BaseMQInfo
+### 2.10.1 QueueConnectionInfo
 #### 2.10.1.1 DRIVER
 - **Type**: Optional[str]
 - **Default**: "amqp"
@@ -836,7 +852,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.10.1.2 URL
 - **Type**: Optional[str]
 - **Default**: None
-- **Description**: The primary configuration field. When provided, the framework will connect directly using this URL and manage reconnection automatically.
+- **Description**: The primary configuration field. The composition root creates a one-shot infrastructure client from this URL; bounded replacement and retry are owned by the service layer.
 
 ---
 
@@ -869,8 +885,8 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 ---
 
 #### 2.10.1.7 MODE
-- **Type**: MQMode
-- **Default**: MQMode.SINGLE
+- **Type**: QueueTopology
+- **Default**: QueueTopology.SINGLE
 - **Description**: Defines the deployment mode:
     - `SINGLE`: Single-node MQ instance.
     - `CLUSTER`: Multiple nodes, typically in a clustered MQ deployment.
@@ -880,7 +896,7 @@ When `MYSQL_INFO.resolved_url` or `POSTGRES_INFO.resolved_url` is set, the crawl
 #### 2.10.1.8 CLUSTER_NODES
 - **Type**: Optional[List[str]]
 - **Default**: []
-- **Description**: Required when `MQMode.CLUSTER` is used.
+- **Description**: Required when `QueueTopology.CLUSTER` is used.
 Provides the list of all cluster node URLs, e.g.:
 ```python
 ["amqp://user:pass@host1:5672/vhost", "amqp://user:pass@host2:5672/vhost", ...]

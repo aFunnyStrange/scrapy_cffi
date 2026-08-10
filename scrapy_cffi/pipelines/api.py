@@ -7,12 +7,7 @@ if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..spiders import Spider
     from ..hooks.pipelines import _PipelinesHooks
-    from ..databases import RedisManager
-    from ..databases.mysql import SQLAlchemyMySQLManager
-    from ..databases.postgres import SQLAlchemyPostgresManager
-    from ..databases.mongodb import MongoDBManager
-    from ..mq.rabbitmq import RabbitMQManager
-    from ..mq.kafka import KafkaManager
+    from ..service import ResourceService
     from ..settings import SettingsInfo
 
 class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
@@ -20,23 +15,13 @@ class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
         self, 
         stop_event: asyncio.Event=None,
         settings: "SettingsInfo"=None, 
-        redisManager: "RedisManager"=None, 
-        mysqlManager: "SQLAlchemyMySQLManager"=None,
-        postgresManager: "SQLAlchemyPostgresManager"=None,
-        mongodbManager: "MongoDBManager"=None,
-        rabbitmqManager: "RabbitMQManager"=None,
-        kafkaManager: "KafkaManager"=None,
+        resources: "ResourceService"=None,
         hooks: "_PipelinesHooks"=None
     ):
         super().__init__(
             stop_event=stop_event,
             settings=settings, 
-            redisManager=redisManager,
-            mysqlManager=mysqlManager,
-            postgresManager=postgresManager,
-            mongodbManager=mongodbManager,
-            rabbitmqManager=rabbitmqManager,
-            kafkaManager=kafkaManager,
+            resources=resources,
         )
         self.hooks = hooks
 
@@ -45,12 +30,7 @@ class _InnerPipeline(Pipeline): # scrapy_cffi version 0.1.x
         return cls(
             stop_event=crawler.stop_event,
             settings=crawler.settings,
-            redisManager=crawler.redisManager,
-            mysqlManager=crawler.mysqlManager,
-            postgresManager=crawler.postgresManager,
-            mongodbManager=crawler.mongodbManager,
-            rabbitmqManager=crawler.rabbitmqManager,
-            kafkaManager=crawler.kafkaManager,
+            resources=crawler.resources,
             hooks=_pipelines_hooks(crawler)
         )
 

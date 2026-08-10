@@ -5,11 +5,10 @@ from typing import Optional, TYPE_CHECKING, Union, Dict, List, Callable
 from ..spiders import BaseSpider
 from ..core.sessions import CloseSignal
 from ..core.downloader.internet import Request
-from ..core.downloader.internet import Response
+from ..core.downloader.internet import Response, StreamResponse
 from ..item import Item
 if TYPE_CHECKING:
     from ..interceptors import SpiderInterceptor, DownloadInterceptor
-    from ..databases import RedisManager
     from ..crawler import Crawler
 
 class ChainNode:
@@ -25,13 +24,8 @@ class ChainManager:
         self.chain_tail: Optional[ChainNode] = None
         self.create_chain(crawler, class_list)
         self.settings = crawler.settings
-        self.redisManager: "RedisManager" = crawler.redisManager
         # from ..utils import init_logger
         # self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        # if crawler.kafkaManager:
-        #     from ..utils import KafkaLoggingHandler
-        #     kafka_handler = KafkaLoggingHandler(kafka=crawler.kafkaManager, stop_event=crawler.stop_event).create_fmt(self.settings)
-        #     self.logger.addHandler(kafka_handler)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler", class_list: list):
@@ -182,18 +176,26 @@ class InterruptibleChainManager(ChainManager):
             ChainResult directing the next step of processing.
         """
         node = self.chain_tail
+        owned_stream = response if isinstance(response, StreamResponse) else None
         while node:
             result = await node.instance.response_intercept(request=request, response=response, spider=spider)
             if result is None:
                 node = node.prev
                 continue
             if isinstance(result, Response):
+                if owned_stream is not None and result is not owned_stream:
+                    await owned_stream.aclose()
+                    owned_stream = None
                 node = node.prev
                 response = result
                 continue
             if isinstance(result, Request):
+                if owned_stream is not None:
+                    await owned_stream.aclose()
                 return await callback(ChainResult(next=ChainNextEnum.RESCHEDULE, request=result, spider=spider))
             if isinstance(result, BaseException):
+                if owned_stream is not None:
+                    await owned_stream.aclose()
                 return await callback(ChainResult(next=ChainNextEnum.EXCEPTION, exception=result, request=request, spider=spider))
             raise ValueError("response_intercept_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=response, request=request, spider=spider))
@@ -255,6 +257,8 @@ class InterruptibleChainManager(ChainManager):
                 node = node.next
                 continue
             elif isinstance(result, BaseException):
+                if isinstance(response, StreamResponse):
+                    await response.aclose()
                 return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=result, request=request, spider=spider)) # Pass to spider errback
             raise ValueError("process_spider_input_chain got invalid return")
         return await callback(ChainResult(next=ChainNextEnum.SPIDER, response=response, request=request, spider=spider)) # Pass to spider callback

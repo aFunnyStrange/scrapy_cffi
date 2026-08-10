@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..item import Item
     from ..hooks.interceptors import InterceptorsHooks
     from ..core.sessions import SessionWrapper, WebSocketEntry
-    from ..mq.kafka import KafkaManager
+    from ..repo.queue import KafkaQueueRepository
 
 class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
     ResultType = Union[
@@ -33,15 +33,15 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         settings: "SettingsInfo"=None, 
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None,
-        kafkaManager: "KafkaManager"=None,
+        kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
+        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafka_repository=kafka_repository, **kwargs)
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if self.kafkaManager:
+        if self.kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
         self.default_ua = self.settings.USER_AGENT
@@ -139,16 +139,16 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None, 
         robot: "RobotsManager"=None,
-        kafkaManager: "KafkaManager"=None,
+        kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafkaManager=kafkaManager, **kwargs)
+        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafka_repository=kafka_repository, **kwargs)
         self.robot = robot
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if self.kafkaManager:
+        if self.kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=self.kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
@@ -159,7 +159,7 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
             hooks=interceptors_hooks(crawler),
             sessions_lock=crawler.sessions_lock,
             robot=crawler.robot,
-            kafkaManager=crawler.kafkaManager
+            kafka_repository=crawler.resources.kafka
         )
 
     def is_allow(self, url, allow_domains):

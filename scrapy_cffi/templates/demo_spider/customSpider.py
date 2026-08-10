@@ -1,5 +1,5 @@
 import random
-from curl_cffi.const import CurlWsFlag
+from scrapy_cffi.platform import WebSocketFlag
 from scrapy_cffi.utils import create_uniqueId
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.exceptions import Failure
@@ -35,7 +35,7 @@ class CustomSpider(Spider):
             errback=self.errRet,
             send_message=WebSocketMsg(
                 data=b"connect send test",
-                flags=CurlWsFlag.BINARY,
+        flags=WebSocketFlag.BINARY,
             ),
             ping_data=WebSocketMsg(data="ping"),
         )
@@ -48,7 +48,7 @@ class CustomSpider(Spider):
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,
-                send_message=WebSocketMsg(data=f"hello：{self.count} -> {js_res}".encode('utf-8'), flags=CurlWsFlag.BINARY)
+                send_message=WebSocketMsg(data=f"hello：{self.count} -> {js_res}".encode('utf-8'), flags=WebSocketFlag.BINARY)
             )
         elif self.count == 3:
             yield CloseSignal(
@@ -69,7 +69,7 @@ class CustomSpider(Spider):
             yield WebSocketRequest(
                 session_id=self.session_id,
                 websocket_id=response.websocket_id,
-                send_message=WebSocketMsg(data=f"retry after send session_end=True：{self.count} -> {js_res}".encode('utf-8'), flags=CurlWsFlag.BINARY)
+                send_message=WebSocketMsg(data=f"retry after send session_end=True：{self.count} -> {js_res}".encode('utf-8'), flags=WebSocketFlag.BINARY)
             )
         self.count += 1
 

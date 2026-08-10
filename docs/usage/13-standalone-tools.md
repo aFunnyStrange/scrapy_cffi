@@ -1,171 +1,82 @@
-# Standalone tools (without the crawler)
+# Direct use without starting a crawler
 
-`scrapy_cffi` can be used as a **tool library**: import `databases`, `mq`, `utils`, and `models` without starting a crawl loop.
-
-> **Tip:** Prefer submodule imports below. Root `import scrapy_cffi` only loads `runner` APIs on demand (lazy); it does not import `Crawler` until you access `run_spider` and friends.
-
-## Installation
-
-Same package as the framework:
-
-```bash
-pip install scrapy_cffi
-# or latest main:
-python -m pip install "scrapy_cffi @ git+https://github.com/aFunnyStrange/scrapy_cffi.git"
-```
-
-Optional extras: `scrapy_cffi[media]` for MIME helpers (`filetype`); tool namespace: `scrapy_cffi.tools` (lazy).
-
----
-
-## Tier-0: databases
-
-### Redis
+The stable direct-use boundary is `build_resource_service`, not the removed database/MQ Manager modules.
 
 ```python
 import asyncio
-from scrapy_cffi.databases import RedisManager
-from scrapy_cffi.models import RedisInfo
+
+from scrapy_cffi import build_resource_service
+from scrapy_cffi.config import RedisInfo
+from scrapy_cffi.settings import SettingsInfo
+
 
 async def main():
-    stop = asyncio.Event()
-    # Direct URL
-    redis = RedisManager(stop, "redis://127.0.0.1:6379/0")
-    await redis.set("k", "v")
-
-    # Or from config model
-    info = RedisInfo(HOST="127.0.0.1", PORT=6379, DB=0)
-    redis = RedisManager.from_redis_info(stop, info)
-
-asyncio.run(main())
-```
-
-### PostgreSQL / MySQL (SQLAlchemy async)
-
-```python
-import asyncio
-from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
-from scrapy_cffi.models import PostgresInfo
-
-async def main():
-    stop = asyncio.Event()
-    info = PostgresInfo(
-        HOST="127.0.0.1",
-        PORT=5432,
-        USERNAME="postgres",
-        PASSWORD="123456",
-        DB="app_db",
+    settings = SettingsInfo(
+        REDIS_INFO=RedisInfo(URL="redis://127.0.0.1:6379/0")
     )
-    db = SQLAlchemyPostgresManager.from_db_info(stop, info)
-    await db.init()
-    await db.execute("select 1")
-    await db.close()
+    resources = build_resource_service(settings, asyncio.Event())
+    await resources.start()
+    try:
+        await resources.redis.rpush("requests", b"payload")
+    finally:
+        await resources.close()
+
 
 asyncio.run(main())
 ```
 
-MySQL: `SQLAlchemyMySQLManager.from_db_info(stop, MysqlInfo(...))`.
+This path exercises the same configuration, repositories, retry policy, resource replacement, and shutdown behavior as a real crawler.
 
-### MongoDB
+## Layer-specific imports
+
+Use these only when intentionally testing or extending one layer:
 
 ```python
-from scrapy_cffi.databases.mongodb import MongoDBManager
-from scrapy_cffi.models import MongodbInfo
+# One-shot vendor transports; no retry policy.
+from scrapy_cffi.infra.redis import RedisClient
+from scrapy_cffi.infra.rabbitmq import RabbitMQClient
+from scrapy_cffi.infra.kafka import KafkaClient
 
-info = MongodbInfo(HOST="127.0.0.1", PORT=27017, DB="app")
-mongo = MongoDBManager.from_mongodb_info(asyncio.Event(), info)
+# Stable persistence and queue semantics.
+from scrapy_cffi.repo import RedisRepository, SQLRepository
+from scrapy_cffi.repo.queue import RabbitMQQueueRepository, KafkaQueueRepository
+
+# Lifecycle and resilience extensions.
+from scrapy_cffi.service import ResourceService, ResourceSlot, RetryPolicy
 ```
 
-### Redis Stream ingress (RedisSpider helpers)
+Infrastructure clients should normally be constructed by the composition root. If an extension uses a native client directly, that call is one-shot and the extension owns its failure handling.
+
+## Lightweight tools
+
+`scrapy_cffi.tools` now contains only helpers that do not construct external infrastructure:
 
 ```python
-from scrapy_cffi.databases.redis_ingress import (
-    RedisIngressConfig,
-    resolve_redis_ingress,
-    dequeue_start_request,
-)
-from scrapy_cffi.models import RedisStreamConsumerInfo, RedisIngressMode
-```
-
-See [14-multi-spider-resources.md](./14-multi-spider-resources.md) for key ownership.
-
-Dedup routing and shutdown cleanup: [15-deduplication.md](./15-deduplication.md).
-
----
-
-## Tier-0: message queues
-
-```python
-import asyncio
-from scrapy_cffi.mq import RabbitMQManager, KafkaManager
-from scrapy_cffi.models import RabbitMQInfo, KafkaInfo
-
-stop = asyncio.Event()
-rabbit = RabbitMQManager.from_rabbitmq_info(stop, RabbitMQInfo(URL="amqp://guest:guest@127.0.0.1:5672/"))
-kafka = KafkaManager.from_kafka_info(stop, KafkaInfo(URL="127.0.0.1:9092"))
-```
-
-Framework path (equivalent):
-
-```python
-RabbitMQManager.from_crawler(crawler)
-```
-
----
-
-## Tier-0: utils (lazy barrel + submodules)
-
-**Recommended** — import the submodule you need:
-
-```python
+from scrapy_cffi.tools import canonical_request_url, SettingsInfo
 from scrapy_cffi.utils.algorithm import do_sha1
 from scrapy_cffi.utils.jsonLoad import extract_json_chain
-from scrapy_cffi.utils.media import guess_content_type  # pip install scrapy_cffi[media]
-from scrapy_cffi.utils.envConfig import settings_to_env, env_to_settings
-from scrapy_cffi.utils.fd import FDUtil
 ```
 
-Legacy barrel (lazy, one symbol → one submodule load):
+Typed `TYPE_CHECKING` imports keep IDE navigation available while optional runtime dependencies remain lazy.
+
+## Redis Stream ingress helpers
 
 ```python
-from scrapy_cffi.utils import extract_json_chain  # OK; does not eager-import robot/jsonLoad/...
+from scrapy_cffi.config import RedisIngressMode, RedisStreamConsumerInfo
+from scrapy_cffi.repo.redis_ingress import (
+    RedisIngressConfig,
+    dequeue_start_request,
+    resolve_redis_ingress,
+)
 ```
 
-Avoid when you only need one helper:
-
-```python
-from scrapy_cffi.utils import RobotsManager  # pulls utils.robot (framework-oriented)
-```
-
-Media optional extra: `pip install scrapy_cffi[media]` (`filetype`, `Pillow`, `hachoir`) — replaces old `[windows]` / `[unix]` magic extras.
-
----
-
-## Factory cheat sheet
-
-| Component | Standalone factory | Framework |
-| --------- | ------------------ | --------- |
-| Redis | `RedisManager.from_redis_info(stop, info)` | `from_crawler(crawler)` |
-| MySQL / Postgres | `*.from_db_info(stop, info)` | `from_crawler(crawler)` |
-| MongoDB | `from_mongodb_info(stop, info)` | `from_crawler(crawler)` |
-| RabbitMQ | `from_rabbitmq_info(stop, info, persist=…)` | `from_crawler(crawler)` |
-| Kafka | `from_kafka_info(stop, info)` | `from_crawler(crawler)` |
-
-All factories accept `asyncio.Event` as `stop_event` for graceful shutdown.
-
-Optional single namespace (lazy): `from scrapy_cffi.tools import RedisManager, canonical_request_url` — see [13-standalone-tools.md](./13-standalone-tools.md).
-
----
-
-## Framework runner (lazy root API)
+## Framework runner
 
 ```python
 import scrapy_cffi
 
-# Loaded on first access — does not import Crawler at import time
 scrapy_cffi.run_all_spiders(settings)
-scrapy_cffi.run_spiders([scrapy_cffi.SpiderRunConfig(settings=a), ...])
-scrapy_cffi.run_spiders_sync([...])  # blocking multi-Crawler
+scrapy_cffi.run_spiders_sync([...])
 ```
 
-See [6-run.md](./6-run.md) and [ARCHITECTURE-ROADMAP.md](../ARCHITECTURE-ROADMAP.md).
+Root runner exports remain lazy and do not start a crawler merely by importing the package.

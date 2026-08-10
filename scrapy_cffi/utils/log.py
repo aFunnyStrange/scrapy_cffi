@@ -7,7 +7,7 @@ from logging.handlers import TimedRotatingFileHandler, QueueHandler, QueueListen
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..settings import LogInfo, SettingsInfo
-    from ..mq.kafka import KafkaManager
+    from ..repo.contracts import RequestQueueRepositoryProtocol
 
 class ShortNameFormatter(logging.Formatter):
     def format(self, record):
@@ -154,7 +154,7 @@ def init_logger_multiprocessing(
     return logger
 
 class KafkaLoggingHandler(logging.Handler):
-    def __init__(self, kafka: "KafkaManager", topic: str = "scrapy_cffi", stop_event: asyncio.Event = None):
+    def __init__(self, kafka: "RequestQueueRepositoryProtocol", topic: str = "scrapy_cffi", stop_event: asyncio.Event = None):
         super().__init__()
         self.kafka = kafka
         self.topic = topic
@@ -173,7 +173,7 @@ class KafkaLoggingHandler(logging.Handler):
                 try:
                     msg = await asyncio.wait_for(self.queue.get(), timeout=1)
                     try:
-                        await self.kafka.produce(self.topic, msg)
+                        await self.kafka.push(self.topic, msg)
                     finally:
                         self.queue.task_done()
                 except asyncio.TimeoutError:
@@ -183,7 +183,7 @@ class KafkaLoggingHandler(logging.Handler):
             while not self.queue.empty():
                 msg = await self.queue.get()
                 try:
-                    await self.kafka.produce(self.topic, msg)
+                    await self.kafka.push(self.topic, msg)
                 finally:
                     self.queue.task_done()
                     

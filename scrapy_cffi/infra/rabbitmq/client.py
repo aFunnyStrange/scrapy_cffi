@@ -1,6 +1,8 @@
+"""Implement one-shot RabbitMQ connectivity and channel operations."""
+
 import asyncio
 import random
-from typing import TYPE_CHECKING, Union, List, Dict
+from typing import TYPE_CHECKING, Any, Union, List, Dict, Optional
 
 try:
     import aio_pika
@@ -12,26 +14,24 @@ except ImportError as e:
         "Please install: pip install aio_pika"
     ) from e
 
-from ..utils.reconnect import AsyncReconnectController, reconnectable
-
 if TYPE_CHECKING:
-    from ..crawler import Crawler
-    from ..models.mq import RabbitMQInfo
+    from ...config.queue import RabbitMQInfo
 
-class RabbitMQManager:
+class RabbitMQClient:
+    """Own one generation of RabbitMQ connection and channel state."""
+
     def __init__(
         self,
-        stop_event: asyncio.Event = None,
-        rabbitmq_url: Union[str, List[str]] = None,
+        rabbitmq_url: Optional[Union[str, List[str]]] = None,
         exchange_name: str = "scrapy_cffi",
         exchange_type: ExchangeType = ExchangeType.DIRECT,
         prefetch_count: int = 10,
         persist: bool = False,
-        loop: asyncio.AbstractEventLoop = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
         connection_timeout: float = 10.0,
         heartbeat: int = 60,
     ):
-        self.stop_event = stop_event or asyncio.Event()
+        """Configure one-shot RabbitMQ connectivity without retry policy."""
         self.exchange_name = exchange_name
         self.exchange_type = exchange_type
         self.prefetch_count = prefetch_count
@@ -43,46 +43,38 @@ class RabbitMQManager:
         self._connect_lock = asyncio.Lock()
 
         if isinstance(rabbitmq_url, str):
-            self.mq_mode = "single"
+            self.topology = "single"
             self._mq_nodes = [rabbitmq_url]
         elif isinstance(rabbitmq_url, list):
-            self.mq_mode = "cluster"
+            self.topology = "cluster"
             if not rabbitmq_url:
                 raise ValueError("Empty rabbitmq_url cluster node list")
             self._mq_nodes = rabbitmq_url
         else:
             raise ValueError("rabbitmq_url must be str or list of str")
 
-        self._mq_url: str = None
-        self._connection: aio_pika.RobustConnection = None
-        self._channel: aio_pika.RobustChannel = None
-        self._exchange: aio_pika.Exchange = None
-        self._queues: Dict[str, aio_pika.Queue] = {}
-        self._consumer_channels: Dict[str, aio_pika.RobustChannel] = {}
-        self._consumer_queues: Dict[str, aio_pika.Queue] = {}
+        self._mq_url: Optional[str] = None
+        self._connection: Any = None
+        self._channel: Any = None
+        self._exchange: Any = None
+        self._queues: Dict[str, Any] = {}
+        self._consumer_channels: Dict[str, Any] = {}
+        self._consumer_queues: Dict[str, Any] = {}
         self._consumer_lock = asyncio.Lock()
-        self._reconnect_controller = AsyncReconnectController(
-            self.stop_event,
-            self._reconnect,
-            (AMQPConnectionError, ChannelClosed),
-            label="RabbitMQ",
-        )
-
     @classmethod
-    def from_rabbitmq_info(
+    def from_info(
         cls,
-        stop_event: asyncio.Event,
         info: "RabbitMQInfo",
         *,
         persist: bool = False,
-    ):
+    ) -> "RabbitMQClient":
+        """Build a RabbitMQ client from validated framework settings."""
         if not info.resolved_url:
-            raise ValueError("RabbitMQManager.from_rabbitmq_info requires RABBITMQ_INFO URL or cluster nodes")
+            raise ValueError("RabbitMQClient requires a configured URL or cluster nodes")
         exchange_type = info.EXCHANGE_TYPE
         if isinstance(exchange_type, str):
             exchange_type = ExchangeType(exchange_type)
         return cls(
-            stop_event=stop_event,
             rabbitmq_url=info.resolved_url,
             exchange_name=info.EXCHANGE_NAME,
             exchange_type=exchange_type,
@@ -92,19 +84,13 @@ class RabbitMQManager:
             heartbeat=info.HEARTBEAT,
         )
 
-    @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
-        return cls.from_rabbitmq_info(
-            crawler.stop_event,
-            crawler.settings.RABBITMQ_INFO,
-            persist=crawler.settings.SCHEDULER_PERSIST,
-        )
-
-    async def connect(self):
+    async def connect(self) -> None:
+        """Start this client generation once."""
         async with self._connect_lock:
             await self._connect_transport()
 
-    async def _connect_transport(self):
+    async def _connect_transport(self) -> None:
+        """Open the connection, channel, exchange, and QoS state."""
         if (
             self._connection is not None
             and not self._connection.is_closed
@@ -113,53 +99,31 @@ class RabbitMQManager:
             and self._exchange is not None
         ):
             return
-        last_exc = None
-        for attempt in range(3):
-            for node_url in random.sample(self._mq_nodes, k=len(self._mq_nodes)):
-                try:
-                    self._mq_url = node_url
-                    self._connection = await aio_pika.connect_robust(
-                        self._mq_url,
-                        loop=self.loop,
-                        timeout=self.connection_timeout,
-                        heartbeat=self.heartbeat,
-                    )
-                    self._channel = await self._connection.channel()
-                    await self._channel.set_qos(prefetch_count=self.prefetch_count)
-                    self._exchange = await self._channel.declare_exchange(
-                        # Exchange durability must not vary with scheduler state:
-                        # persistent and transient spiders may share one exchange.
-                        # Queue/message durability still follows SCHEDULER_PERSIST.
-                        self.exchange_name,
-                        type=self.exchange_type,
-                        durable=True,
-                    )
-                    # Queue objects belong to the old channel.
-                    self._queues.clear()
-                    self._consumer_channels.clear()
-                    self._consumer_queues.clear()
-                    return
-                except (AMQPConnectionError, ChannelClosed) as exc:
-                    last_exc = exc
-                    self._connection = None
-                    self._channel = None
-                    self._exchange = None
-            if attempt < 2 and not self.stop_event.is_set():
-                await asyncio.sleep(1)
-        if last_exc:
-            raise last_exc
+        self._mq_url = random.choice(self._mq_nodes)
+        self._connection = await aio_pika.connect(
+            self._mq_url,
+            loop=self.loop,
+            timeout=self.connection_timeout,
+            heartbeat=self.heartbeat,
+        )
+        self._channel = await self._connection.channel()
+        await self._channel.set_qos(prefetch_count=self.prefetch_count)
+        self._exchange = await self._channel.declare_exchange(
+            self.exchange_name,
+            type=self.exchange_type,
+            durable=True,
+        )
+        self._queues.clear()
+        self._consumer_channels.clear()
+        self._consumer_queues.clear()
 
-    async def _reconnect(self):
-        async with self._connect_lock:
-            await self._close_transport()
-            await self._connect_transport()
-
-    @reconnectable
-    async def declare_queue(self, queue_name: str, routing_key: str = None):
+    async def declare_queue(self, queue_name: str, routing_key: Optional[str] = None) -> Any:
+        """Declare and bind a durable logical request queue."""
         async with self._lock:
             return await self._declare_queue_unlocked(queue_name, routing_key)
 
-    async def _declare_queue_unlocked(self, queue_name: str, routing_key: str = None):
+    async def _declare_queue_unlocked(self, queue_name: str, routing_key: Optional[str] = None) -> Any:
+        """Declare one queue while the caller owns the declaration lock."""
         if queue_name in self._queues:
             return self._queues[queue_name]
         queue = await self._channel.declare_queue(
@@ -176,10 +140,13 @@ class RabbitMQManager:
         self._queues[queue_name] = queue
         return queue
 
-    @reconnectable
-    async def rpush(self, queue_name: str, message: bytes, routing_key: str = None):
-        if self.stop_event.is_set():
-            raise asyncio.CancelledError("Stop event set, abort RabbitMQ push")
+    async def rpush(
+        self,
+        queue_name: str,
+        message: bytes,
+        routing_key: Optional[str] = None,
+    ) -> bool:
+        """Publish one request payload after ensuring its binding exists."""
         if not self._exchange:
             await self.connect()
         routing_key = routing_key or queue_name
@@ -196,16 +163,13 @@ class RabbitMQManager:
             )
         return True
 
-    @reconnectable
-    async def dequeue_request(self, queue_name: str, timeout: int = 30) -> Union[bytes, None]:
+    async def dequeue_request(self, queue_name: str, timeout: float = 30) -> Optional[bytes]:
         """
         Cancellation-safe short polling for aio-pika's ``Basic.Get`` RPC.
 
         Polls are capped at one second so Ctrl+C remains responsive.
         The underlying RPC is shielded and settled before shutdown closes the channel.
         """
-        if self.stop_event.is_set():
-            raise asyncio.CancelledError("Stop event set, abort RabbitMQ pop")
         if not self._exchange:
             await self.connect()
         poll_timeout = min(max(float(timeout), 0.1), 1.0)
@@ -216,7 +180,7 @@ class RabbitMQManager:
         try:
             # Every logical queue owns a channel, so start/work Basic.Get RPCs
             # cannot block publishing or one another.
-            message: aio_pika.IncomingMessage = await asyncio.shield(get_task)
+            message = await asyncio.shield(get_task)
             if message:
                 async with message.process():
                     return message.body
@@ -232,7 +196,8 @@ class RabbitMQManager:
         except (asyncio.TimeoutError, QueueEmpty):
             return None
 
-    async def _get_consumer_queue(self, queue_name: str):
+    async def _get_consumer_queue(self, queue_name: str) -> Any:
+        """Return a queue backed by a dedicated consumer channel."""
         queue = self._consumer_queues.get(queue_name)
         if queue is not None:
             return queue
@@ -257,19 +222,13 @@ class RabbitMQManager:
             self._consumer_queues[queue_name] = queue
             return queue
 
-    @reconnectable
     async def llen(self, queue_name: str) -> int:
-        try:
-            async with self._lock:
-                queue = await self._channel.declare_queue(
-                    queue_name, durable=True, auto_delete=False, passive=True
-                )
-                return queue.declaration_result.message_count
-        except aio_pika.exceptions.ChannelClosed:
-            await self.connect()
-            return 0
-        except aio_pika.exceptions.ChannelInvalidStateError:
-            return 0
+        """Return the broker-reported message count for one queue."""
+        async with self._lock:
+            queue = await self._channel.declare_queue(
+                queue_name, durable=True, auto_delete=False, passive=True
+            )
+            return int(queue.declaration_result.message_count or 0)
 
     async def delete_queue(self, queue_name: str) -> bool:
         """Delete framework-owned transient state, including during shutdown."""
@@ -293,11 +252,13 @@ class RabbitMQManager:
             raise
         return True
 
-    async def close(self):
+    async def close(self) -> None:
+        """Close all transports owned by this client generation."""
         async with self._connect_lock:
             await self._close_transport()
 
-    async def _close_transport(self):
+    async def _close_transport(self) -> None:
+        """Close consumer channels, the shared channel, and connection."""
         consumer_channels = list(self._consumer_channels.values())
         self._consumer_channels.clear()
         self._consumer_queues.clear()

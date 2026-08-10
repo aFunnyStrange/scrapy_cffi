@@ -18,12 +18,15 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Fully asyncio-based engine** for maximum concurrency
 
-- **HTTP & WebSocket support**: built-in asynchronous clients
+- **Stable HTTP platform**: injectable async Protocols with curl_cffi
+  0.7.4-0.15 compatibility, WebSocket normalization, streaming, and SSE
 
-- **Flexible DB integration**: Redis, MySQL, **PostgreSQL**, MongoDB with
-  single-flight async reconnects and native IDE-visible client types
+- **Layered resource architecture**: parallel Redis, RabbitMQ, Kafka,
+  SQLAlchemy, and MongoDB infra clients; stable repositories; and one typed
+  service that owns lifecycle and bounded client replacement
 
-- **Message queue scheduling**: RabbitMQ and Kafka (separate Kafka start/work topics with manual acknowledgement)
+- **Message queue scheduling**: Redis, RabbitMQ, and Kafka capabilities behind
+  repository Protocols (separate Kafka start/work topics with manual acknowledgement)
 
 - **Configurable deployment**: settings system supporting `.env`, single-instance, **sentinel**, and **cluster** mode
 
@@ -92,6 +95,18 @@ Generated `runner.py` imports the generated Spider class directly, and generated
 classes instead of opaque strings. IDE navigation and completion therefore work
 out of the box; legacy string import paths remain supported.
 
+Streaming chat/SSE endpoints use the same request model:
+
+```python
+from scrapy_cffi.internet import HttpRequest, StreamResponse
+
+yield HttpRequest(url=chat_url, stream=True, callback=self.parse_stream)
+
+async def parse_stream(self, response: StreamResponse):
+    async for event in response.aiter_sse():
+        yield {"data": event.data}
+```
+
 For finite spiders, use `SCHEDULER_LOOP_END` to stop after a bounded number of
 empty scheduler loops. Continuous Redis/RabbitMQ/Kafka spiders normally leave
 it as `None`.
@@ -155,7 +170,7 @@ broker, cleanup, and console logs remain under
 Example `settings.py` snippet (Redis Sentinel):
 
 ```python
-from scrapy_cffi.models import RedisInfo
+from scrapy_cffi.config import RedisInfo
 
 settings.REDIS_INFO = RedisInfo(
     SENTINELS=[
@@ -187,7 +202,9 @@ settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
 
 Full technical documentation and module-level guides are available in the [`docs/usage/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory.
 
-Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md) · Architecture: [`docs/ARCHITECTURE-ROADMAP.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/ARCHITECTURE-ROADMAP.md) · **0.3.3**: [`docs/RELEASE-0.3.3.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.3.3.md) · **0.3.2**: [`docs/RELEASE-0.3.2.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.3.2.md).
+0.4.0 architecture and compatibility notes: [`docs/RELEASE-0.4.0.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.4.0.md).
+
+Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md) · Architecture: [`docs/ARCHITECTURE-ROADMAP.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/ARCHITECTURE-ROADMAP.md) · **0.4.0**: [`docs/RELEASE-0.4.0.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.4.0.md) · **0.3.3**: [`docs/RELEASE-0.3.3.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.3.3.md).
 
 ---
 

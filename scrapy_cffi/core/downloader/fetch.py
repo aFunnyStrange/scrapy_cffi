@@ -1,4 +1,4 @@
-import asyncio, time, inspect
+import asyncio, time
 from ...utils import async_context_factory, safe_call, run_with_timeout
 from typing import Tuple, TYPE_CHECKING, List, Callable
 # from ...utils import run_with_timeout
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ...settings import SettingsInfo
     from ...extensions import SignalManager
     from ..sessions import SessionManager, SessionWrapper
-    from ...mq.kafka import KafkaManager
+    from ...repo.queue import KafkaQueueRepository
 
 class Downloader:
     def __init__(
@@ -20,15 +20,15 @@ class Downloader:
         sessions: "SessionManager"=None, 
         sessions_lock=None, 
         signalManager: "SignalManager"=None,
-        kafkaManager: "KafkaManager"=None
+        kafka_repository: "KafkaQueueRepository"=None
     ):
         self.stop_event = stop_event
         self.settings = settings
         from ...utils import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if kafka_repository:
             from ...utils import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
         self.sessions = sessions
@@ -39,6 +39,8 @@ class Downloader:
             max_tasks=self.settings.MAX_CONCURRENT_REQ,
             semaphore_cls=asyncio.Semaphore if not self.settings.USE_STRICT_SEMAPHORE else None
         )
+        stream_limit = self.settings.MAX_CONCURRENT_REQ or 100
+        self._stream_semaphore = asyncio.Semaphore(stream_limit)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -48,7 +50,7 @@ class Downloader:
             sessions=crawler.sessions,
             sessions_lock=crawler.sessions_lock,
             signalManager=crawler.signalManager,
-            kafkaManager=crawler.kafkaManager,
+            kafka_repository=crawler.resources.kafka,
         )
     
     async def fetch_http(self, request: HttpRequest, callback: Callable) -> asyncio.Task:
@@ -58,6 +60,9 @@ class Downloader:
                 session_id=request.session_id,
                 cookies=request.cookies
             )
+            if request.stream:
+                await self._fetch_stream(wrapper=wrapper, request=request, callback=callback)
+                return
             raw_response = None
             async with self.sem_ctx():
                 # Some curl_cffi calls can occasionally hang on cancellation under heavy load.
@@ -65,7 +70,6 @@ class Downloader:
                 hard_timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0) + 2.0
                 raw_response = await run_with_timeout(
                     wrapper.do_request,
-                    session=wrapper.session,
                     request=request,
                     stop_event=self.stop_event,
                     timeout=hard_timeout,
@@ -98,6 +102,47 @@ class Downloader:
             async with self.sessions_lock:
                 self.sessions.release(session_id=request.session_id)
 
+    async def _fetch_stream(
+        self,
+        wrapper: "SessionWrapper",
+        request: HttpRequest,
+        callback: Callable,
+    ) -> None:
+        """Open a bounded live stream and transfer closure to StreamResponse."""
+        await self._stream_semaphore.acquire()
+        response = None
+        try:
+            hard_timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0) + 2.0
+            stream = await run_with_timeout(
+                wrapper.open_stream,
+                request=request,
+                stop_event=self.stop_event,
+                timeout=hard_timeout,
+                max_total_time=hard_timeout,
+            )
+            response = StreamResponse(
+                stream=stream,
+                release=self._stream_semaphore.release,
+                session_id=request.session_id,
+                meta=request.meta,
+                dont_filter=request.dont_filter,
+                callback=request.callback,
+                errback=request.errback,
+                desc_text=request.desc_text,
+                request=request,
+            )
+            self.signalManager.send(
+                signal=signals.response_received,
+                data=SignalInfo(signal_time=time.time(), request=request, response=response),
+            )
+            await callback(response=response, request=request)
+        except BaseException:
+            if response is not None:
+                await response.aclose()
+            else:
+                self._stream_semaphore.release()
+            raise
+
     async def cancel_ws_tasks(self, tasks: List[asyncio.Task]):
         for t in tasks:
             if not t.done():
@@ -113,7 +158,7 @@ class Downloader:
     async def downloaderWebSocketListener(self, websocket_event: asyncio.Event, wrapper: "SessionWrapper", request: WebSocketRequest, queue: asyncio.Queue):
         try:
             async with self.sem_ctx():
-                websocket = await wrapper.do_request(session=wrapper.session, request=request, is_ws=True)
+                websocket = await wrapper.do_request(request=request, is_ws=True)
                 websocket_id = wrapper.set_websocket(url=request.url, websocket=websocket)
                 if request.send_message: # Sending requests is supported during the initial WebSocket handshake
                     # await run_with_timeout(websocket.send, request.send_message, stop_event=self.stop_event)
@@ -122,10 +167,7 @@ class Downloader:
 
                 while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
                     try:
-                        if inspect.iscoroutinefunction(websocket.recv):
-                            recv_task = asyncio.create_task(websocket.recv())
-                        else:
-                            recv_task = asyncio.create_task(asyncio.to_thread(websocket.recv))
+                        recv_task = asyncio.create_task(websocket.recv())
                         wait_task = asyncio.create_task(websocket_event.wait())
                         stop_task = asyncio.create_task(self.stop_event.wait())
                         tasks = [recv_task, wait_task, stop_task]

@@ -1,7 +1,7 @@
 import asyncio, threading, multiprocessing, inspect
 from functools import partial
 from multiprocessing.managers import BaseManager as _BaseManager
-from typing import Any, Callable, Union, Dict, List, Optional, Awaitable
+from typing import Any, Callable, Union, Dict, List, Optional, Awaitable, Tuple
 
 # Start a new event loop in an async environment to run async code (this will occupy its own thread pool)
 async def run_coroutine_in_new_loop(
@@ -282,9 +282,21 @@ class ThreadFuture:
             self._callbacks.append(fn)
 
 class CallFunction:
-    def __init__(self, func: Callable, **kwargs):
+    """Store one callable invocation for deferred task execution."""
+
+    def __init__(
+        self,
+        func: Callable,
+        args: Optional[Tuple[Any, ...]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+        **call_kwargs: Any
+    ):
+        """Capture positional or direct keyword arguments without nesting them."""
         self.func = func
-        self.kwargs = kwargs
+        self.args = tuple(args or ())
+        if kwargs is not None and call_kwargs:
+            raise TypeError("CallFunction cannot mix kwargs mapping with direct keywords")
+        self.kwargs = dict(kwargs or call_kwargs)
 
         self.obj_id = self._get_obj_id(func)
 
@@ -295,7 +307,8 @@ class CallFunction:
         return id(obj)
 
     def to_coro(self) -> Awaitable:
-        result = self.func(**self.kwargs)
+        """Invoke the captured callable and normalize its result to awaitable."""
+        result = self.func(*self.args, **self.kwargs)
 
         if inspect.isawaitable(result):
             return result
@@ -306,6 +319,7 @@ class CallFunction:
         return _wrap_sync()
 
     def get_func_name(self) -> str:
+        """Return a task label including the bound instance identity."""
         base = self.func.__name__
         if self.obj_id:
             return f"{base}[{self.obj_id}]"

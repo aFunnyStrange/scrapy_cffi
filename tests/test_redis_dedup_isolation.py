@@ -25,6 +25,8 @@ def test_redis_put_skips_dedup_for_start_url():
     settings.SCHEDULER_PERSIST = False
 
     redis_mgr = MagicMock()
+    redis_mgr.redis_mode = "single"
+    redis_mgr.cluster_nodes = []
     redis_mgr.rpush = AsyncMock(return_value=1)
 
     spider = MagicMock()
@@ -40,7 +42,7 @@ def test_redis_put_skips_dedup_for_start_url():
             sessions=MagicMock(),
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis_mgr,
+            redis_repository=redis_mgr,
         )
         sch.dupefilter = MagicMock()
         sch.dupefilter.request_seen = AsyncMock(return_value=True)
@@ -57,14 +59,14 @@ def test_redis_namespace_per_spider():
 
     class FakeRedis:
         redis_mode = "single"
-        _redis_url = []
+        cluster_nodes = []
 
     class FakeSettings:
         _NEW_SEEN = "cffiFilter_new_seen"
         _SENT_SEEN = "cffiFilter_sent_seen"
 
-    r1 = DedupKeyRouter.from_redis_manager(FakeSettings(), FakeRedis(), namespace="customRedisSpider")
-    r2 = DedupKeyRouter.from_redis_manager(FakeSettings(), FakeRedis(), namespace="student")
+    r1 = DedupKeyRouter.from_redis_repository(FakeSettings(), FakeRedis(), namespace="customRedisSpider")
+    r2 = DedupKeyRouter.from_redis_repository(FakeSettings(), FakeRedis(), namespace="student")
     k1 = r1.for_fingerprint("abc")
     k2 = r2.for_fingerprint("abc")
     assert k1.new_seen != k2.new_seen
@@ -74,7 +76,7 @@ def test_redis_namespace_per_spider():
 
 def test_dedup_cleanup_keys_single_and_cluster():
     from scrapy_cffi.dupefilter.routing import DedupKeyRouter
-    from scrapy_cffi.models.databases import RedisMode
+    from scrapy_cffi.config.database import RedisMode
 
     single = DedupKeyRouter(
         base_new_seen="cffiFilter_new_seen",

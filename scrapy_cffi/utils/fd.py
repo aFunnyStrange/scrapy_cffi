@@ -1,8 +1,8 @@
 import os
 import platform
 import asyncio
-from curl_cffi import requests
 from typing import List
+from ..platform.http import AsyncHttpSessionProtocol, HttpSessionFactory
 
 try:
     import psutil
@@ -61,15 +61,24 @@ class FDUtil:
         used_fd = FDUtil.get_used_fd()
         print(f"[FDUtil] Max FD: {max_fd}, Used FD: {used_fd}")
 
-async def measure_connection_memory(url="http://127.0.0.1:8002", test_connections=50):
+async def measure_connection_memory(
+    url="http://127.0.0.1:8002",
+    test_connections=50,
+    http_session_factory: HttpSessionFactory = None,
+):
+    """Estimate connection memory using an injectable HTTP platform session."""
+    if http_session_factory is None:
+        from ..platform.curl_cffi import CurlCffiHttpSession
+
+        http_session_factory = CurlCffiHttpSession
     process = psutil.Process()
     mem_before = process.memory_info().rss
 
-    sessions: List[requests.AsyncSession] = []
+    sessions: List[AsyncHttpSessionProtocol] = []
     for _ in range(test_connections):
-        s = requests.AsyncSession()
+        s = http_session_factory()
         sessions.append(s)
-        await s.get(url)
+        await s.request("GET", url=url)
 
     mem_after = process.memory_info().rss
     per_connection_bytes = (mem_after - mem_before) / test_connections

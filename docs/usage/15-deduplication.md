@@ -22,7 +22,7 @@ Redis Cluster routes keys by **hash slot**. Dedup keys must land on the correct 
 - **Not** crawler load balancing
 - **Not** a replacement for Redis Cluster’s own routing
 
-The crawler still talks to one `RedisManager` cluster client; only **key names** are sharded.
+The crawler still talks to one `RedisRepository` backed by a cluster-aware `RedisClient`; only **key names** are sharded.
 
 ## Separate dedup service?
 
@@ -92,9 +92,9 @@ Ingress / `start_urls` requests carry `meta["is_start_url"]` and bypass dedup in
 
 ```python
 from scrapy_cffi.dupefilter.routing import DedupKeyRouter
-from scrapy_cffi.databases import RedisManager
+from scrapy_cffi.repo import RedisRepository
 
-router = DedupKeyRouter.from_redis_manager(settings, redis_manager, namespace="spider_a")
+router = DedupKeyRouter.from_redis_repository(settings, resources.redis, namespace="spider_a")
 keys = router.for_fingerprint("abc123fingerprint...")
 # keys.new_seen, keys.sent_seen
 ```

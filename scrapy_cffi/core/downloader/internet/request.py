@@ -1,9 +1,9 @@
 import json as jsonlib
 import base64, warnings
-from curl_cffi.const import CurlWsFlag
 from urllib.parse import urlencode
 from typing import Optional, Union, Dict, Tuple, List
 from ....models.api import WebSocketMsg
+from ....platform import WebSocketFlag
 from ....utils import ProtobufFactory
 from ....utils.state_codec import decode_state, encode_state
 from .registry import register_request_class, get_request_class
@@ -31,6 +31,7 @@ class Request(object):
         errback=None,
         desc_text="",
         no_proxy=False,
+        stream=False,
         **kwargs
     ) -> None:
         meta = meta or {}
@@ -53,6 +54,7 @@ class Request(object):
         self.errback = errback if isinstance(errback, str) else (errback.__name__ if errback else None)
         self.desc_text = desc_text
         self.no_proxy = no_proxy
+        self.stream = stream
         self.kwargs = kwargs
 
     def is_protobuf(self):
@@ -174,6 +176,7 @@ class HttpRequest(Request):
         errback=None,
         desc_text="",
         no_proxy=False,
+        stream=False,
         **kwargs
     ):
         self.method = method.upper()
@@ -202,6 +205,7 @@ class HttpRequest(Request):
             errback=errback,
             desc_text=desc_text,
             no_proxy=no_proxy,
+            stream=stream,
             **kwargs
         )
         if self.is_protobuf() and not isinstance(data, bytes):
@@ -332,7 +336,7 @@ class WebSocketRequest(Request):
         )
         self.websocket_id = websocket_id
         if send_message is None:
-            send_message = [WebSocketMsg(data=b"ping", flags=CurlWsFlag.BINARY)]
+            send_message = [WebSocketMsg(data=b"ping", flags=WebSocketFlag.BINARY)]
         elif not isinstance(send_message, list):
             send_message = [send_message]
 
@@ -362,5 +366,5 @@ class WebSocketRequest(Request):
                 raise TypeError(f"Message {m!r} not encoded as bytes.")
 
         stream_bytes = b"".join(m.data for m in self.send_message)
-        self.send_message = [WebSocketMsg(data=stream_bytes, flags=CurlWsFlag.BINARY)]
+        self.send_message = [WebSocketMsg(data=stream_bytes, flags=WebSocketFlag.BINARY)]
         return self

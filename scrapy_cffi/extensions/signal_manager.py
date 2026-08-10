@@ -6,14 +6,14 @@ if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..extensions import SignalInfo
     from ..settings import SettingsInfo
-    from ..mq.kafka import KafkaManager
+    from ..repo.queue import KafkaQueueRepository
 
 T = TypeVar("T")
 
 class SignalManager:
     SignalCallback = Union[Callable[[T], Any], Callable[[T], Awaitable[Any]]]
 
-    def __init__(self, stop_event=None, settings: "SettingsInfo"=None, maxsize=1000, kafkaManager: "KafkaManager"=None):
+    def __init__(self, stop_event=None, settings: "SettingsInfo"=None, maxsize=1000, kafka_repository: "KafkaQueueRepository"=None):
         self._listeners = defaultdict(list)
         self._queue = asyncio.Queue(maxsize=maxsize)
         self.stop_event: asyncio.Event = stop_event
@@ -22,9 +22,9 @@ class SignalManager:
         self._pending_tasks: Set[asyncio.Task] = set()
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(settings)
+            kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
@@ -32,7 +32,7 @@ class SignalManager:
         return cls(
             stop_event=crawler.stop_event, 
             settings=crawler.settings,
-            kafkaManager=crawler.kafkaManager,
+            kafka_repository=crawler.resources.kafka,
         )
 
     def connect(self, signal: object, callback: SignalCallback):

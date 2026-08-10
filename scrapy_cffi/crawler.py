@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from .settings import SettingsInfo
     from logging import Logger
+    from .service import ResourceService
 
 class Crawler:
     def __init__(self):
@@ -35,14 +36,10 @@ class Crawler:
         self.downloadInterceptor_chain = None
         self.pipelines_chain = None
         self.sessions = None
+        self.http_session_factory = None
         self.sessions_lock = None
 
-        self.redisManager = None
-        self.mysqlManager = None
-        self.postgresManager = None
-        self.mongodbManager = None
-        self.rabbitmqManager = None
-        self.kafkaManager = None
+        self.resources: "ResourceService" = None
 
         self.logger: "Logger" = None
         self.signalManager = None
@@ -65,6 +62,12 @@ class Crawler:
 
     def init_output(self, class_list):
         return [get_class_name(it) for it in class_list] if isinstance(class_list, list) else [get_class_name(class_list)]
+
+    def _build_resources(self) -> "ResourceService":
+        """Assemble concrete clients, repositories, and shared retry policy."""
+        from .composition import build_resource_service
+
+        return build_resource_service(self.settings, self.stop_event, logger=self.logger)
 
     async def do_initialization(self, settings: "SettingsInfo", start_type=0):
         self.stop_event = asyncio.Event()
@@ -93,46 +96,27 @@ class Crawler:
         from .utils.log import init_logger, KafkaLoggingHandler
         logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         self.logger = logger
-        # kafka
-        if self.settings.KAFKA_INFO.resolved_url:
-            from .mq.kafka import KafkaManager
-            self.kafkaManager = KafkaManager.from_crawler(self)
-            kafka_handler = KafkaLoggingHandler(kafka=self.kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+        self.resources = self._build_resources()
+        await self.resources.start()
+        if self.resources.kafka:
+            kafka_handler = KafkaLoggingHandler(kafka=self.resources.kafka, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
 
         self.sessions_lock = asyncio.Lock()
+        session_factory = self.settings.HTTP_SESSION_FACTORY
+        if isinstance(session_factory, str):
+            session_factory = load_object(session_factory)
+        if session_factory is None:
+            from .platform.curl_cffi import CurlCffiHttpSession
+
+            session_factory = CurlCffiHttpSession
+        if not callable(session_factory):
+            raise TypeError("HTTP_SESSION_FACTORY must be callable or an import path")
+        self.http_session_factory = session_factory
         self.sessions = SessionManager.from_crawler(self)
         self.signalManager = SignalManager.from_crawler(self)
         self.robot = RobotsManager.from_crawler(self)
         
-        # redis
-        if self.settings.REDIS_INFO.resolved_url:
-            from .databases import RedisManager
-            self.redisManager = RedisManager.from_crawler(self)
-
-        # mysql
-        if self.settings.MYSQL_INFO.resolved_url:
-            from .databases.mysql import SQLAlchemyMySQLManager
-            self.mysqlManager = SQLAlchemyMySQLManager.from_crawler(self)
-            await self.mysqlManager.init()
-
-        # postgres
-        if self.settings.POSTGRES_INFO.resolved_url:
-            from .databases.postgres import SQLAlchemyPostgresManager
-            self.postgresManager = SQLAlchemyPostgresManager.from_crawler(self)
-            await self.postgresManager.init()
-
-        # mongodb
-        if self.settings.MONBODB_INFO.resolved_url:
-            from .databases.mongodb import MongoDBManager
-            self.mongodbManager = MongoDBManager.from_crawler(self)
-            await self.mongodbManager.init()
-
-        # rabbitmq
-        if self.settings.RABBITMQ_INFO.resolved_url:
-            from .mq.rabbitmq import RabbitMQManager
-            self.rabbitmqManager = RabbitMQManager.from_crawler(self)
-
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
 
@@ -146,12 +130,7 @@ class Crawler:
         for ext_cls in self.settings.EXTENSIONS_PATH.value:
             self.extensions_list.append(ext_cls.from_crawler(
                 hooks=signals_hooks(self), 
-                redisManager=self.redisManager,
-                mysqlManager=self.mysqlManager,
-                postgresManager=self.postgresManager,
-                mongodbManager=self.mongodbManager,
-                rabbitmqManager=self.rabbitmqManager,
-                kafkaManager=self.kafkaManager,
+                resources=self.resources,
         ))
 
         self.downloader = Downloader.from_crawler(self)
@@ -304,7 +283,7 @@ class Crawler:
             self._runtime_closed = True
 
     async def _persist_scheduler_sessions(self):
-        if not self.settings.SCHEDULER_PERSIST or not self.redisManager:
+        if not self.settings.SCHEDULER_PERSIST or not self.resources.redis:
             return
         for spider in self.spiders or []:
             scheduler = self.schedulers.get(spider.name)
@@ -370,22 +349,7 @@ class Crawler:
         # idempotent broker cleanup here so normal exit and Ctrl+C behave alike.
         await self._cleanup_scheduler_state()
 
-        if self.rabbitmqManager:
-            await self.rabbitmqManager.close()
-
-        if self.kafkaManager:
-            await self.kafkaManager.close()
-
-        if self.mysqlManager:
-            await self.mysqlManager.close()
-
-        if self.postgresManager:
-            await self.postgresManager.close()
-
-        if self.mongodbManager:
-            await self.mongodbManager.close()
-
-        if self.redisManager:
-            await self.redisManager.close()
+        if self.resources:
+            await self.resources.close()
 
 __all__ = ["Crawler"]

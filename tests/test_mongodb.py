@@ -1,34 +1,31 @@
+"""Direct-debug MongoDB repository smoke flow."""
+
 import asyncio
-from scrapy_cffi.databases.mongodb import MongoDBManager
 
-async def main():
-    # Initialize MongoDBManager
-    mongo = MongoDBManager(asyncio.Event(), "mongodb://localhost:27017", "test_db")
-    await mongo.init()
+from scrapy_cffi import build_resource_service
+from scrapy_cffi.config.database import MongodbInfo
+from scrapy_cffi.settings import SettingsInfo
 
-    # Create a unique index on "name" if you want to prevent duplicates.
-    # If not set, MongoDB allows duplicate entries, and insert_one may raise DuplicateKeyError if unique=True.
-    await mongo.collection("test_collection").create_index("name", unique=True)
 
-    # Insert documents
-    await mongo.collection("test_collection").insert_one({"name": "Alice", "age": 23})
-    await mongo.collection("test_collection").insert_one({"name": "Alice", "age": 23}) # May raise duplicate key error
+async def main() -> None:
+    """Run one MongoDB collection flow."""
+    settings = SettingsInfo(
+        MONBODB_INFO=MongodbInfo(URL="mongodb://localhost:27017", DB="test_db")
+    )
+    resources = build_resource_service(settings, asyncio.Event())
+    await resources.start()
+    mongodb = resources.mongodb
+    if mongodb is None:
+        raise RuntimeError("MongoDB repository was not configured")
+    try:
+        collection = mongodb.collection("test_collection")
+        await collection.create_index("name")
+        await collection.insert_one({"name": "Alice", "age": 23})
+        print(await collection.find_one({"name": "Alice"}))
+        await mongodb.drop_database("test_db")
+    finally:
+        await resources.close()
 
-    # Find one document
-    doc = await mongo.collection("test_collection").find_one({"name": "Alice"})
-    print(doc)
-    print("————————————————————————————————————————")
-
-    # Iterate over all documents in the collection
-    tables_all = mongo.collection("test_collection").find()
-    async for doc in tables_all:
-        print(doc)
-
-    # Drop the test database
-    await mongo.drop_database("test_db")
-
-    # Close the connection
-    await mongo.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

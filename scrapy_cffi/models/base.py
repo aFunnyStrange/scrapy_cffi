@@ -1,6 +1,5 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 import codecs
-from pydantic_core.core_schema import FieldValidationInfo
 
 def create_validated_model(extra_mode: str):
     class _ValidatedModel(BaseModel):
@@ -12,7 +11,7 @@ def create_validated_model(extra_mode: str):
 
         @field_validator("*", mode="before")
         @classmethod
-        def check_special_fields(cls, v, info: FieldValidationInfo):
+        def check_special_fields(cls, v, info: ValidationInfo):
             if getattr(cls, "_encoding_fields", []) and info.field_name in cls._encoding_fields:
                 if v is not None:
                     try:

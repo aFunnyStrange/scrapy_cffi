@@ -4,9 +4,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.3.3** release: [docs/RELEASE-0.3.3.md](docs/RELEASE-0.3.3.md) · **0.3.2** release: [docs/RELEASE-0.3.2.md](docs/RELEASE-0.3.2.md)
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.0** release: [docs/RELEASE-0.4.0.md](docs/RELEASE-0.4.0.md) · **0.3.3** release: [docs/RELEASE-0.3.3.md](docs/RELEASE-0.3.3.md)
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-08-10
+
+### Added
+
+- Framework-owned async HTTP, WebSocket, cookie-jar, response, stream, and
+  session-factory Protocols under `scrapy_cffi.platform`.
+- `CurlCffiHttpSession` adapter covering qualified curl_cffi releases from
+  0.7.4 through 0.15, including normalized WebSocket lifecycle and failures.
+- `HttpRequest(stream=True)`, `StreamResponse`, and bounded `SSEEvent` parsing
+  for incremental downloads and AI/chat Server-Sent Event endpoints.
+- Framework-owned `WebSocketFlag`; the curl adapter converts it to the vendor
+  enum while existing `CurlWsFlag` inputs remain accepted.
+- Injectable `HTTP_SESSION_FACTORY` setting for protocol-compatible transports
+  and direct test doubles.
+- Layered external-resource architecture: parallel Redis, RabbitMQ, Kafka,
+  SQLAlchemy, and MongoDB infra clients; repository contracts; and a shared
+  resource service/composition root.
+- `INFRA_RETRY_ATTEMPTS` and `INFRA_RETRY_DELAY` settings for bounded,
+  observable service-layer recovery.
+
+### Changed
+
+- Python 3.9 resolves `curl_cffi>=0.7.4,<0.14`; Python 3.10+ resolves
+  `curl_cffi>=0.7.4,<0.16`, allowing 0.14/0.15 without dropping Python 3.9.
+- Session management, downloader, robots.txt loading, and FD diagnostics now
+  depend on the stable platform contract instead of curl_cffi concrete types.
+- Lazy root, utils, config, repository, service, tool, and downloader exports now provide
+  explicit type-checking imports so IDE completion/navigation works while
+  runtime optional-dependency isolation remains intact.
+- Schedulers now depend on `RedisRepositoryProtocol` and
+  `RequestQueueRepositoryProtocol`; pipelines, spiders, and extensions receive
+  one typed `ResourceService` instead of concrete Manager attributes.
+- RabbitMQ/Kafka endpoint models now use the queue-semantic
+  `QueueConnectionInfo` and `QueueTopology` names.
+- Infrastructure clients execute one operation once. Retry, resource
+  replacement, shutdown, and cancellation policy now live above repositories
+  in `service/`.
+
+### Fixed
+
+- WebSocket reuse no longer inspects curl_cffi's private `curl._curl` handle,
+  which disappeared behind the 0.14/0.15 asynchronous WebSocket rewrite.
+- Live streams retain bounded downloader capacity and close on callback
+  completion, cancellation, explicit close, or crawler shutdown.
+
+### Removed
+
+- Legacy `scrapy_cffi.databases`, `scrapy_cffi.mq`, and
+  `utils.reconnect` implementation modules and their `*Manager` APIs.
+- The misleading `infra/broker` grouping; Redis, RabbitMQ, and Kafka are
+  parallel external-system adapters because Redis may also carry queued work.
 
 ## [0.3.3] - 2026-08-01
 ### Added

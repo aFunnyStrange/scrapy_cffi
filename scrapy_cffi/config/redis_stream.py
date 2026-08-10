@@ -1,19 +1,19 @@
+"""Define Redis list and Stream ingress settings."""
+
 from enum import Enum
 from typing import Optional
 
-from .base import StrictValidatedModel
+from ..models.base import StrictValidatedModel
 
 
 class RedisIngressMode(str, Enum):
+    """Select list polling or Redis Stream consumer-group ingress."""
     LIST = "list"
     STREAM = "stream"
 
 
 class RedisStreamConsumerInfo(StrictValidatedModel):
-    """
-    Optional defaults for RedisSpider ingress (list or stream consumer group).
-    Spider class attributes still override these values when set.
-    """
+    """Store optional RedisSpider ingress defaults overridden by spider fields."""
 
     MODE: RedisIngressMode = RedisIngressMode.LIST
     STREAM_KEY: Optional[str] = None

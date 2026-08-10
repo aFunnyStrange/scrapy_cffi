@@ -1,51 +1,48 @@
-## 1.Introduction
-This pipeline follows the same behavior as Scrapy's `Item Pipeline`. It provides lifecycle hooks for spiders—such as opening and closing database connections or processing items—as part of a clean, modular design.
+# Item pipelines
 
-The decision to retain Scrapy-compatible pipeline behavior stems from the robustness and practicality of Scrapy’s original architecture. The `Item` class used in this framework is a clean and partially refactored reimplementation of Scrapy’s own `item.py` module. This ensures compatibility and familiar ergonomics for users, without requiring installation of the full Scrapy package. The design avoids reinventing the wheel while adapting it to an asyncio-based architecture.
+Pipelines retain Scrapy-style async lifecycle hooks while receiving framework services through stable contracts.
 
-**Item Design**
-Although items behave similarly to Python dictionaries, the `Item` class provides several key advantages over raw `dict` objects:
-- **Field declaration**: Fields can be explicitly declared, making data models clearer and easier to manage.
-- **Validation**: Accessing or assigning undefined keys can raise errors, helping catch typos and structural issues early.
-- **Extensibility**: Items support custom behavior such as serialization, nested structures, or integration with validation libraries.
-- **Compatibility**: Maintaining Scrapy-style items enables familiar workflows and easy migration for users coming from Scrapy.
+## Attributes
 
-This framework includes a lightweight, asyncio-compatible reimplementation of Scrapy’s original `Item` logic. While raw dictionaries are still supported in pipelines and callbacks, using `Item` classes is recommended for better structure and robustness in medium to large-scale scraping projects.
-
-
----
-
-
-## 2.Attributes
 | Attribute | Description |
-| --------- | ----------- |
-| **settings** | The global configuration loaded from `settings.py`. |
-| **logger** | A logger instance provided by the framework. |
-| **redisManager** | A Redis client maintained by the framework if Redis is enabled; otherwise, this will be `None`. It includes built-in auto-retry and reconnection logic for improved reliability, and fully exposes the native Redis API—users can operate it just like a standard Redis client. Test demo can be found in **8-databases.md**. |
-| **mysqlManager** | A MySQL client maintained by the framework if MySQL is enabled; otherwise `None`. Its explicit helper methods include single-flight retry/reconnect; native SQLAlchemy usage remains available through the typed `engine` and `session_factory` attributes. Configuration details can be found in **8-databases.md**. |
-| **postgresManager** | A PostgreSQL client maintained by the framework if PostgreSQL is enabled; otherwise `None`. It follows the same SQLAlchemy async style as `mysqlManager`, with retry/reconnect helpers and direct access to `engine` and `session_factory`. Configuration details can be found in **8-databases.md**. |
-| **mongodbManager** | A MongoDB client maintained by the framework if MongoDB is enabled; otherwise `None`. `collection()` retains the native `AsyncIOMotorCollection` type for IDE completion while an internal proxy performs single-flight reconnect. Configuration details can be found in **8-databases.md**. |
-| **rabbitmqManager** | A RabbitMQ client maintained by the framework if RabbitMQ is enabled; otherwise `None`. It is primarily used for data transport and message queuing. Configuration details can be found in **11-mq.md**. |
-| **kafkaManager** | A Kafka client maintained by the framework if Kafka is enabled; otherwise None. It is primarily used for producing logs and pushing items into additional Kafka queues. Configuration details can be found in **11-mq.md**. |
-| **hooks** | A signal hook manager that allows users to send custom signals during the pipeline lifecycle. For more in **10-hook.md** |
+| --- | --- |
+| `settings` | Validated `SettingsInfo` for the crawler. |
+| `logger` | Framework logger. |
+| `resources` | Typed `ResourceService` with optional `redis`, `mysql`, `postgres`, `mongodb`, `rabbitmq`, and `kafka` repositories. |
+| `hooks` | Pipeline-facing session and signal hooks. |
+
+The old six `*Manager` attributes were removed in 0.4. Repositories expose stable persistence and queue semantics; client lifecycle, bounded retry, and replacement are centralized in `ResourceService`.
+
+```python
+from scrapy_cffi.pipelines import Pipeline
 
 
----
+class SavePipeline(Pipeline):
+    async def process_item(self, item, spider):
+        postgres = self.resources.postgres
+        if postgres is None:
+            raise RuntimeError("POSTGRES_INFO is not configured")
+        await postgres.execute(
+            "insert into items(name) values (:name)",
+            {"name": item["name"]},
+        )
+        return item
+```
 
+Use `repository.client`, `engine`, or `session_factory` only when native vendor operations are intentional. Those escape-hatch calls are one-shot and are not silently replayed.
 
-## 3.Methods
-#### 3.1 open_spider(self, spider: "Spider")
-This method is called when the spider is opened.
-It is a good place to perform setup tasks such as establishing database connections to avoid reconnecting for every single item.
+## Lifecycle
 
-#### 3.2 process_item(self, item: Union["Item", Dict], spider: "Spider")
-Each item yielded by the spider passes through this method.
-You can perform data cleaning, transformation, and persistence (e.g., saving to a database) here.
+### `open_spider(spider)`
 
-#### 3.3 close_spider(self, spider: "Spider")
-This method is called when the spider is closed.
-It can be used to release resources, such as closing database connections.
+Called when the spider opens. Infrastructure has already been started, so use this hook for pipeline-specific preparation.
 
-> **Note:**
-> When using the `run_all_spiders` mode, all spiders share a common task counter managed by the framework.
-> As a result, spiders will not shut down individually after completing their own tasks, but will instead all close together after the entire task queue is processed.
+### `process_item(item, spider)`
+
+Receives every item yielded by callbacks and may validate, transform, persist, or drop it.
+
+### `close_spider(spider)`
+
+Called when the spider closes. Shared infrastructure is closed centrally after all engines stop; do not close `self.resources` from an individual pipeline.
+
+When `run_all_spiders` hosts multiple spiders in one crawler, they share one resource service and close together after all scheduled work completes.

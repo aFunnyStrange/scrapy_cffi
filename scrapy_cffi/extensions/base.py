@@ -5,12 +5,7 @@ if TYPE_CHECKING:
 class Extension:
     def __init__(self, hooks: "SignalsHooks", **kwargs):
         self.hooks = hooks
-        self.redisManager = kwargs.get("redisManager")
-        self.mysqlManager = kwargs.get("mysqlManager")
-        self.postgresManager = kwargs.get("postgresManager")
-        self.mongodbManager = kwargs.get("mongodbManager")
-        self.rabbitmqManager = kwargs.get("rabbitmqManager")
-        self.kafkaManager = kwargs.get("kafkaManager")
+        self.resources = kwargs.get("resources")
 
     @classmethod
     def from_crawler(cls, hooks: "SignalsHooks", **kwargs):

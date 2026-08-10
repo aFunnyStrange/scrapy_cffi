@@ -16,12 +16,57 @@ Framework bootstrap (still available from barrel)::
 Legacy barrel ``from scrapy_cffi.utils import X`` uses lazy ``__getattr__`` (see ``_exports``).
 """
 
+from typing import TYPE_CHECKING, Any
+
 from ._exports import __all__, resolve_utils_export
 
+if TYPE_CHECKING:
+    from .algorithm import create_uniqueId, do_otp, do_sha1, get_node
+    from .common import (
+        ResultHolder,
+        async_context_factory,
+        convert_to_toml,
+        get_all_spiders_cls,
+        get_all_spiders_name,
+        get_class_name,
+        get_or_create_loop,
+        get_run_py_dir,
+        load_object,
+        load_settings_from_py,
+        load_settings_with_path,
+        run_with_timeout,
+        setup_uvloop_once,
+        to_scrapy_settings_py,
+    )
+    from .concurrency import (
+        CallFunction,
+        ProcessManager,
+        ProcessTaskManager,
+        ThreadFuture,
+        run_coroutine_in_new_loop,
+        run_coroutine_in_thread,
+        safe_call,
+    )
+    from .email import Email
+    from .envConfig import env_to_settings, settings_to_env
+    from .fd import FDUtil
+    from .jsonLoad import JSONExtractor, JSONScanner, extract_json_chain, extract_nested_objects
+    from .log import (
+        KafkaLoggingHandler,
+        ShortNameFormatter,
+        init_logger,
+        init_logger_multiprocessing,
+        start_multiprocess_log_listener,
+    )
+    from .protobuf import ProtobufFactory
+    from .robot import RobotsManager, RobotsTxtRules, parse_robots_txt
 
-def __getattr__(name: str):
+
+def __getattr__(name: str) -> Any:
+    """Resolve one legacy barrel export without eager-importing all utilities."""
     return resolve_utils_export(name)
 
 
 def __dir__():
+    """Return the complete lazy public surface for interactive tooling."""
     return list(__all__)

@@ -17,16 +17,25 @@ if not importlib.util.find_spec("asyncpg"):
 
     pytest.skip(reason, allow_module_level=True)
 
-from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
+from scrapy_cffi import build_resource_service
+from scrapy_cffi.config.database import PostgresInfo
+from scrapy_cffi.settings import SettingsInfo
 
 
 async def main():
     stop_event = asyncio.Event()
-    manager = SQLAlchemyPostgresManager(
-        stop_event=stop_event,
-        db_url="postgresql+asyncpg://postgres:123456@127.0.0.1:5432/postgres",
+    resources = build_resource_service(
+        SettingsInfo(
+            POSTGRES_INFO=PostgresInfo(
+                URL="postgresql+asyncpg://postgres:123456@127.0.0.1:5432/postgres"
+            )
+        ),
+        stop_event,
     )
-    await manager.init()
+    await resources.start()
+    manager = resources.postgres
+    if manager is None:
+        raise RuntimeError("PostgreSQL repository was not configured")
     try:
         await manager.execute("drop table if exists scrapy_cffi_postgres_smoke")
         await manager.execute(
@@ -49,7 +58,7 @@ async def main():
         print(row)
     finally:
         # await manager.execute("drop table if exists scrapy_cffi_postgres_smoke")
-        await manager.close()
+        await resources.close()
 
 
 if __name__ == "__main__":

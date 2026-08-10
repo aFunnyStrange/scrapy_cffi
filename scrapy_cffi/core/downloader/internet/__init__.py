@@ -1,5 +1,5 @@
 from .request import Request, HttpRequest, MediaRequest, WebSocketRequest
-from .response import Response, HttpResponse, WebSocketResponse
+from .response import Response, HttpResponse, SSEEvent, StreamResponse, WebSocketResponse
 
 __all__ = [
     "Request",
@@ -8,5 +8,7 @@ __all__ = [
     "WebSocketRequest",
     "Response",
     "HttpResponse",
+    "SSEEvent",
+    "StreamResponse",
     "WebSocketResponse"
 ]

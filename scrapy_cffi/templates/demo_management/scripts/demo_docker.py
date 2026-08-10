@@ -373,35 +373,29 @@ def seed_request(
         "import asyncio\n"
         "from runner import DEFAULT_SPIDER\n"
         "from settings import create_settings\n"
+        "from scrapy_cffi import build_resource_service\n"
         "async def main():\n"
         "    settings = create_settings(DEFAULT_SPIDER)\n"
+        "    resources = build_resource_service(settings, asyncio.Event())\n"
+        "    await resources.start()\n"
     )
     if DEMO_MODE == "redis":
         code += (
-            "    from scrapy_cffi.databases.redis import RedisManager\n"
-            "    manager = RedisManager.from_redis_info("
-            "asyncio.Event(), settings.REDIS_INFO)\n"
-            "    await manager.rpush("
+            "    await resources.redis.rpush("
             f"'customRedisSpider_test', {start_url!r})\n"
         )
     elif DEMO_MODE == "rabbitmq":
         code += (
-            "    from scrapy_cffi.mq.rabbitmq import RabbitMQManager\n"
-            "    manager = RabbitMQManager.from_rabbitmq_info("
-            "asyncio.Event(), settings.RABBITMQ_INFO, persist=False)\n"
-            "    await manager.rpush("
+            "    await resources.rabbitmq.push("
             f"'scrapy_cffi', {start_url.encode()!r})\n"
         )
     else:
         code += (
-            "    from scrapy_cffi.mq.kafka import KafkaManager\n"
-            "    manager = KafkaManager.from_kafka_info("
-            "asyncio.Event(), settings.KAFKA_INFO)\n"
-            "    await manager.produce("
+            "    await resources.kafka.push("
             f"'customRedisSpider_start', {start_url.encode()!r})\n"
         )
     code += (
-        "    await manager.close()\n"
+        "    await resources.close()\n"
         "asyncio.run(main())\n"
     )
     with (log_dir / "enqueue.log").open("w", encoding="utf-8") as output:

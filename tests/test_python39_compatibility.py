@@ -45,7 +45,8 @@ def test_package_metadata_declares_real_python_minimum():
         (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
     assert project["requires-python"] == ">=3.9"
-    assert "curl_cffi>=0.7.4,<=0.13.0" in project["dependencies"]
+    assert "curl_cffi>=0.7.4,<0.14; python_version < '3.10'" in project["dependencies"]
+    assert "curl_cffi>=0.7.4,<0.16; python_version >= '3.10'" in project["dependencies"]
     assert "python-dotenv" in project["dependencies"]
     assert "dotenv" not in project["dependencies"]
     extras = project["optional-dependencies"]
@@ -111,6 +112,7 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
 
 def test_class_based_settings_export_to_recoverable_env_paths():
     from scrapy_cffi.pipelines import Pipeline
+    from scrapy_cffi.platform import CurlCffiHttpSession
     from scrapy_cffi.scheduler import RedisScheduler
     from scrapy_cffi.settings import SettingsInfo
     from scrapy_cffi.spiders import RedisSpider
@@ -120,6 +122,7 @@ def test_class_based_settings_export_to_recoverable_env_paths():
         SPIDERS_PATH=RedisSpider,
         SCHEDULER=RedisScheduler,
         ITEM_PIPELINES_PATH=[Pipeline],
+        HTTP_SESSION_FACTORY=CurlCffiHttpSession,
     )
     with tempfile.TemporaryDirectory() as directory:
         env_path = Path(directory) / ".env"
@@ -129,5 +132,7 @@ def test_class_based_settings_export_to_recoverable_env_paths():
 
     assert "<class" not in env_text
     assert "scrapy_cffi.core.scheduler.redis.RedisScheduler" in env_text
+    assert "scrapy_cffi.platform.curl_cffi.CurlCffiHttpSession" in env_text
     assert restored.SCHEDULER == "scrapy_cffi.core.scheduler.redis.RedisScheduler"
+    assert restored.HTTP_SESSION_FACTORY == "scrapy_cffi.platform.curl_cffi.CurlCffiHttpSession"
     assert restored.ITEM_PIPELINES_PATH.value == [Pipeline]

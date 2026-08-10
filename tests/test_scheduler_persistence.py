@@ -9,7 +9,7 @@ class FakeRedisHash:
         self.data = {}
         self.queues = {}
         self.redis_mode = "single"
-        self._redis_url = []
+        self.cluster_nodes = []
 
     async def hset(self, key, field, value):
         self.data.setdefault(key, {})[field] = value
@@ -175,7 +175,7 @@ def test_redis_scheduler_persists_before_enqueue_and_restores_after_dequeue():
             sessions=source_sessions,
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis,
+            redis_repository=redis,
         )
         request = HttpRequest(
             session_id="account",
@@ -193,7 +193,7 @@ def test_redis_scheduler_persists_before_enqueue_and_restores_after_dequeue():
             sessions=target_sessions,
             sessions_lock=asyncio.Lock(),
             signalManager=MagicMock(),
-            redisManager=redis,
+            redis_repository=redis,
         )
         restored_request = await target.get(Spider())
         assert restored_request.session_id == "account"

@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..settings import SettingsInfo
     from ..extensions import SignalManager
-    from ..mq.kafka import KafkaManager
+    from ..repo.queue import KafkaQueueRepository
 
 class TaskManager:
     def __init__(
@@ -14,7 +14,7 @@ class TaskManager:
         stop_event: asyncio.Event=None, 
         global_lock=None, 
         signalManager: "SignalManager"=None, 
-        kafkaManager: "KafkaManager"=None, 
+        kafka_repository: "KafkaQueueRepository"=None,
         settings: "SettingsInfo"=None, 
         is_distributed=False
     ):
@@ -23,9 +23,9 @@ class TaskManager:
 
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(settings)
+            kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(settings)
             self.logger.addHandler(kafka_handler)
 
         self.signalManager = signalManager
@@ -43,7 +43,7 @@ class TaskManager:
             stop_event=crawler.stop_event,
             global_lock=crawler.global_lock,
             signalManager=crawler.signalManager, 
-            kafkaManager=crawler.kafkaManager,
+            kafka_repository=crawler.resources.kafka,
             settings=crawler.settings, 
             is_distributed=is_distributed
         )

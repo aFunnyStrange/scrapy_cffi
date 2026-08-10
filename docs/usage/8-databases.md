@@ -1,134 +1,117 @@
-# 1.Introduction
-scrapy_cffi.databases provides adapter frameworks with automatic retry and reconnection utility classes for `Redis`, `MySQL`, `PostgreSQL`, and `MongoDB`. By default, `Redis` is included. For using the SQL or MongoDB utility classes, you need to install the dependencies manually:
+# Database architecture
 
-Python 3.9 through 3.13 are release-tested with all database extras. The core
-framework and the non-MySQL extras also pass on Python 3.14, but the current
-`asyncmy` release does not yet provide a usable Python 3.14 wheel in the tested
-WSL environment. Treat the MySQL extra on Python 3.14 as provisional until its
-driver support is available.
+Database support follows one dependency direction:
+
+```text
+Crawler / Pipeline / Spider
+  -> ResourceService
+  -> repository
+  -> infra client
+  -> vendor driver
+```
+
+- `scrapy_cffi.infra` owns one-shot vendor clients and connection pools.
+- `scrapy_cffi.repo` owns Redis queue/dedup/session semantics and SQL/Mongo persistence operations.
+- `scrapy_cffi.service` owns lifecycle, bounded retry, and client replacement.
+- `scrapy_cffi.composition.build_resource_service()` is the composition root used by `Crawler` and direct tests.
+
+Concrete clients do not contain crawler state, stop events, decorators, retry loops, or reconnect controllers.
+
+## Installation
+
+Redis is part of the core dependency set. Other databases are optional:
+
 ```bash
 pip install "scrapy_cffi[mysql]"
 pip install "scrapy_cffi[postgres]"
 pip install "scrapy_cffi[mongodb]"
 ```
 
-Optional PostgreSQL smoke test: `tests/test_postgres/test_postgres_manager.py` (requires running Postgres + `asyncpg`).
+## Framework use
 
----
+Spiders, pipelines, and extensions receive one typed `resources` service:
+
+```python
+from scrapy_cffi.pipelines import Pipeline
 
 
+class SavePipeline(Pipeline):
+    async def process_item(self, item, spider):
+        if self.resources.postgres is None:
+            raise RuntimeError("POSTGRES_INFO is not configured")
+        await self.resources.postgres.execute(
+            "insert into items(name) values (:name)",
+            {"name": item["name"]},
+        )
+        return item
+```
 
-# 2.Usage
-`RedisManager` and `MongoDBManager` support seamless use of their native APIs. `SQLAlchemyMySQLManager` and `SQLAlchemyPostgresManager` expose SQLAlchemy async `engine` and `session_factory`, plus small convenience helpers such as `execute`, `fetchone`, `fetchall`, and `run_stmt`.
+Available repositories are `resources.redis`, `mysql`, `postgres`, `mongodb`, `rabbitmq`, and `kafka`. An unconfigured resource is `None`.
 
-Specifically, once connected, `RedisManager` provides **full compatibility with the native `redis.asyncio` API**.
+## Direct and test use
 
-Retry is implemented at explicit I/O boundaries, not by intercepting every
-attribute access. Concurrent failures share one reconnect operation, so a
-database outage does not make every spider task rebuild the same client or
-pool. This also keeps public types visible to IDEs:
-
-- `RedisManager` subclasses `redis.asyncio.Redis`; native commands such as
-  `get`, `set`, Streams, pipelines, and scripts retain their normal completion.
-- `MongoDBManager.collection()` is typed as `AsyncIOMotorCollection` while a
-  small internal proxy refreshes the collection after reconnect.
-- SQL managers expose typed `engine` and `session_factory` attributes, and use
-  explicitly declared helpers instead of dynamic method wrapping.
-
-## 2.1 RedisManager
-An async Redis client extending `redis.asyncio.Redis` with full API support.
-
-**Features:**
-- Automatically retries and reconnects on connection failures.
-- Respects a global asyncio stop event to gracefully abort operations during shutdown.
-- Only allows certain Redis commands (e.g. DEL) to run when stopping to ensure safe cleanup.
-- Provides convenience methods with built-in retry for common queue and deduplication patterns.
-- Routes retry through Redis' common `execute_command` gateway; it does not
-  cache or replace bound Redis methods.
-
-**Usage**
-`RedisManager` only needs two things to initialize:
-1. An `asyncio.Event` (`stop_event`) — used for graceful shutdown.
-2. A `redis_url` — connection string for Redis.
-
-After that, it can be used exactly like a native `redis.asyncio.Redis` instance.
+Use the same composition path without starting a crawler:
 
 ```python
 import asyncio
-from scrapy_cffi.databases import RedisManager
+
+from scrapy_cffi import build_resource_service
+from scrapy_cffi.config import PostgresInfo
+from scrapy_cffi.settings import SettingsInfo
+
 
 async def main():
-    stop_event = asyncio.Event()
-    redis = RedisManager(stop_event, "redis://localhost:6379/0")
+    settings = SettingsInfo(
+        POSTGRES_INFO=PostgresInfo(
+            URL="postgresql+asyncpg://postgres:123456@127.0.0.1:5432/app"
+        )
+    )
+    resources = build_resource_service(settings, asyncio.Event())
+    await resources.start()
+    try:
+        if resources.postgres is None:
+            raise RuntimeError("POSTGRES_INFO is not configured")
+        row = await resources.postgres.fetchone("select 1")
+        print(row)
+    finally:
+        await resources.close()
 
-    await redis.set("foo", "bar")
-    val = await redis.get("foo")
-    print(val)  # b"bar"
-
-    # Graceful shutdown
-    stop_event.set()
 
 asyncio.run(main())
 ```
 
-### 2.1.1 Redis Stream ingress (RedisSpider)
-For `RedisSpider` start URLs, the framework supports list (`BLPOP`) and Stream consumer-group (`XREADGROUP`) modes. Configuration can live on the spider **or** in `settings.REDIS_STREAM_INFO`; resolution is handled by `scrapy_cffi.databases.redis_ingress`.
+This is the recommended functional-test boundary: tests may replace infra factories while exercising the real repository and service behavior.
 
-Low-level helpers on `RedisManager`:
-- `dequeue_stream_request(...)` — read one message from a consumer group
-- `ack_stream_request(message, group_name)` — `XACK`
+## Redis
 
-See [2-spiders.md](./2-spiders.md#22-redisspider) and [1-settings.md](./1-settings.md#293-redis_stream_info).
-
-## 2.2 SQLAlchemyMySQLManager / SQLAlchemyPostgresManager
-Only `execute`, `fetchone`, `fetchall`, and `run_stmt` are automatically
-replayed after a retryable connection failure. Native `engine` /
-`session_factory` usage remains fully explicit: transactions are never
-silently replayed by an attribute proxy.
-
-Both managers share `BaseSQLAlchemyManager` (retry, reconnect, pool). Configure connection and pool options via `MYSQL_INFO` / `POSTGRES_INFO` in settings — the crawler calls `init()` automatically when `resolved_url` is set.
+`RedisRepository` provides the scheduler operations used for queues, Streams, distributed deduplication, and session hashes. Its `client` property deliberately exposes the current native `RedisClient` for advanced Redis commands:
 
 ```python
-from scrapy_cffi.settings import SettingsInfo
-from scrapy_cffi.models import PostgresInfo
-
-settings = SettingsInfo()
-settings.POSTGRES_INFO = PostgresInfo(
-    HOST="127.0.0.1",
-    PORT=5432,
-    USERNAME="postgres",
-    PASSWORD="123456",
-    DB="app_db",
-    ECHO=False,
-    POOL_PRE_PING=True,
-    POOL_SIZE=5,
-    MAX_OVERFLOW=10,
-)
-# Or pass a full URL:
-# settings.POSTGRES_INFO.URL = "postgresql+asyncpg://postgres:123456@127.0.0.1:5432/app_db"
+redis_repo = resources.redis
+if redis_repo is None:
+    raise RuntimeError("REDIS_INFO is not configured")
+await redis_repo.client.set("custom:key", b"value")
 ```
 
-In a spider or pipeline, use `crawler.postgresManager` / `crawler.mysqlManager` after startup. Both managers extend `BaseSQLAlchemyManager` (shared retry/reconnect/session helpers).
+Calls through explicit repository methods receive bounded retry and resource replacement. Calls made directly through `.client` are intentionally one-shot and are never replayed by the framework.
 
-Extended usage examples:
-1. MongoDB: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mongodb.py
-2. MySQL: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_mysql.py
-3. PostgreSQL: https://github.com/aFunnyStrange/scrapy_cffi/blob/main/tests/test_postgres/test_postgres_manager.py
+Redis single-node, Sentinel, and Cluster topology is configured with `scrapy_cffi.config.RedisInfo`. Stream ingress resolution lives in `scrapy_cffi.repo.redis_ingress`.
 
-Standalone manager usage (PostgreSQL):
+## SQLAlchemy
+
+`SQLRepository` exposes `execute`, `fetchone`, `fetchall`, and `run_stmt`. These explicit operations may be retried after a retryable connection failure. The repository also exposes the current `engine` and `session_factory`; framework code never silently replays a user-controlled native transaction.
+
+MySQL and PostgreSQL fatal configuration errors, such as invalid credentials or a missing database, are not retried.
+
+## MongoDB
+
+`MongoRepository` provides `list_collections` and `drop_database` with bounded recovery. `collection(name)` returns the native Motor collection for IDE completion and explicit application-controlled operations.
+
+## Retry settings
 
 ```python
-from scrapy_cffi.databases.postgres import SQLAlchemyPostgresManager
-
-manager = SQLAlchemyPostgresManager(
-    stop_event,
-    "postgresql+asyncpg://postgres:123456@127.0.0.1:5432/app_db",
-)
-await manager.init()
-await manager.execute(
-    "insert into items (name, price) values (:name, :price)",
-    {"name": "demo", "price": 12},
-)
-row = await manager.fetchone("select * from items where name=:name", {"name": "demo"})
-await manager.close()
+settings.INFRA_RETRY_ATTEMPTS = 3
+settings.INFRA_RETRY_DELAY = 1.0
 ```
+
+Concurrent failures from the same client generation share one `ResourceSlot` replacement. `asyncio.CancelledError` is always propagated, and normal resource shutdown remains centralized in `ResourceService.close()`.

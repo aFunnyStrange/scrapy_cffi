@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import List, Optional, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ..databases.redis import RedisManager
+    from ..repo.contracts import RedisRepositoryProtocol
     from ..settings import SettingsInfo
 
 
@@ -49,21 +49,19 @@ class DedupKeyRouter:
         self._cluster_nodes = list(cluster_nodes or [])
 
     @classmethod
-    def from_redis_manager(
+    def from_redis_repository(
         cls,
         settings: "SettingsInfo",
-        redis_manager: "RedisManager",
+        redis_repository: "RedisRepositoryProtocol",
         namespace: str = "",
     ) -> "DedupKeyRouter":
         cluster_nodes: Optional[List[str]] = None
-        if redis_manager.redis_mode == "cluster":
-            cluster_nodes = [
-                f"{n['host']}:{n['port']}" for n in redis_manager._redis_url
-            ]
+        if redis_repository.redis_mode == "cluster":
+            cluster_nodes = list(redis_repository.cluster_nodes)
         return cls(
             base_new_seen=settings._NEW_SEEN,
             base_sent_seen=settings._SENT_SEEN,
-            redis_mode=redis_manager.redis_mode,
+            redis_mode=redis_repository.redis_mode,
             cluster_nodes=cluster_nodes,
             namespace=namespace,
         )

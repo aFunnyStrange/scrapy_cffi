@@ -5,8 +5,14 @@ from .internet import (
     WebSocketRequest,
     Response,
     HttpResponse,
+    SSEEvent,
+    StreamResponse,
     WebSocketResponse,
 )
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .fetch import Downloader
 
 __all__ = [
     "Downloader",
@@ -16,11 +22,14 @@ __all__ = [
     "WebSocketRequest",
     "Response",
     "HttpResponse",
+    "SSEEvent",
+    "StreamResponse",
     "WebSocketResponse",
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
+    """Resolve the downloader implementation without eager core imports."""
     if name == "Downloader":
         from .fetch import Downloader
 

@@ -1,11 +1,11 @@
 import asyncio, re
 from urllib.parse import urlparse
-from curl_cffi import requests
 from typing import TYPE_CHECKING
+from ..platform.http import AsyncHttpSessionProtocol, HttpSessionFactory
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..settings import SettingsInfo
-    from ..mq.kafka import KafkaManager
+    from ..repo.queue import KafkaQueueRepository
 
 class RobotsTxtRules:
     def __init__(self, rules=None, fallback=False):
@@ -64,22 +64,37 @@ def parse_robots_txt(text: str, user_agent: str = "*") -> RobotsTxtRules:
         return RobotsTxtRules([])
 
 class RobotsManager:
-    def __init__(self, stop_event: asyncio.Event, settings: "SettingsInfo", kafkaManager: "KafkaManager"=None):
+    def __init__(
+        self,
+        stop_event: asyncio.Event,
+        settings: "SettingsInfo",
+        kafka_repository: "KafkaQueueRepository" = None,
+        http_session_factory: HttpSessionFactory = None,
+    ):
         self.stop_event = stop_event
         self.settings = settings
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
-        if kafkaManager:
+        if kafka_repository:
             from ..utils.log import KafkaLoggingHandler
-            kafka_handler = KafkaLoggingHandler(kafka=kafkaManager, stop_event=self.stop_event).create_fmt(self.settings)
+            kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(self.settings)
             self.logger.addHandler(kafka_handler)
         self._rules_cache = {}
         self._lock = asyncio.Lock()
-        self._session = requests.AsyncSession()
+        if http_session_factory is None:
+            from ..platform.curl_cffi import CurlCffiHttpSession
+
+            http_session_factory = CurlCffiHttpSession
+        self._session: AsyncHttpSessionProtocol = http_session_factory()
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
-        return cls(stop_event=crawler.stop_event, settings=crawler.settings, kafkaManager=crawler.kafkaManager)
+        return cls(
+            stop_event=crawler.stop_event,
+            settings=crawler.settings,
+            kafka_repository=crawler.resources.kafka,
+            http_session_factory=crawler.http_session_factory,
+        )
 
     async def load_rules_for_hosts(self, robot_urls):
         tasks = []
@@ -94,7 +109,7 @@ class RobotsManager:
     async def _load_single(self, url, domain):
         rules = RobotsTxtRules([], fallback=True)
         try:
-            resp = await self._session.get(url, headers={
+            resp = await self._session.request("GET", url=url, headers={
                 "sec-ch-prefers-color-scheme": "light",
                 "sec-ch-ua-mobile": "?0",
                 "sec-fetch-dest": "document",
