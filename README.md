@@ -55,6 +55,9 @@ pip install scrapy_cffi
 
 # Kafka request scheduler support
 pip install "scrapy_cffi[kafka]"
+
+# Optional Rust-accelerated Protobuf codec with automatic Python fallback
+pip install "scrapy_cffi[protobuf]"
 ```
 
 #### From GitHub (latest main)

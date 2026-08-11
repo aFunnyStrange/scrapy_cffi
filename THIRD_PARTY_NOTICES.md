@@ -39,7 +39,18 @@ Copyright (c) 2018–2023 NCC Group Plc
 
 ---
 
-## 3. scrapy_cffi License
+## 3. pyblackboxprotobuf
+
+**Project:** [pyblackboxprotobuf](https://github.com/aFunnyStrange/blackboxprotobuf)
+**License:** MIT License
+**Location:** Optional runtime dependency; not bundled in scrapy_cffi distributions.
+
+When installed, scrapy_cffi may use this Rust-backed codec instead of its
+bundled pure-Python fallback.
+
+---
+
+## 4. scrapy_cffi License
 
 Unless otherwise noted, all other files in this repository are licensed under the
 BSD 3-Clause License.

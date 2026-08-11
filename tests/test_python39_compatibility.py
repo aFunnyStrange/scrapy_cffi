@@ -1,3 +1,5 @@
+"""Verify the declared Python 3.9 runtime and compatibility contracts."""
+
 import ast
 import asyncio
 import tempfile
@@ -11,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _annotation_nodes(tree):
+    """Yield every annotation node from a parsed Python syntax tree."""
     for node in ast.walk(tree):
         if isinstance(node, ast.AnnAssign):
             yield node.annotation
@@ -28,6 +31,7 @@ def _annotation_nodes(tree):
 
 
 def test_package_source_uses_python39_compatible_syntax_and_annotations():
+    """All package modules must parse on 3.9 and avoid PEP 604 unions."""
     incompatible_unions = []
     for path in (ROOT / "scrapy_cffi").rglob("*.py"):
         source = path.read_text(encoding="utf-8-sig")
@@ -41,6 +45,7 @@ def test_package_source_uses_python39_compatible_syntax_and_annotations():
 
 
 def test_package_metadata_declares_real_python_minimum():
+    """Package metadata must retain the qualified Python and optional extras."""
     project = toml.loads(
         (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
@@ -53,9 +58,11 @@ def test_package_metadata_declares_real_python_minimum():
     assert "aio-pika>=9.0" in extras["rabbitmq"]
     assert "aiokafka>=0.8.1" in extras["kafka"]
     assert "asyncmy>=0.2" in extras["mysql"]
+    assert "pyblackboxprotobuf>=0.1.0,<0.2" in extras["protobuf"]
 
 
 def test_runtime_and_package_versions_match():
+    """The importable version must match the distribution metadata."""
     from scrapy_cffi import __version__
 
     project = toml.loads(
@@ -65,6 +72,7 @@ def test_runtime_and_package_versions_match():
 
 
 def test_interceptor_none_response_continues_and_unhandled_exception_survives():
+    """Compatibility handling must preserve empty middleware responses."""
     from scrapy_cffi.core.downloader.internet import Request, Response
     from scrapy_cffi.interceptors.chains import (
         ChainNextEnum,
@@ -72,13 +80,18 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
     )
 
     class Middleware:
+        """Provide no-op response and exception interceptor hooks."""
+
         async def response_intercept(self, **kwargs):
+            """Leave a successful response unchanged."""
             return None
 
         async def exception_intercept(self, **kwargs):
+            """Leave an unhandled exception unchanged."""
             return None
 
     async def run():
+        """Exercise both compatible interceptor paths."""
         manager = InterruptibleChainManager.__new__(InterruptibleChainManager)
         node = SimpleNamespace(instance=Middleware(), prev=None)
         manager.chain_tail = node
@@ -86,6 +99,7 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
         response = Response(request=request)
 
         async def identity(value):
+            """Return a callback value without modification."""
             return value
 
         response_result = await manager.response_intercept_chain(
@@ -111,6 +125,7 @@ def test_interceptor_none_response_continues_and_unhandled_exception_survives():
 
 
 def test_class_based_settings_export_to_recoverable_env_paths():
+    """Class-based settings must serialize to importable dotted paths."""
     from scrapy_cffi.pipelines import Pipeline
     from scrapy_cffi.platform import CurlCffiHttpSession
     from scrapy_cffi.scheduler import RedisScheduler

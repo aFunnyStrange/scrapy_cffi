@@ -11,6 +11,12 @@ from .http import (
     WebSocketFlag,
 )
 from .curl_cffi import CurlCffiHttpSession, CurlCffiHttpStream, CurlCffiWebSocket
+from .protobuf import (
+    ProtobufCodecProtocol,
+    PythonProtobufCodec,
+    RustProtobufCodec,
+    select_protobuf_codec,
+)
 
 __all__ = [
     "AsyncHttpSessionProtocol",
@@ -23,5 +29,9 @@ __all__ = [
     "HttpResponseProtocol",
     "HttpSessionFactory",
     "HttpTransportError",
+    "ProtobufCodecProtocol",
+    "PythonProtobufCodec",
+    "RustProtobufCodec",
     "WebSocketFlag",
+    "select_protobuf_codec",
 ]

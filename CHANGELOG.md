@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional `pyblackboxprotobuf` Rust acceleration selected once at import
+  time, with the bundled `scrapy_cffi.utils.blackboxprotobuf` implementation
+  retained as an automatic pure-Python fallback.
+- Protobuf platform contracts now include `grpc_encode`,
+  `grpc_stream_encode`, and `grpc_decode`; framing semantics remain
+  framework-owned while payload encoding/decoding uses the selected backend.
+- `scrapy_cffi[protobuf]` installs the qualified native codec explicitly;
+  separately installed `pyblackboxprotobuf` packages are detected as well.
+- `ProtobufFactory.backend_name()` exposes the active `rust` or `python`
+  backend for diagnostics.
+
 ## [0.4.0] - 2026-08-10
 
 ### Added

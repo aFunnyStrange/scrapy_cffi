@@ -12,6 +12,9 @@ While the default structure is designed to be practical out of the box, you're e
 #### From PyPI
 ```bash
 pip install scrapy_cffi
+
+# Optional Rust-accelerated Protobuf codec with automatic Python fallback
+pip install "scrapy_cffi[protobuf]"
 ```
 
 #### From GitHub (latest main)

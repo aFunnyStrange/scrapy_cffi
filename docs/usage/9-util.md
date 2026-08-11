@@ -416,7 +416,26 @@ This first extracts all `payload` values, converts those values back to text, sc
 
 # 6.Protobuf
 `ProtobufFactory` is a utility class that provides unified methods for encoding and decoding **Protobuf** and **gRPC** messages.
-All methods are **static**, and it relies on the third-party library **blackboxprotobuf** (install via `pip install bbpb`; note that `pip install blackprotobuf` is an old fork).
+All methods are **static**. The framework always includes its refactored pure-Python codec, so no extra dependency is required.
+
+Install the optional Rust backend when higher throughput is needed:
+
+```bash
+pip install "scrapy_cffi[protobuf]"
+```
+
+If `pyblackboxprotobuf` loads successfully, scrapy_cffi binds the codec API to
+that Rust implementation once during import. If the package is absent or its
+native library cannot load on the current platform, the framework falls back
+to `scrapy_cffi.utils.blackboxprotobuf` automatically. Existing imports and
+`ProtobufFactory` calls remain unchanged. Use
+`ProtobufFactory.backend_name()` to inspect the active `rust` or `python`
+backend.
+
+The same selected backend is used by `grpc_encode`, `grpc_stream_encode`, and
+`grpc_decode`. scrapy_cffi owns the five-byte gRPC framing, gzip handling, and
+validation rules so Rust and Python installations expose identical behavior;
+the Protobuf payload inside each frame is accelerated when Rust is active.
 
 Starting from **version ≥ 0.2.4**, `scrapy_cffi` refactored the `blackboxprotobuf` source code (version 1.4.2), keeping only two commonly used APIs:
 - `encode_message`
