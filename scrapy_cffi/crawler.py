@@ -77,15 +77,12 @@ class Crawler:
         self._runtime_closed = False
 
         self.settings: "SettingsInfo" = settings
-        from .cpy import CExtensionLoader
-        from .models.api import CPYExtension
+        if self.settings.CPY_EXTENSIONS.RESOURCES:
+            from .cpy import CExtensionLoader
 
-        framework_cpy = [
-            CPYExtension(module_name="bloom")
-        ]
-        framework_cpy.extend(self.settings.CPY_EXTENSIONS.RESOURCES) # User first principle, same name can cover framework modules
-        self.settings.CPY_EXTENSIONS.RESOURCES = framework_cpy
-        CExtensionLoader(resource_dir=self.settings.CPY_EXTENSIONS.DIR).load_all(configs=self.settings.CPY_EXTENSIONS.RESOURCES)
+            CExtensionLoader(resource_dir=self.settings.CPY_EXTENSIONS.DIR).load_all(
+                configs=self.settings.CPY_EXTENSIONS.RESOURCES
+            )
 
         self.global_lock = async_context_factory(
             max_tasks=self.settings.MAX_GLOBAL_CONCURRENT_TASKS,

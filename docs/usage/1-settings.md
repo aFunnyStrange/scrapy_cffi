@@ -416,30 +416,40 @@ settings.SCHEDULER = RedisScheduler
 This configuration is used to define parameters for the `DUPEFILTER` when using a Bloom filter for deduplication.
 
 #### 2.5.3.1 MODE
-- **Type**: Optional[bool]
+- **Type**: bool
 - **Default**: False
 - **Description**: Enable or disable Bloom filter deduplication. This setting has **no effect on the framework internally**, but may be used when defining a custom `DUPEFILTER`.
 
 ---
 
 #### 2.5.3.2 SIZE
-- **Type**: Optional[int]
+- **Type**: int (greater than zero)
 - **Default**: 100000000
 - **Description**: The number of **bits** in the Bloom filter's bitmap.
 
 ---
 
 #### 2.5.3.3 EXPECTED
-- **Type**: Optional[int]
-- **Default**: 100000000
+- **Type**: int (greater than zero)
+- **Default**: 10000000
 - **Description**: The expected number of elements to be inserted into the Bloom filter. Used to calculate hash functions and false positive rate.
 
 ---
 
 #### 2.5.3.4 HASH_COUNT
-- **Type**: Optional[int]
+- **Type**: int (zero or greater)
 - **Default**: 0
 - **Description**: Number of hash functions to use. If `0`, the framework automatically calculates an appropriate value based on `SIZE` and `EXPECTED`.
+
+Bloom filters use the stable `xxh3-km-v1` index contract. The optional
+`scrapy_cffi[bloom]` extra selects `fastbloom-rs`; otherwise the portable
+Python backend produces identical Redis bitmap indices.
+
+With the defaults, the framework selects 7 probes for 100 million bits and
+10 million expected values, giving an estimated false-positive rate of about
+0.82% at the configured capacity. Set `EXPECTED` to the real per-filter
+cardinality; an unrealistically high value trades memory efficiency for false
+positives.
 
 ---
 

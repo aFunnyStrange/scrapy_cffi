@@ -9,16 +9,20 @@ Project cpy_resources/<module>  →  System cpy store  →  Framework cpy/cpy_re
 
 Within each directory: `wrapper.py` (ctypes) first, then `fallback.py` if the native library is missing.
 
-**System cpy store** — install user-built binaries once for all projects:
+**System cpy store** — install user-built binaries once for all projects.
+Bloom filtering no longer uses this legacy path; install
+`scrapy_cffi[bloom]` for the maintained Rust accelerator instead:
 
 ```bash
-scrapy-cffi cinstall --init bloom          # scaffold ./cpy_resources/bloom
-scrapy-cffi cinstall bloom --require-binary  # copy to system store after build
+scrapy-cffi cinstall --init custom_native
+scrapy-cffi cinstall custom_native --require-binary
 scrapy-cffi cinstall --list
 scrapy-cffi cinstall --path                  # e.g. ~/.local/share/scrapy_cffi/cpy_resources
 ```
 
-Override location: `SCRAPY_CFFI_CPY_DIR`. Framework wheels ship **no prebuilt** native libs (only `wrapper.py` / `fallback.py` / stubs); see `cpy/cpy_resources/bloom/BUILD.md`.
+Override location: `SCRAPY_CFFI_CPY_DIR`. This loader remains for explicitly
+configured custom ctypes integrations and is not part of the framework Bloom
+runtime.
 
 On Windows, C extensions can also be compiled as `.pyd` files. However, `.pyd` is tightly bound to both the OS and the Python version, and requires `#include <Python.h>` in the C source. This makes cross-platform C code more difficult to maintain. Moreover, `.pyd` files can be imported directly in Python without additional configuration, but for consistency and cross-platform support, the framework standardizes all C extension loading via **ctypes**.
 
@@ -102,14 +106,14 @@ A typical project structure for C extensions is:
 # 4.Examples
 1. Use the same name for folder and import:
 ```python 
-CPYExtension(module_name="bloomfilter")
-# Directory: cpy_resources/bloomfilter/
-# After load: import bloomfilter
+CPYExtension(module_name="custom_native")
+# Directory: cpy_resources/custom_native/
+# After load: import custom_native
 ```
 
 2. Use a different public API name:
 ```python
-CPYExtension(module_name="bloom_impl_v1", resource_name="bloom")
-# Directory: cpy_resources/bloom_impl_v1/
-# After load: import bloom
+CPYExtension(module_name="custom_impl_v1", resource_name="custom_native")
+# Directory: cpy_resources/custom_impl_v1/
+# After load: import custom_native
 ```

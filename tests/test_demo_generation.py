@@ -99,6 +99,23 @@ def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypa
         assert (project / "requirements.txt").read_text(
             encoding="utf-8"
         ).strip() == requirement
+        kafka_publisher = project / "scripts" / "push_kafka_demo.py"
+        rabbit_publisher = project / "scripts" / "push_rabbitmq_demo.py"
+        if mode == "kafka":
+            assert kafka_publisher.is_file()
+            assert not rabbit_publisher.exists()
+            publisher = kafka_publisher.read_text(encoding="utf-8")
+            assert "resources.kafka.push(topic" in publisher
+            assert "SCRAPY_CFFI_KAFKA_BOOTSTRAP_SERVERS" in publisher
+            compile(publisher, str(kafka_publisher), "exec")
+            manager = (project / "scripts" / "demo_docker.py").read_text(
+                encoding="utf-8"
+            )
+            assert '[sys.executable, "scripts/push_kafka_demo.py"]' in manager
+            assert "127.0.0.1:9094,127.0.0.1:9095,127.0.0.1:9096" in manager
+        else:
+            assert rabbit_publisher.is_file()
+            assert not kafka_publisher.exists()
         result = subprocess.run(
             [sys.executable, "scripts/demo_docker.py", "plan", "cluster"],
             cwd=str(project),
@@ -171,6 +188,7 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert not (project / "Dockerfile").exists()
     assert not (project / "docker-compose.yml").exists()
     assert not (project / "__pycache__").exists()
+    assert not (project / "cpy_resources").exists()
 
 
 def test_demo_manager_reports_fixed_port_conflicts(tmp_path, monkeypatch):

@@ -58,7 +58,16 @@ class MySpider(Spider):
     # scheduler sets redis_namespace=spider.name on RedisScheduler dedup
 ```
 
-Bloom tuning: `settings.BLOOM_INFO` (`SIZE`, `EXPECTED`, `HASH_COUNT`).
+Bloom tuning: `settings.BLOOM_INFO` (`SIZE`, `EXPECTED`, `HASH_COUNT`). The
+framework uses the versioned `xxh3-km-v1` algorithm: two XXH3 hashes followed
+by Kirsch-Mitzenmacher double hashing. Install `scrapy_cffi[bloom]` to select
+the `fastbloom-rs` PyO3 stable-ABI backend; without it, the pure-Python adapter
+uses `ppxxh` and produces exactly the same indices. Backend selection happens
+once at import time, not during each deduplication operation.
+
+Redis bitmap keys include the algorithm version. Existing FNV-based bitmap
+keys are therefore never interpreted using the new hash contract; they can be
+removed after upgrading when no old crawler process still uses them.
 
 ## Shutdown cleanup (`SCHEDULER_PERSIST`)
 
@@ -75,7 +84,7 @@ prevent Redis cleanup; the shutdown path retries failed backend cleanup once.
 
 | Mode | Keys removed |
 | ---- | ------------ |
-| Single / sentinel | `{FILTER_KEY}_new_seen[:namespace]`, `{FILTER_KEY}_sent_seen[:namespace]` |
+| Single / sentinel | `{FILTER_KEY}_new_seen[:namespace][:algorithm]`, `{FILTER_KEY}_sent_seen[:namespace][:algorithm]` |
 | Cluster | Same bases with `:{host:port}` suffix per startup node |
 
 **Notes**

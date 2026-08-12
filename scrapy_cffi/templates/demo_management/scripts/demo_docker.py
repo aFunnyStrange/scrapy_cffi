@@ -369,6 +369,24 @@ def seed_request(
 ) -> None:
     if DEMO_MODE == "memory":
         return
+    if DEMO_MODE == "kafka":
+        publisher_environment = dict(environment)
+        publisher_environment["SCRAPY_CFFI_START_URL"] = start_url
+        if environment.get("SCRAPY_CFFI_DEMO_TOPOLOGY") == "cluster":
+            publisher_environment["SCRAPY_CFFI_KAFKA_BOOTSTRAP_SERVERS"] = (
+                "127.0.0.1:9094,127.0.0.1:9095,127.0.0.1:9096"
+            )
+        with (log_dir / "enqueue.log").open("w", encoding="utf-8") as output:
+            subprocess.run(
+                [sys.executable, "scripts/push_kafka_demo.py"],
+                cwd=str(ROOT),
+                env=publisher_environment,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                timeout=30,
+                check=True,
+            )
+        return
     code = (
         "import asyncio\n"
         "from runner import DEFAULT_SPIDER\n"
@@ -388,11 +406,6 @@ def seed_request(
         code += (
             "    await resources.rabbitmq.push("
             f"'scrapy_cffi', {start_url.encode()!r})\n"
-        )
-    else:
-        code += (
-            "    await resources.kafka.push("
-            f"'customRedisSpider_start', {start_url.encode()!r})\n"
         )
     code += (
         "    await resources.close()\n"

@@ -69,6 +69,18 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
         if maybe_push_demo.exists():
             maybe_push_demo.unlink()
 
+    if use_kafka:
+        push_demo = template_dir / "spiders" / "push_kafka_demo.py"
+        if push_demo.is_file():
+            write_utf8_file(
+                target / "scripts" / "push_kafka_demo.py",
+                read_text_template(push_demo),
+            )
+    else:
+        maybe_push_demo = target / "scripts" / "push_kafka_demo.py"
+        if maybe_push_demo.exists():
+            maybe_push_demo.unlink()
+
     if use_rabbitmq or use_redis or use_kafka:
         demo_spider_files = ["customRedisSpider", "studentSpider"]
         for demo_spider in demo_spider_files:

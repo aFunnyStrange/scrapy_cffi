@@ -40,8 +40,10 @@ class DedupKeyRouter:
         redis_mode: str,
         cluster_nodes: Optional[List[str]] = None,
         namespace: str = "",
+        algorithm: str = "",
     ):
-        suffix = f":{namespace}" if namespace else ""
+        suffix_parts = [value for value in (namespace, algorithm) if value]
+        suffix = ":" + ":".join(suffix_parts) if suffix_parts else ""
         self._base_new = f"{base_new_seen}{suffix}"
         self._base_sent = f"{base_sent_seen}{suffix}"
         mode_value = getattr(redis_mode, "value", redis_mode)
@@ -54,6 +56,7 @@ class DedupKeyRouter:
         settings: "SettingsInfo",
         redis_repository: "RedisRepositoryProtocol",
         namespace: str = "",
+        algorithm: str = "",
     ) -> "DedupKeyRouter":
         cluster_nodes: Optional[List[str]] = None
         if redis_repository.redis_mode == "cluster":
@@ -64,6 +67,7 @@ class DedupKeyRouter:
             redis_mode=redis_repository.redis_mode,
             cluster_nodes=cluster_nodes,
             namespace=namespace,
+            algorithm=algorithm,
         )
 
     @property

@@ -104,7 +104,18 @@ RabbitMQ (`demo -m`) generates `scripts/push_rabbitmq_demo.py`:
 python scripts/push_rabbitmq_demo.py
 ```
 
-Kafka start requests go to the generated spider's `kafka_start_topic`; follow-up requests use its separate `kafka_topic`.
+Kafka (`demo -k`) generates the matching `scripts/push_kafka_demo.py`:
+
+```bash
+python scripts/push_kafka_demo.py
+```
+
+The Kafka publisher defaults to `127.0.0.1:9092` and
+`customRedisSpider_start`. Override `SCRAPY_CFFI_START_URL`,
+`SCRAPY_CFFI_KAFKA_INGRESS`, or the comma-separated
+`SCRAPY_CFFI_KAFKA_BOOTSTRAP_SERVERS` environment variable when needed. Start
+requests go to the generated spider's `kafka_start_topic`; framework-generated
+follow-up requests continue to use its separate `kafka_topic`.
 
 ## Persistence
 

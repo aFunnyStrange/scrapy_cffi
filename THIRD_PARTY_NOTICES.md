@@ -50,7 +50,29 @@ bundled pure-Python fallback.
 
 ---
 
-## 4. scrapy_cffi License
+## 4. ppxxh
+
+**Project:** [ppxxh](https://pypi.org/project/ppxxh/)
+**License:** MIT License
+**Location:** Runtime dependency; not bundled in scrapy_cffi distributions.
+
+ppxxh provides the portable pure-Python XXH3 implementation used by the Bloom
+platform fallback and to preserve Redis index compatibility across backends.
+
+---
+
+## 5. fastbloom-rs
+
+**Project:** [fastbloom-rs](https://github.com/yankun1992/fastbloom)
+**License:** Apache License 2.0
+**Location:** Optional `bloom` runtime dependency; not bundled in scrapy_cffi distributions.
+
+When installed, fastbloom-rs provides the Rust/PyO3 Bloom implementation behind
+the framework-owned Bloom platform contract.
+
+---
+
+## 6. scrapy_cffi License
 
 Unless otherwise noted, all other files in this repository are licensed under the
 BSD 3-Clause License.

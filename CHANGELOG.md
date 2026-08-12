@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Bloom filtering now uses a stable `xxh3-km-v1` platform contract with
+  `fastbloom-rs` PyO3 acceleration from the `bloom` extra and a matching
+  pure-Python `ppxxh` fallback. Redis bitmap keys include the algorithm
+  version, and native/Python workers are tested for identical indices.
+- Kafka Demo projects now generate `scripts/push_kafka_demo.py`, matching the
+  RabbitMQ publisher and supporting single or comma-separated cluster bootstrap
+  servers for independently verifying start-topic ingestion.
 - Optional `pyblackboxprotobuf` Rust acceleration selected once at import
   time, with the bundled `scrapy_cffi.utils.blackboxprotobuf` implementation
   retained as an automatic pure-Python fallback.
@@ -20,6 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   separately installed `pyblackboxprotobuf` packages are detected as well.
 - `ProtobufFactory.backend_name()` exposes the active `rust` or `python`
   backend for diagnostics.
+
+### Changed
+
+- Bloom defaults now provision 100 million bits for 10 million expected
+  values, selecting 7 probes and an estimated 0.82% false-positive rate at
+  capacity. Invalid non-positive dimensions are rejected during settings
+  validation.
+- New projects no longer receive or automatically load the legacy ctypes/FNV
+  Bloom scaffold. Generic ctypes templates remain available through explicit
+  `cinstall --init` usage.
+- Redis Bloom bitmap keys are isolated by the `xxh3-km-v1` algorithm suffix;
+  obsolete FNV bitmap keys may be removed after older crawler workers stop.
 
 ## [0.4.0] - 2026-08-10
 

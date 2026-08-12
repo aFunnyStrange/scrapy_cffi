@@ -17,11 +17,20 @@ from .protobuf import (
     RustProtobufCodec,
     select_protobuf_codec,
 )
+from .bloom import (
+    BloomFilterFactory,
+    BloomFilterProtocol,
+    PythonBloomFilter,
+    RustBloomFilter,
+    bloom_filter_factory,
+)
 
 __all__ = [
     "AsyncHttpSessionProtocol",
     "AsyncHttpStreamProtocol",
     "AsyncWebSocketProtocol",
+    "BloomFilterFactory",
+    "BloomFilterProtocol",
     "CookieJarProtocol",
     "CurlCffiHttpSession",
     "CurlCffiHttpStream",
@@ -30,8 +39,11 @@ __all__ = [
     "HttpSessionFactory",
     "HttpTransportError",
     "ProtobufCodecProtocol",
+    "PythonBloomFilter",
     "PythonProtobufCodec",
     "RustProtobufCodec",
+    "RustBloomFilter",
     "WebSocketFlag",
     "select_protobuf_codec",
+    "bloom_filter_factory",
 ]

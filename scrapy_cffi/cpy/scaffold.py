@@ -1,5 +1,5 @@
 """
-Scaffold ctypes C extension module directories for new projects.
+Scaffold optional ctypes C extension module directories for projects.
 
 Copies framework templates without native binaries in ``build/``.
 """
@@ -15,22 +15,22 @@ from .paths import get_framework_cpy_root
 
 NATIVE_SUFFIXES = {".dll", ".so", ".dylib", ".pyd"}
 MODULE_MARKERS = ("wrapper.py", "fallback.py")
-DEFAULT_SCAFFOLD_MODULES: Sequence[str] = ("bloom",)
+DEFAULT_SCAFFOLD_MODULES: Sequence[str] = ()
 
 _CPY_README = """\
 # cpy_resources
 
 Optional ctypes C extension modules for this project.
 
-Created by `scrapy-cffi startproject`. Each subfolder (e.g. `bloom/`) contains
+Created explicitly by `scrapy-cffi cinstall --init`. Each module folder contains
 `wrapper.py`, `fallback.py`, and an empty `build/` directory for your compiled
 `.dll` / `.so` / `.dylib` files.
 
 ## Build & install
 
-1. Compile native libs into `bloom/build/` (see `bloom/BUILD.md`).
+1. Initialize a named framework template with `scrapy-cffi cinstall --init NAME`.
 2. Project-local use: keep binaries here — loader checks this directory first.
-3. Machine-wide use: `scrapy-cffi cinstall bloom --require-binary`
+3. Machine-wide use: `scrapy-cffi cinstall NAME --require-binary`.
 
 Docs: scrapy_cffi docs `usage/12-cpython.md`.
 """

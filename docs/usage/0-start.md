@@ -34,7 +34,10 @@ pip install -e .
 scrapy-cffi startproject <project_name>
 ```
 
-Creates the usual project layout plus **`cpy_resources/`** with a `bloom/` skeleton (`wrapper.py`, `fallback.py`, empty `build/`). Native libraries are not included — build locally or run `scrapy-cffi cinstall bloom` after compiling. See [12-cpython.md](./12-cpython.md).
+Creates a clean project layout. Bloom acceleration is installed through the
+optional `scrapy_cffi[bloom]` extra and no longer scaffolds project-local C
+binaries. Custom ctypes resources remain available through `cinstall`; see
+[12-cpython.md](./12-cpython.md).
 
 ---
 
@@ -197,15 +200,15 @@ PyPI packages ship Python wrappers and pure-Python fallbacks only — **not** OS
 
 ```bash
 # Copy framework template into the current project
-scrapy-cffi cinstall --init bloom
+scrapy-cffi cinstall --init custom_native
 
-# After building libbloom.* into cpy_resources/bloom/build/
-scrapy-cffi cinstall bloom
-scrapy-cffi cinstall bloom --source ./cpy_resources/bloom --require-binary --force
+# After building the shared library into cpy_resources/custom_native/build/
+scrapy-cffi cinstall custom_native
+scrapy-cffi cinstall custom_native --source ./cpy_resources/custom_native --require-binary --force
 
 scrapy-cffi cinstall --list
 scrapy-cffi cinstall --path
-scrapy-cffi cinstall --remove bloom
+scrapy-cffi cinstall --remove custom_native
 ```
 
 Environment: `SCRAPY_CFFI_CPY_DIR` overrides the default system store path.

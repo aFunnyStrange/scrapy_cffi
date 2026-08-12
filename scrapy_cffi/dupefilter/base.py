@@ -3,9 +3,9 @@ from ..core.downloader.internet import Request, HttpRequest, WebSocketRequest
 from .fingerprint import build_fingerprint_bytes, fingerprint_sha1
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    from ..platform.bloom import BloomFilterProtocol
     from ..spiders import Spider
     from ..settings import SettingsInfo
-    from ..cpy.cpy_resources.bloom.fallback import BloomFilterPy
 
 class BaseFingerprint:
     def __init__(self, settings: "SettingsInfo"=None, **kwargs):
@@ -65,9 +65,19 @@ class MemoryDupeFilter(BaseFingerprint):
 class BloomDupeFilter(BaseFingerprint):
     def __init__(self, settings: "SettingsInfo"=None, **kwargs):
         super().__init__(settings=settings, **kwargs)
-        import bloom
-        self.new_seen: "BloomFilterPy" = bloom.BloomFilter(size=self.settings.BLOOM_INFO.SIZE, expected=self.settings.BLOOM_INFO.EXPECTED, hash_count=self.settings.BLOOM_INFO.HASH_COUNT)
-        self.sent_seen: "BloomFilterPy" = bloom.BloomFilter(size=self.settings.BLOOM_INFO.SIZE, expected=self.settings.BLOOM_INFO.EXPECTED, hash_count=self.settings.BLOOM_INFO.HASH_COUNT)
+        from ..platform.bloom import bloom_filter_factory
+
+        bloom_options = {
+            "size": self.settings.BLOOM_INFO.SIZE,
+            "expected": self.settings.BLOOM_INFO.EXPECTED,
+            "hash_count": self.settings.BLOOM_INFO.HASH_COUNT,
+        }
+        self.new_seen: "BloomFilterProtocol" = bloom_filter_factory.create(
+            **bloom_options
+        )
+        self.sent_seen: "BloomFilterProtocol" = bloom_filter_factory.create(
+            **bloom_options
+        )
         self.lock = asyncio.Lock()
 
     async def request_seen(self, request: "Request"=None, **kwargs):

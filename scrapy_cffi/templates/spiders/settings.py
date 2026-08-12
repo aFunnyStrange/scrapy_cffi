@@ -98,11 +98,11 @@ def create_settings(
 
     # settings.LOG_INFO.LOG_FILE = "demo.log"
 
-    # Optional: project cpy_resources/ is created by startproject (default DIR name)
+    # Optional: scaffold custom ctypes resources with `scrapy-cffi cinstall --init <name>`.
     # from scrapy_cffi.models import CPYExtension
     # settings.CPY_EXTENSIONS.RESOURCES = [
-    #     CPYExtension(module_name="bloom")
-    # ] # After load: import bloom
+    #     CPYExtension(module_name="custom_native")
+    # ] # After load: import custom_native
 
     # settings.LOG_INFO.LOG_ENABLED = False # Disable logging entirely
     try:

@@ -26,10 +26,10 @@ ComponentConfig = Union[
 ]
 
 class BloomInfo(StrictValidatedModel):
-    MODE: Optional[bool] = False
-    SIZE: Optional[int] = 100000000
-    EXPECTED: Optional[int] = 100000000
-    HASH_COUNT: Optional[int] = 0
+    MODE: bool = False
+    SIZE: int = Field(default=100_000_000, gt=0)
+    EXPECTED: int = Field(default=10_000_000, gt=0)
+    HASH_COUNT: int = Field(default=0, ge=0)
 
 class LogInfo(StrictValidatedModel):
     _encoding_fields: ClassVar[List[str]] = ["LOG_ENCODING"]

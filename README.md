@@ -36,7 +36,8 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Lightweight middleware & interceptor system** for easy extensions
 
-- **High-performance C-extension hooks** for CPU-intensive tasks
+- **Stable CPU platform adapters** with optional Rust acceleration and safe
+  Python fallbacks, including Protobuf and Bloom filtering
 
 - **Redis-compatible scheduler** (optional) for distributed crawling
 
@@ -58,6 +59,9 @@ pip install "scrapy_cffi[kafka]"
 
 # Optional Rust-accelerated Protobuf codec with automatic Python fallback
 pip install "scrapy_cffi[protobuf]"
+
+# Optional Rust-accelerated Bloom filter with identical Python fallback semantics
+pip install "scrapy_cffi[bloom]"
 ```
 
 #### From GitHub (latest main)
