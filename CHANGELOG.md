@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-15
+
 ### Added
 
 - Bloom filtering now uses a stable `xxh3-km-v1` platform contract with
@@ -30,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Operational settings remain in a single syntax-highlightable `.env` file.
+  Nested Pydantic models now serialize as `PARENT__FIELD`, complex lists and
+  mappings use indented multiline JSON, and process-level `SCRAPY_CFFI_`
+  variables override dotenv and Python defaults. Legacy flat names and compact
+  JSON remain readable.
 - Bloom defaults now provision 100 million bits for 10 million expected
   values, selecting 7 probes and an estimated 0.82% false-positive rate at
   capacity. Invalid non-positive dimensions are rejected during settings

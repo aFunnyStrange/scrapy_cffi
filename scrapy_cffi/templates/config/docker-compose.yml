@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
 
     # The crawler container owns no database or message-queue lifecycle.
-    # Configure external Redis/MySQL/PostgreSQL/MongoDB/RabbitMQ/Kafka addresses
-    # in settings.py, or uncomment the optional env file below.
+    # Keep readable operational configuration and local secrets in ../.env.
+    # Process environment has the highest precedence.
     # env_file:
-    #   - ../.env.dev
+    #   - ../.env

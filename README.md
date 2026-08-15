@@ -130,7 +130,8 @@ for generation, imports, topology plans, and unit tests without Docker.
 
 `scrapy_cffi` now fully supports a flexible settings system:
 
-- Load configuration from Python files or `.env` files
+- Develop with typed Python settings and deploy with one readable `.env` file;
+  nested models use `__` keys and complex values support multiline JSON
 
 - Choose between **single-instance**, **cluster**, or **sentinel mode**
 

@@ -29,7 +29,11 @@ def run(project_name, is_demo=False):
         target_path.parent.mkdir(parents=True, exist_ok=True)
         write_utf8_file(target_path, read_text_template(docker_path))
 
-    for project_file in ["requirements.txt", ".gitignore"]:
+    for project_file in [
+        "requirements.txt",
+        ".gitignore",
+        ".env.example",
+    ]:
         project_path = template_dir / "config" / project_file
         target_path = target / project_file
         write_utf8_file(target_path, read_text_template(project_path))

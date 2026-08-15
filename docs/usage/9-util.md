@@ -638,7 +638,14 @@ Utilities to convert between `SettingsInfo` objects and `.env` files.
 ## 9.1 settings_to_env
 **Purpose**: Serialize a `SettingsInfo` object (or similar Pydantic-like object) into a `.env` file.
 
-**Behavior**:
+**Current behavior**:
+
+- Nested Pydantic models use `PARENT__FIELD` keys.
+- Dictionaries and lists use indented, quoted multiline JSON.
+- Boolean and numeric scalar types remain unquoted.
+- Classes use stable dotted import paths; `None` values are skipped.
+
+**Legacy representation still accepted by the loader**:
 - `dict` and `list` fields → JSON strings
 - `bool` → `'true'` / `'false'`
 - Special `ComponentInfo` fields → empty JSON `'{}'`
@@ -657,10 +664,27 @@ config = SettingsInfo()
 settings_to_env(config, ".env.dev")
 ```
 
+Example output:
+
+```dotenv
+LOG_INFO__LOG_LEVEL='INFO'
+REDIS_INFO__SENTINELS='[
+  ["redis-1", 26379],
+  ["redis-2", 26379]
+]'
+```
+
 ## 9.2 env_to_settings
 **Purpose**: Load a `.env` file and convert it into an instance of the specified class (e.g., `SettingsInfo`).
 
-**Behavior**:
+**Current behavior**:
+
+- Parses compact or multiline JSON into dictionaries and lists.
+- Reconstructs nested models from `__` keys.
+- Accepts old compact JSON and unprefixed field names.
+- Applies matching `SCRAPY_CFFI_` process variables last.
+
+**Legacy behavior retained for compatibility**:
 - Automatically parses JSON strings into `dict` / `list`
 - Converts `'true'` / `'false'` to bool
 - Converts numeric strings to `int` / `float`
@@ -680,3 +704,6 @@ from scrapy_cffi.settings import SettingsInfo
 config = env_to_settings(".env.dev", SettingsInfo)
 print(config.TEST_DATA)
 ```
+
+Use `load_env_settings(existing_settings, env_path=".env")` when Python has
+already assembled developer defaults that the operational file should overlay.

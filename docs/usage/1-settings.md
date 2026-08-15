@@ -22,13 +22,32 @@ to_scrapy_settings_py(settings)
 ```
 
 When you create a project using `scrapy_cffi` CLI, the generated `settings.py` includes:
-- An `env_path` variable pointing to your `.env` file.
-- Functions `settings_to_env` and `env_to_settings` for converting between **Pydantic SettingsInfo objects** and **.env configuration files**.
+- Automatic optional loading of the project-root `.env` file.
+- `settings_to_env`, `env_to_settings`, and `load_env_settings` helpers for
+  validated conversion and layered overrides.
 
 This feature allows developers to:
 - Develop using native Python objects with full type hints and IDE autocompletion.
 - Seamlessly convert between `SettingsInfo` instances and `.env` files for **easy deployment and operational configuration**.
 - Implement a **one-click development-to-deployment workflow**, where settings can be versioned, validated, and reused across environments.
+
+Operational configuration intentionally remains in one `.env` file. Nested
+Pydantic models use a double underscore, while arrays and ordinary dictionaries
+may use indented multiline JSON:
+
+```dotenv
+SCRAPY_CFFI_LOG_INFO__LOG_LEVEL=INFO
+SCRAPY_CFFI_REDIS_INFO__URL=redis://redis.internal:6379/0
+SCRAPY_CFFI_REDIS_INFO__SENTINELS='[
+  ["redis-1", 26379],
+  ["redis-2", 26379],
+  ["redis-3", 26379]
+]'
+```
+
+Precedence is process environment, project `.env`, then the typed defaults
+assembled in `settings.py`. Process variables use the `SCRAPY_CFFI_` prefix.
+Existing unprefixed `.env` keys and legacy single-line JSON remain compatible.
 
 ---
 

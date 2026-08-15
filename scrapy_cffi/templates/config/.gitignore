@@ -4,6 +4,9 @@ __pycache__/
 venv/
 .env/
 .venv/
+.env
+.env.*
+!.env.example
 
 .vscode/
 .idea/
@@ -32,4 +35,3 @@ cpy_resources/*/build/*
 
 *.md
 tests/
-

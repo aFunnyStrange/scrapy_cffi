@@ -189,6 +189,11 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert not (project / "docker-compose.yml").exists()
     assert not (project / "__pycache__").exists()
     assert not (project / "cpy_resources").exists()
+    assert (project / ".env.example").is_file()
+    assert "SCRAPY_CFFI_REDIS_INFO__URL" in (
+        project / ".env.example"
+    ).read_text(encoding="utf-8")
+    assert not (project / "settings.example.toml").exists()
 
 
 def test_demo_manager_reports_fixed_port_conflicts(tmp_path, monkeypatch):

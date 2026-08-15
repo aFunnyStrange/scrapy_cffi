@@ -1,3 +1,5 @@
+"""Build typed crawler settings with optional operational dotenv overrides."""
+
 import sys
 from pathlib import Path
 from typing import Optional, Type, Union
@@ -14,7 +16,7 @@ from scrapy_cffi.scheduler import (
     RedisScheduler,
 )
 from scrapy_cffi.spiders import BaseSpider
-from scrapy_cffi.utils.envConfig import env_to_settings
+from scrapy_cffi.utils.envConfig import load_env_settings
 from scrapy_cffi.utils.common import get_run_py_dir
 from scrapy_cffi.settings import SettingsInfo
 
@@ -30,11 +32,7 @@ def create_settings(
     *args,
     **kwargs,
 ) -> SettingsInfo:
-    if env_path:
-        env_file = Path(env_path)
-        if env_file.exists():
-            return env_to_settings(env_file, SettingsInfo)
-
+    """Assemble developer defaults and apply the project operational `.env`."""
     # Optional flags from scrapy_cffi.toml (written by `scrapy-cffi demo -r/-m/-k`)
     try:
         import toml
@@ -111,10 +109,15 @@ def create_settings(
         pass
     else:
         apply_demo_topology(settings)
-    return settings
+    project_root = get_run_py_dir()
+    env_file = Path(env_path) if env_path else project_root / ".env"
+    return load_env_settings(
+        settings,
+        env_path=env_file,
+    )
 
 if __name__ == "__main__":
-    from scrapy_cffi.utils.envConfig import settings_to_env, env_to_settings
+    from scrapy_cffi.utils.envConfig import env_to_settings, settings_to_env
     from scrapy_cffi.utils.common import get_run_py_dir
     
     spider_path = str(get_run_py_dir() / "spiders")
@@ -123,5 +126,5 @@ if __name__ == "__main__":
     settings: SettingsInfo = create_settings(spider_path)
     settings_to_env(settings, env_path)
 
-    settings: SettingsInfo = env_to_settings(env_path, SettingsInfo)
+    settings = env_to_settings(env_path, SettingsInfo)
     print(settings.model_dump())

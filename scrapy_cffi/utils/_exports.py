@@ -69,7 +69,12 @@ _reg(
     "KafkaLoggingHandler",
 )
 _reg("robot", "RobotsTxtRules", "parse_robots_txt", "RobotsManager")
-_reg("envConfig", "settings_to_env", "env_to_settings")
+_reg(
+    "envConfig",
+    "env_to_settings",
+    "load_env_settings",
+    "settings_to_env",
+)
 _reg("fd", "FDUtil")
 
 _SUBMODULES = frozenset({"media", "envConfig", "fd", "scrapyRunner", "blackboxprotobuf"})
