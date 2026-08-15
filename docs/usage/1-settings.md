@@ -325,6 +325,29 @@ settings.HTTP_SESSION_FACTORY = MyHttpSession
 
 ---
 
+### 2.2.10 CURL_CFFI_NATIVE_DIR
+
+Optional path containing an ABI-compatible self-built curl_cffi `_wrapper`
+and adjacent `libcurl-impersonate` runtime libraries. The default `None` keeps
+the installed official curl_cffi implementation.
+
+This setting chooses the process-level native implementation only. It never
+chooses a request profile. Set `impersonate` explicitly on each `HttpRequest`,
+`MediaRequest`, streaming request, or `WebSocketRequest`.
+
+Generated projects include an optional `.env.example` entry:
+
+```dotenv
+SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=D:/native/my-curl-build
+```
+
+The adapter is loaded only when the default curl transport is constructed.
+Leaving this variable unset keeps the official installed `curl_cffi` wrapper.
+If `scrapy_cffi_profiles.toml` exists in this directory, its user-owned aliases
+are registered automatically; no concrete profile ships with the framework.
+
+---
+
 ## 2.3 Proxy Settings
 ### 2.3.1 PROXY_URL
 - **Type**: Optional[str]

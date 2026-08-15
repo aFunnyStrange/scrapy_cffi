@@ -45,6 +45,44 @@ ja3: Optional[str] = None
 akamai: Optional[str] = None
 ```
 
+Planned for `scrapy_cffi 0.4.2`, self-built curl profiles use the existing
+request-scoped `impersonate` argument. Configure only the native implementation
+directory globally; do not configure a global impersonation profile:
+
+```python
+from pathlib import Path
+
+from scrapy_cffi.internet import HttpRequest
+from scrapy_cffi.settings import SettingsInfo
+
+
+settings = SettingsInfo(
+    CURL_CFFI_NATIVE_DIR=Path("D:/native/my-curl-build"),
+)
+
+request = HttpRequest(
+    url="https://tls.peet.ws/api/all",
+    impersonate="my-browser-stable",
+)
+```
+
+The framework does not bundle or name any concrete custom profile. Put an
+optional `scrapy_cffi_profiles.toml` beside the native files to register
+user-owned aliases when the directory is activated:
+
+```toml
+schema_version = 1
+
+[profiles]
+my-browser-stable = "my_native_profile_v1"
+```
+
+The same registration can be performed programmatically with
+`register_profile("my-browser-stable", "my_native_profile_v1")`. Registered
+aliases are selected through `impersonate`. Unknown values pass through
+unchanged, preserving curl_cffi built-in profiles and direct native targets,
+so a manifest is optional. Omitting `impersonate` selects no profile.
+
 `params` are merged into `url` at construction time (`url?key=value&...`). For deduplication, query parameters are canonicalized (sorted by key/value) when building the fingerprint, so parameter order does not affect duplicate detection.
 
 Additional Framework-specific Parameters:

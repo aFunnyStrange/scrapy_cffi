@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Integrated the former `curl-cffi-tls-profiles` adapter as
+  `scrapy_cffi.profiles`, including ABI-aware external wrapper activation and
+  a generic programmatic and manifest-based profile registration API.
+- `HttpRequest`, `MediaRequest`, streaming requests, and `WebSocketRequest`
+  resolve user-registered aliases through the existing request-scoped
+  `impersonate` field; unknown values pass through unchanged.
+- `CURL_CFFI_NATIVE_DIR` selects a self-built `_wrapper` plus adjacent native
+  libraries at crawler composition time without selecting a global request
+  profile. An optional adjacent `scrapy_cffi_profiles.toml` registers only the
+  aliases declared by that user-owned build.
+
+### Changed
+
+- The concrete curl_cffi adapter is now imported lazily so public request and
+  spider imports do not make native activation too late.
+- Session initialization selects and caches either a direct curl_cffi
+  passthrough callback or a registered-alias resolver, avoiding per-request
+  feature detection when no custom profiles are configured.
+
 ## [0.4.1] - 2026-08-15
 
 ### Added

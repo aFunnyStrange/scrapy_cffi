@@ -72,6 +72,7 @@ class SettingsInfo(BaseValidatedModel):
     MAX_REQ_TIMES: Optional[int] = 2 # Maximum number of retry attempts for a failed request
     DELAY_REQ_TIME: Optional[int] = 3 # Delay in seconds before retrying a failed request
     HTTP_SESSION_FACTORY: Optional[Union[str, HttpSessionFactory]] = None
+    CURL_CFFI_NATIVE_DIR: Optional[Path] = None
     INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
     INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
     

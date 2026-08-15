@@ -1,4 +1,5 @@
 import json, asyncio, sys
+from functools import partial
 from pathlib import Path
 from .core.api import *
 from .interceptors import ChainManager, InterruptibleChainManager
@@ -106,7 +107,10 @@ class Crawler:
         if session_factory is None:
             from .platform.curl_cffi import CurlCffiHttpSession
 
-            session_factory = CurlCffiHttpSession
+            session_factory = partial(
+                CurlCffiHttpSession,
+                native_dir=self.settings.CURL_CFFI_NATIVE_DIR,
+            )
         if not callable(session_factory):
             raise TypeError("HTTP_SESSION_FACTORY must be callable or an import path")
         self.http_session_factory = session_factory

@@ -61,6 +61,13 @@ def create_settings(
     }
     settings.JS_PATH = str(get_run_py_dir() / "js_path") # can be a custom path string, or True to use the default: get_run_py_dir() / "js_path"
 
+    # Optional runtime-only curl adapter. Point this to an ABI-compatible
+    # self-built directory containing `_wrapper`, adjacent DLL/SO files, and
+    # an optional scrapy_cffi_profiles.toml alias manifest.
+    # The adapter is activated only when the default curl transport is first
+    # constructed; every request must still select impersonate explicitly.
+    # settings.CURL_CFFI_NATIVE_DIR = Path("D:/native/my-curl-build")
+
     if sys.platform.startswith("win"):
         # Keep bounded defaults for run_all_spiders stability on Windows.
         settings.MAX_GLOBAL_CONCURRENT_TASKS = 200

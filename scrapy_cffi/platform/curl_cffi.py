@@ -2,10 +2,10 @@
 
 import asyncio
 import inspect
+from dataclasses import dataclass
 from importlib import import_module
-from typing import Any, AsyncIterator, Optional
-
-from curl_cffi import CurlError
+from pathlib import Path
+from typing import Any, AsyncIterator, Optional, Type, Union
 
 from .http import (
     AsyncHttpStreamProtocol,
@@ -15,8 +15,30 @@ from .http import (
     HttpTransportError,
 )
 
-curl_requests = import_module("curl_cffi.requests")
-curl_constants = import_module("curl_cffi.const")
+@dataclass(frozen=True)
+class _CurlVendor:
+    """Store curl_cffi modules selected after optional native activation."""
+
+    requests: Any
+    constants: Any
+    error: Type[BaseException]
+
+
+_vendor: Optional[_CurlVendor] = None
+
+
+def _load_vendor() -> _CurlVendor:
+    """Import curl_cffi once after the native implementation is selected."""
+    global _vendor
+
+    if _vendor is None:
+        vendor_root = import_module("curl_cffi")
+        _vendor = _CurlVendor(
+            requests=import_module("curl_cffi.requests"),
+            constants=import_module("curl_cffi.const"),
+            error=getattr(vendor_root, "CurlError"),
+        )
+    return _vendor
 
 
 async def _call_websocket_method(method: Any, *args: Any, **kwargs: Any) -> Any:
@@ -34,7 +56,10 @@ class CurlCffiWebSocket:
 
     def __init__(self, websocket: Any) -> None:
         """Wrap one WebSocket returned by any qualified curl_cffi release."""
+        vendor = _load_vendor()
         self.raw_websocket = websocket
+        self._constants = vendor.constants
+        self._curl_error = vendor.error
         self._closed = False
         self._close_lock = asyncio.Lock()
 
@@ -43,7 +68,7 @@ class CurlCffiWebSocket:
         if flags is None:
             kwargs = {}
         else:
-            vendor_flag = getattr(curl_constants, "CurlWsFlag")(int(flags))
+            vendor_flag = getattr(self._constants, "CurlWsFlag")(int(flags))
             kwargs = {"flags": vendor_flag}
         try:
             await _call_websocket_method(
@@ -53,7 +78,7 @@ class CurlCffiWebSocket:
             )
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi WebSocket send failed") from exc
 
     async def recv(self, timeout: Optional[float] = None) -> Any:
@@ -66,7 +91,7 @@ class CurlCffiWebSocket:
             )
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi WebSocket receive failed") from exc
 
     async def close(self) -> None:
@@ -79,7 +104,7 @@ class CurlCffiWebSocket:
                 await _call_websocket_method(self.raw_websocket.close)
             except asyncio.CancelledError:
                 raise
-            except CurlError as exc:
+            except self._curl_error as exc:
                 raise HttpTransportError("curl_cffi WebSocket close failed") from exc
 
 
@@ -90,6 +115,7 @@ class CurlCffiHttpStream:
         """Store the raw response and its async context manager."""
         self.raw_response = response
         self._context = context
+        self._curl_error = _load_vendor().error
         self._closed = False
         self._close_lock = asyncio.Lock()
 
@@ -120,7 +146,7 @@ class CurlCffiHttpStream:
                 yield chunk
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi response stream failed") from exc
 
     async def aiter_lines(self) -> AsyncIterator[str]:
@@ -133,7 +159,7 @@ class CurlCffiHttpStream:
                     yield line
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi response line stream failed") from exc
 
     async def close(self) -> None:
@@ -146,16 +172,26 @@ class CurlCffiHttpStream:
                 await self._context.__aexit__(None, None, None)
             except asyncio.CancelledError:
                 raise
-            except CurlError as exc:
+            except self._curl_error as exc:
                 raise HttpTransportError("curl_cffi response stream close failed") from exc
 
 
 class CurlCffiHttpSession:
     """Wrap curl_cffi AsyncSession behind the framework transport contract."""
 
-    def __init__(self, session: Optional[Any] = None) -> None:
-        """Create an adapter around an injected or newly allocated AsyncSession."""
-        session_class = getattr(curl_requests, "AsyncSession")
+    def __init__(
+        self,
+        session: Optional[Any] = None,
+        native_dir: Optional[Union[str, Path]] = None,
+    ) -> None:
+        """Create an adapter after optionally activating a self-built wrapper."""
+        if native_dir is not None:
+            from ..profiles import activate_profile_runtime
+
+            activate_profile_runtime(native_dir)
+        vendor = _load_vendor()
+        session_class = getattr(vendor.requests, "AsyncSession")
+        self._curl_error = vendor.error
         self.raw_session = session or session_class()
 
     @property
@@ -169,7 +205,7 @@ class CurlCffiHttpSession:
             return await self.raw_session.request(method=method, **kwargs)
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi HTTP request failed") from exc
 
     async def connect_websocket(self, **kwargs: Any) -> AsyncWebSocketProtocol:
@@ -180,7 +216,7 @@ class CurlCffiHttpSession:
             return CurlCffiWebSocket(websocket)
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi WebSocket connection failed") from exc
 
     async def open_stream(self, method: str, **kwargs: Any) -> AsyncHttpStreamProtocol:
@@ -191,7 +227,7 @@ class CurlCffiHttpSession:
             return CurlCffiHttpStream(response=response, context=context)
         except asyncio.CancelledError:
             raise
-        except CurlError as exc:
+        except self._curl_error as exc:
             raise HttpTransportError("curl_cffi HTTP stream connection failed") from exc
 
     async def close(self) -> None:

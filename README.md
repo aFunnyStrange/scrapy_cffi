@@ -21,6 +21,10 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 - **Stable HTTP platform**: injectable async Protocols with curl_cffi
   0.7.4-0.15 compatibility, WebSocket normalization, streaming, and SSE
 
+- **Request-scoped self-built TLS profiles**: select an ABI-compatible custom
+  curl wrapper once, then explicitly choose its registered alias through
+  `impersonate` on each HTTP, media, streaming, or WebSocket request
+
 - **Layered resource architecture**: parallel Redis, RabbitMQ, Kafka,
   SQLAlchemy, and MongoDB infra clients; stable repositories; and one typed
   service that owns lifecycle and bounded client replacement
@@ -113,6 +117,36 @@ async def parse_stream(self, response: StreamResponse):
     async for event in response.aiter_sse():
         yield {"data": event.data}
 ```
+
+Self-built `curl-impersonate` profiles are configured in two separate steps.
+The setting chooses the compatible native wrapper; each request chooses its
+profile explicitly, so unrelated requests never inherit a global fingerprint:
+
+```python
+from pathlib import Path
+
+from scrapy_cffi.internet import HttpRequest
+from scrapy_cffi.settings import SettingsInfo
+
+
+settings = SettingsInfo(
+    CURL_CFFI_NATIVE_DIR=Path("D:/native/my-curl-build"),
+)
+
+yield HttpRequest(
+    url="https://tls.peet.ws/api/all",
+    impersonate="my-browser-stable",
+    callback=self.parse,
+)
+```
+
+The framework ships no concrete custom profile. Users declare aliases in the
+artifact directory's optional `scrapy_cffi_profiles.toml`, or register them
+programmatically with `scrapy_cffi.profiles.register_profile`.
+
+See [the draft 0.4.2 guide](docs/RELEASE-0.4.2.md) for the native artifact
+layout, compatibility rules, official-profile passthrough, and persistence
+behavior.
 
 For finite spiders, use `SCHEDULER_LOOP_END` to stop after a bounded number of
 empty scheduler loops. Continuous Redis/RabbitMQ/Kafka spiders normally leave

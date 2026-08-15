@@ -1,3 +1,5 @@
+"""Verify generated crawler projects preserve supported public contracts."""
+
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -9,6 +11,7 @@ from scrapy_cffi.commands import demo, genspider, startproject
 
 
 def _generate_demo(tmp_path: Path, monkeypatch, *, redis=False, rabbit=False, kafka=False):
+    """Generate one demo project with the requested queue topology flags."""
     monkeypatch.chdir(tmp_path)
     assert startproject.run("demo", is_demo=True) is None
     demo.run(redis, rabbit, kafka)
@@ -16,6 +19,7 @@ def _generate_demo(tmp_path: Path, monkeypatch, *, redis=False, rabbit=False, ka
 
 
 def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
+    """Generate an in-memory demo with IDE-resolvable class references."""
     project = _generate_demo(tmp_path, monkeypatch)
     runner = (project / "runner.py").read_text(encoding="utf-8")
     settings = (project / "settings.py").read_text(encoding="utf-8")
@@ -30,6 +34,7 @@ def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
 
 
 def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypatch):
+    """Generate a Redis demo with its scheduler and local tooling."""
     project = _generate_demo(tmp_path, monkeypatch, redis=True)
     runner = (project / "runner.py").read_text(encoding="utf-8")
     settings = (project / "settings.py").read_text(encoding="utf-8")
@@ -74,6 +79,7 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
 
 
 def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypatch):
+    """Keep Redis deduplication and cleanup in RabbitMQ and Kafka demos."""
     for mode in ("rabbit", "kafka"):
         case = tmp_path / mode
         case.mkdir()
@@ -131,6 +137,7 @@ def test_demo_verifier_uses_environment_endpoints_and_retained_logs(
     tmp_path,
     monkeypatch,
 ):
+    """Generate verifier code with configurable endpoints and retained logs."""
     project = _generate_demo(tmp_path, monkeypatch)
 
     settings = (project / "settings.py").read_text(encoding="utf-8")
@@ -156,6 +163,7 @@ def test_genspider_updates_runner_without_rewriting_settings_signature(
     tmp_path,
     monkeypatch,
 ):
+    """Update the runner while preserving the generated settings API."""
     monkeypatch.chdir(tmp_path)
     startproject.run("sample")
     project = tmp_path / "sample"
@@ -174,6 +182,7 @@ def test_genspider_updates_runner_without_rewriting_settings_signature(
 
 
 def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
+    """Keep generated deployment files grouped and expose optional settings."""
     monkeypatch.chdir(tmp_path)
     startproject.run("sample")
     project = tmp_path / "sample"
@@ -193,10 +202,17 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert "SCRAPY_CFFI_REDIS_INFO__URL" in (
         project / ".env.example"
     ).read_text(encoding="utf-8")
+    assert "settings.CURL_CFFI_NATIVE_DIR = Path(" in (
+        project / "settings.py"
+    ).read_text(encoding="utf-8")
+    assert "SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR" in (
+        project / ".env.example"
+    ).read_text(encoding="utf-8")
     assert not (project / "settings.example.toml").exists()
 
 
 def test_demo_manager_reports_fixed_port_conflicts(tmp_path, monkeypatch):
+    """Report deterministic local port conflicts before starting services."""
     project = _generate_demo(tmp_path, monkeypatch, rabbit=True)
     manager_path = project / "scripts" / "demo_docker.py"
     sys.path.insert(0, str(project))

@@ -6,6 +6,7 @@
 # Safe async cleanup: Uses a background task (_reaper_loop) to close sessions when no longer needed.
 
 import asyncio, hashlib, random
+from functools import partial
 from http.cookiejar import Cookie
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
@@ -255,8 +256,15 @@ class SessionWrapper:
         if http_session_factory is None:
             from ..platform.curl_cffi import CurlCffiHttpSession
 
-            http_session_factory = CurlCffiHttpSession
+            native_dir = getattr(self.settings, "CURL_CFFI_NATIVE_DIR", None)
+            http_session_factory = partial(
+                CurlCffiHttpSession,
+                native_dir=native_dir,
+            )
         self.session: AsyncHttpSessionProtocol = http_session_factory()
+        from ..profiles import get_impersonate_resolver
+
+        self._impersonate_resolver = get_impersonate_resolver()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
         self.default_cookies = cookies or self.settings.DEFAULT_COOKIES
         self.update_session_cookies(self.default_cookies)
@@ -281,7 +289,7 @@ class SessionWrapper:
             "allow_redirects": request.allow_redirects,
             "max_redirects": request.max_redirects,
             "verify": request.verify,
-            "impersonate": request.impersonate,
+            "impersonate": self._impersonate_resolver(request.impersonate),
             "ja3": request.ja3,
             "akamai": request.akamai,
         }
@@ -352,7 +360,7 @@ class SessionWrapper:
             allow_redirects=request.allow_redirects,
             max_redirects=request.max_redirects,
             verify=request.verify,
-            impersonate=request.impersonate,
+            impersonate=self._impersonate_resolver(request.impersonate),
             ja3=request.ja3,
             akamai=request.akamai,
             **request.kwargs

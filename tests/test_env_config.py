@@ -89,3 +89,19 @@ def test_process_environment_overrides_dotenv_and_python_defaults(
     assert settings.REDIS_INFO.URL == "redis://process:6379/0"
     assert settings.REDIS_INFO.PASSWORD == "123456"
     assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" not in settings.model_extra
+
+
+def test_optional_curl_native_directory_round_trips_as_path(
+    tmp_path: Path,
+) -> None:
+    """Load the optional runtime adapter path without activating curl_cffi."""
+    native_dir = tmp_path / "native" / "windows"
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR='%s'\n" % native_dir,
+        encoding="utf-8",
+    )
+
+    settings = env_to_settings(env_path, SettingsInfo, environ={})
+
+    assert settings.CURL_CFFI_NATIVE_DIR == native_dir
