@@ -59,6 +59,10 @@ def test_package_metadata_declares_real_python_minimum():
     assert "aiokafka>=0.8.1" in extras["kafka"]
     assert "asyncmy>=0.2" in extras["mysql"]
     assert "pyblackboxprotobuf>=0.1.0,<0.2" in extras["protobuf"]
+    assert "pytest>=8.0" in extras["verification"]
+    assert "fastapi>=0.115" in extras["verification"]
+    assert "uvicorn>=0.30" in extras["verification"]
+    assert "websockets>=15.0,<16" in extras["verification"]
 
 
 def test_runtime_and_package_versions_match():

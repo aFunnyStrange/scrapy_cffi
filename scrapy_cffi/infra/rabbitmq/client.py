@@ -187,7 +187,15 @@ class RabbitMQClient:
             return None
         except asyncio.CancelledError:
             current_task = asyncio.current_task()
-            cancelling = current_task.cancelling() if current_task else 0
+            # Task.cancelling()/uncancel() were added in Python 3.11. Older
+            # runtimes consume the cancellation when CancelledError is raised,
+            # so there is no pending cancellation count to clear before the
+            # broker RPC is settled.
+            cancelling_method = (
+                getattr(current_task, "cancelling", None)
+                if current_task else None
+            )
+            cancelling = cancelling_method() if cancelling_method else 0
             if current_task and hasattr(current_task, "uncancel"):
                 for _ in range(cancelling):
                     current_task.uncancel()

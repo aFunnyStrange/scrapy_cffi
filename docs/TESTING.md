@@ -51,6 +51,13 @@ each other's containers and are invalid evidence.
 
 ## Release commands
 
+Install the framework and its explicit verification dependencies before running
+either platform gate. Do not rely on globally installed demo-server packages:
+
+```bash
+python -m pip install -e ".[kafka,rabbitmq,mysql,postgres,mongodb,verification]"
+```
+
 Windows PowerShell:
 
 ```powershell
@@ -71,3 +78,15 @@ natural exit, while Redis/RabbitMQ/Kafka interrupt phases validate real
 continuous listening and explicit shutdown. Memory mode is finite and must not
 be kept alive by a test-only hold-open flag. `--quick` is useful during
 implementation but is not release evidence.
+
+## Publish tag
+
+Only tag a commit after its branch CI and both platform gates pass. The release
+workflow requires the exact `v<project-version>` form:
+
+```bash
+git tag v0.4.2
+git push origin v0.4.2
+```
+
+Tags such as `release-v.0.4.2` do not match the workflow and must not be used.

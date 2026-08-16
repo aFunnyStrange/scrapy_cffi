@@ -34,7 +34,7 @@ jobs:
 
       - name: Run source tests
         run: |
-          python -m pip install -e ".[kafka,rabbitmq,mysql,postgres,mongodb]"
+          python -m pip install -e ".[kafka,rabbitmq,mysql,postgres,mongodb,verification]"
           python -m pytest -q
 
       - name: Build distributions

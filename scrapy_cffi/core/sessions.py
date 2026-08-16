@@ -48,6 +48,34 @@ class CloseSignal:
     def __repr__(self):
         return f"<CloseSignal session_id={self.session_id} ws_end={self.websocket_end_for_url} sess_end={self.session_end}>"
 
+
+class _LoopNeutralEvent:
+    """Expose the Event subset used here without binding during construction."""
+
+    def __init__(self) -> None:
+        self._is_set = False
+        self._event: Optional[asyncio.Event] = None
+
+    def is_set(self) -> bool:
+        """Return whether the event has been set."""
+        return self._is_set
+
+    def set(self) -> None:
+        """Set the flag and wake waiters after an event loop has been bound."""
+        self._is_set = True
+        if self._event is not None:
+            self._event.set()
+
+    async def wait(self) -> bool:
+        """Bind an asyncio event only while running inside its owning loop."""
+        if self._is_set:
+            return True
+        if self._event is None:
+            self._event = asyncio.Event()
+        await self._event.wait()
+        return True
+
+
 class WebSocketEntry:
     """Own one WebSocket connection and its event-driven listener lifecycle."""
 
@@ -63,15 +91,18 @@ class WebSocketEntry:
         self.url: str = url
         self.task: Optional[asyncio.Task] = None
         self.websocket: Optional[AsyncWebSocketProtocol] = None
-        self.stop_event: asyncio.Event = asyncio.Event()
-        self.closed_event: asyncio.Event = asyncio.Event()
+        # Python 3.9 binds asyncio.Event to the current loop in __init__.
+        # Entries may be registered synchronously, so defer loop binding until
+        # the first asynchronous wait while retaining synchronous set/is_set.
+        self.stop_event = _LoopNeutralEvent()
+        self.closed_event = _LoopNeutralEvent()
         self._ping_data = ping_data
         self._ping_interval = ping_interval
 
         self.ref_count = 0
         self.marked_end = False
         self._closed = False
-        self._close_lock = asyncio.Lock()
+        self._close_lock: Optional[asyncio.Lock] = None
         self._ping_task: Optional[asyncio.Task] = None
 
     def set_listener_task(self, task: asyncio.Task) -> None:
@@ -141,6 +172,8 @@ class WebSocketEntry:
     async def close(self) -> None:
         """Close listener, ping task, and socket exactly once."""
         current_task = asyncio.current_task()
+        if self._close_lock is None:
+            self._close_lock = asyncio.Lock()
         try:
             async with self._close_lock:
                 if self._closed:

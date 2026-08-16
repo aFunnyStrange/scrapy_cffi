@@ -1,6 +1,7 @@
 """Verify event-driven WebSocket delivery and explicit listener shutdown."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from scrapy_cffi.core.downloader.fetch import Downloader
 from scrapy_cffi.core.engine import Engine
@@ -101,6 +102,19 @@ def test_unit_legacy_end_waits_for_active_callback_reference() -> None:
 
     entry.release()
     assert entry.stop_event.is_set() is True
+
+
+def test_unit_websocket_entry_construction_requires_no_event_loop() -> None:
+    """Allow registration before an asyncio loop exists on Python 3.9."""
+
+    def construct_and_stop() -> bool:
+        """Construct in a worker thread, where no implicit loop is available."""
+        entry = WebSocketEntry(logger=_Logger(), url="wss://no-loop.test")
+        entry.mark_end()
+        return entry.stop_event.is_set()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        assert executor.submit(construct_and_stop).result() is True
 
 
 def test_integration_external_close_does_not_deadlock_listener_cleanup() -> None:
