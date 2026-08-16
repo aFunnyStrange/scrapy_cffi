@@ -220,6 +220,18 @@ def port_is_available(port: int) -> bool:
     return True
 
 
+def wait_for_port_forward_release(port: int, timeout: float = 3.0) -> bool:
+    """Wait for Docker Desktop to release a removed container's port proxy."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if port_is_available(port):
+            return True
+        if docker_port_owners(port):
+            return False
+        time.sleep(0.05)
+    return port_is_available(port)
+
+
 def preflight_ports(topology: str) -> None:
     """Fail before Compose starts anything when a required port is occupied."""
     conflicts = []
@@ -229,6 +241,11 @@ def preflight_ports(topology: str) -> None:
             continue
         owners = docker_port_owners(port)
         if owners and all(owner.startswith(own_prefix) for owner in owners):
+            continue
+        # Compose can report a completed teardown just before Docker Desktop's
+        # WSL/Windows port proxy releases the socket. This readiness guard is
+        # external test infrastructure; it never controls crawler completion.
+        if not owners and wait_for_port_forward_release(port):
             continue
         conflicts.append((port, service, owners))
 
@@ -338,6 +355,29 @@ def wait_for_port(port: int, process: subprocess.Popen) -> None:
                 return
         time.sleep(0.2)
     raise TimeoutError("Timed out waiting for demo server port %s" % port)
+
+
+def wait_for_log_text(
+    path: Path,
+    expected: str,
+    process: subprocess.Popen,
+    timeout: float = 45,
+) -> None:
+    """Observe subprocess evidence; timeout is only a test safety boundary."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                "crawler exited before evidence %r: %s"
+                % (expected, process.returncode)
+            )
+        if path.exists() and expected in path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        ):
+            return
+        time.sleep(0.1)
+    raise TimeoutError("Timed out waiting for crawler evidence %r" % expected)
 
 
 def available_port(preferred: int) -> int:
@@ -527,6 +567,11 @@ def assert_nonpersistent_cleanup(topology: str, log_dir: Path) -> None:
 
 
 def verify(topology: str, interrupt: bool = False) -> None:
+    if interrupt and DEMO_MODE == "memory":
+        raise ValueError(
+            "Memory Demo is finite; continuous interrupt verification "
+            "is available only for Redis, RabbitMQ, and Kafka modes."
+        )
     up(topology)
     log_dir = ROOT / "artifacts" / "demo-verification" / topology
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -580,7 +625,7 @@ def verify(topology: str, interrupt: bool = False) -> None:
         console_path = log_dir / "console.log"
         with console_path.open("w", encoding="utf-8") as output:
             if interrupt:
-                environment["SCRAPY_CFFI_VERIFY_HOLD_OPEN"] = "1"
+                environment["SCRAPY_CFFI_DEMO_CONTINUOUS"] = "1"
                 creationflags = (
                     subprocess.CREATE_NEW_PROCESS_GROUP
                     if sys.platform == "win32"
@@ -595,10 +640,12 @@ def verify(topology: str, interrupt: bool = False) -> None:
                     creationflags=creationflags,
                 )
                 try:
-                    time.sleep(
-                        10
-                        if topology == "cluster" and DEMO_MODE == "kafka"
-                        else 4
+                    wait_for_log_text(
+                        console_path,
+                        (
+                            "spider end"
+                        ),
+                        crawler_process,
                     )
                     if crawler_process.poll() is not None:
                         raise RuntimeError(
@@ -620,23 +667,22 @@ def verify(topology: str, interrupt: bool = False) -> None:
             else:
                 crawler_code = (
                     "import asyncio\n"
-                    "from runner import advance_main\n"
+                    "from runner import advance_main_all\n"
                     "async def verify():\n"
-                    "    crawler, engine_task = await advance_main()\n"
+                    "    crawler, engine_task = await advance_main_all()\n"
                     "    try:\n"
-                    "        await asyncio.sleep(%s)\n"
+                    "        await asyncio.wait_for(engine_task, timeout=60)\n"
                     "    finally:\n"
                     "        await crawler.shutdown()\n"
-                    "    await asyncio.wait_for(engine_task, timeout=15)\n"
                     "asyncio.run(verify())\n"
-                ) % (15 if topology == "cluster" and DEMO_MODE == "kafka" else 6)
+                )
                 subprocess.run(
                     [sys.executable, "-c", crawler_code],
                     cwd=str(ROOT),
                     env=environment,
                     stdout=output,
                     stderr=subprocess.STDOUT,
-                    timeout=35,
+                    timeout=70,
                     check=True,
                 )
         assert_nonpersistent_cleanup(topology, log_dir)
@@ -661,16 +707,28 @@ def verify(topology: str, interrupt: bool = False) -> None:
             failures.append("WebSocket incremental request evidence is missing")
         if interrupt and ">>> [signal] Received stop signal" not in console:
             failures.append("Ctrl+C signal evidence is missing")
+        if interrupt:
+            if "spider end" not in console:
+                failures.append("continuous crawler work evidence is missing")
+            if ">>> [main] Task finished normally." in console:
+                failures.append("continuous crawler exited without a stop event")
         if "Traceback (most recent call last)" in console:
             failures.append("crawler console contains a traceback")
         if failures:
             raise RuntimeError("; ".join(failures))
         (log_dir / "result.txt").write_text(
             (
-                "status=PASS\nmode=%s\ntopology=%s\ninterrupt=%s\n"
+                "status=PASS\nmode=%s\ntopology=%s\ninterrupt=%s\ncontinuous=%s\n"
                 "http_port=%s\nwebsocket_port=%s\n"
             )
-            % (DEMO_MODE, topology, interrupt, http_port, websocket_port),
+            % (
+                DEMO_MODE,
+                topology,
+                interrupt,
+                interrupt,
+                http_port,
+                websocket_port,
+            ),
             encoding="utf-8",
         )
         print("PASS: %s / %s; logs: %s" % (DEMO_MODE, topology, log_dir))

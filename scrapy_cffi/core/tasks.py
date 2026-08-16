@@ -31,6 +31,9 @@ class TaskManager:
         self.signalManager = signalManager
         self.active_tasks = 1 if is_distributed else 0
         self.active_task_names: Dict[str, int] = {}
+        self.active_object_tasks: Dict[int, int] = {}
+        self.object_idle_events: Dict[int, asyncio.Event] = {}
+        self.object_activity_events: Dict[int, asyncio.Event] = {}
         self.managed_tasks: Set[asyncio.Task] = set()
         self.tasks_done_event = asyncio.Event()
         self.error_event = asyncio.Event()
@@ -55,6 +58,7 @@ class TaskManager:
         if self.stop_event.is_set():
             return
         callfunc_name = callfunc.get_func_name()
+        obj_id = callfunc.obj_id
 
         async def wrapped():
             task_id = id(asyncio.current_task())
@@ -64,9 +68,10 @@ class TaskManager:
                     result = await callfunc.to_coro()
                     if callback:
                         await safe_call(callback, result, **callback_kwargs)
-                except (asyncio.CancelledError, KeyboardInterrupt) as e:
-                    if callfunc:
-                        self.error_event.set()
+                except asyncio.CancelledError:
+                    raise
+                except KeyboardInterrupt:
+                    self.error_event.set()
                     raise
                 except Exception as e:
                     result = f"<Task-Error exception={repr(e)}>"
@@ -83,11 +88,35 @@ class TaskManager:
                         self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{callfunc_name}')
                         if self.active_tasks <= 0:
                             self.tasks_done_event.set()
+                        if obj_id is not None:
+                            self.active_object_tasks[obj_id] = (
+                                self.active_object_tasks.get(obj_id, 1) - 1
+                            )
+                            if self.active_object_tasks[obj_id] <= 0:
+                                self.active_object_tasks.pop(obj_id, None)
+                                self.object_idle_events[obj_id].set()
+                            self.object_activity_events.setdefault(
+                                obj_id,
+                                asyncio.Event(),
+                            ).set()
 
         async with self.lock:
             self.active_tasks += 1
             self.active_task_names[callfunc_name] = self.active_task_names.get(callfunc_name, 0) + 1
             self.tasks_done_event.clear()
+            if obj_id is not None:
+                idle_event = self.object_idle_events.setdefault(
+                    obj_id,
+                    asyncio.Event(),
+                )
+                self.active_object_tasks[obj_id] = (
+                    self.active_object_tasks.get(obj_id, 0) + 1
+                )
+                idle_event.clear()
+                self.object_activity_events.setdefault(
+                    obj_id,
+                    asyncio.Event(),
+                ).set()
         loop = asyncio.get_running_loop() # Obtain the event loop here to ensure this is called within an async context
         try:
             task = loop.create_task(wrapped())
@@ -99,10 +128,59 @@ class TaskManager:
                     self.active_task_names.pop(callfunc_name, None)
                 if self.active_tasks <= 0:
                     self.tasks_done_event.set()
+                if obj_id is not None:
+                    self.active_object_tasks[obj_id] = (
+                        self.active_object_tasks.get(obj_id, 1) - 1
+                    )
+                    if self.active_object_tasks[obj_id] <= 0:
+                        self.active_object_tasks.pop(obj_id, None)
+                        self.object_idle_events[obj_id].set()
+                    self.object_activity_events.setdefault(
+                        obj_id,
+                        asyncio.Event(),
+                    ).set()
             raise
         self.managed_tasks.add(task)
         task.add_done_callback(self.managed_tasks.discard)
         return task
+
+    async def wait_for_object_idle(self, obj_id: int) -> None:
+        """Wait until one Engine has no managed task capable of producing work."""
+        async with self.lock:
+            if self.active_object_tasks.get(obj_id, 0) <= 0:
+                return
+            idle_event = self.object_idle_events.setdefault(
+                obj_id,
+                asyncio.Event(),
+            )
+        await idle_event.wait()
+
+    async def wait_for_object_quiescent(
+        self,
+        obj_id: int,
+        exclude_prefixes: tuple[str, ...] = (),
+    ) -> None:
+        """Wait for real task transitions until one Engine has no work tasks."""
+        scope = f"[{obj_id}]"
+        while True:
+            async with self.lock:
+                has_work = any(
+                    count > 0
+                    and scope in task_name
+                    and not any(
+                        task_name.startswith(prefix)
+                        for prefix in exclude_prefixes
+                    )
+                    for task_name, count in self.active_task_names.items()
+                )
+                if not has_work:
+                    return
+                activity_event = self.object_activity_events.setdefault(
+                    obj_id,
+                    asyncio.Event(),
+                )
+                activity_event.clear()
+            await activity_event.wait()
 
     async def wait_until_stopped(self) -> str:
         tasks_done_task = asyncio.create_task(self.tasks_done_event.wait())
@@ -160,6 +238,32 @@ class TaskManager:
                     continue
                 total += count
         return total
+
+    async def wait_for_object_task_count_below(
+        self,
+        obj_id: int,
+        prefixes: tuple[str, ...],
+        limit: int,
+    ) -> None:
+        """Wait for a task-completion event instead of polling capacity."""
+        while True:
+            async with self.lock:
+                scope = f"[{obj_id}]"
+                count = sum(
+                    task_count
+                    for task_name, task_count in self.active_task_names.items()
+                    if task_count > 0
+                    and scope in task_name
+                    and any(task_name.startswith(prefix) for prefix in prefixes)
+                )
+                if count < limit:
+                    return
+                activity_event = self.object_activity_events.setdefault(
+                    obj_id,
+                    asyncio.Event(),
+                )
+                activity_event.clear()
+            await activity_event.wait()
 
     def get_task_coro_path(self, task: asyncio.Task):
         try:

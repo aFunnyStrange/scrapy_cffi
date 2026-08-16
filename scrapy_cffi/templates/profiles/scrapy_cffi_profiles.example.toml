@@ -1,0 +1,12 @@
+schema_version = 1
+
+[profiles.my-browser-stable]
+impersonate = "my_native_profile_v1"
+
+# Optional high-entropy values observed from the same browser build. The
+# mandatory Client Hints interceptor sends them only after an HTTPS origin
+# advertises the corresponding Accept-CH names.
+[profiles.my-browser-stable.client_hints]
+Sec-CH-UA-Full-Version-List = '"Chromium";v="123.0.0.0"'
+Sec-CH-UA-Arch = '"x86"'
+Sec-CH-UA-Bitness = '"64"'

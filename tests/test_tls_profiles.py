@@ -10,6 +10,7 @@ import pytest
 
 from scrapy_cffi.core.sessions import SessionWrapper
 from scrapy_cffi.internet import HttpRequest, MediaRequest, WebSocketRequest
+from scrapy_cffi.interceptors.spiders import UpdateRequestSpiderInterceptor
 from scrapy_cffi.profiles import (
     DEFAULT_REGISTRY,
     ActivationInfo,
@@ -23,6 +24,30 @@ from scrapy_cffi.profiles import (
 )
 from scrapy_cffi.profiles import runtime as profile_runtime
 from scrapy_cffi.settings import SettingsInfo
+
+
+def test_unit_impersonate_without_headers_preserves_vendor_profile_defaults() -> None:
+    """Avoid overriding an explicit impersonation profile with framework UA."""
+    interceptor = UpdateRequestSpiderInterceptor.__new__(
+        UpdateRequestSpiderInterceptor
+    )
+    interceptor.default_headers = {"Accept": "application/json"}
+    interceptor.default_ua = "scrapy_cffiBot"
+    interceptor.timeout = 30
+    interceptor.dont_filter = False
+    interceptor.proxies = None
+    interceptor.proxies_list = []
+
+    profiled = interceptor.pre_check(
+        HttpRequest(url="https://example.test", impersonate="chrome151")
+    )
+    ordinary = interceptor.pre_check(HttpRequest(url="https://example.test"))
+
+    assert profiled.headers == {}
+    assert ordinary.headers == {
+        "Accept": "application/json",
+        "user-agent": "scrapy_cffiBot",
+    }
 
 
 class _CookieJar:
@@ -143,6 +168,28 @@ def test_unit_manifest_requires_supported_schema(tmp_path: Path) -> None:
     )
     with pytest.raises(ProfileManifestError, match="schema_version"):
         load_profile_manifest(tmp_path, registry=ProfileRegistry())
+
+
+def test_unit_manifest_loads_profile_client_hints(tmp_path: Path) -> None:
+    """Load optional browser metadata while retaining legacy manifests."""
+    (tmp_path / "scrapy_cffi_profiles.toml").write_text(
+        """schema_version = 1
+[profiles.stable]
+impersonate = "native_v1"
+
+[profiles.stable.client_hints]
+Sec-CH-UA-Arch = '\"x86\"'
+Sec-CH-UA-Bitness = '\"64\"'
+""",
+        encoding="utf-8",
+    )
+    registry = ProfileRegistry()
+
+    profiles = load_profile_manifest(tmp_path, registry=registry)
+
+    assert profiles[0].impersonate == "native_v1"
+    assert profiles[0].get_client_hint("sec-ch-ua-arch") == '"x86"'
+    assert registry.get("stable").get_client_hint("Sec-CH-UA-Bitness") == '"64"'
 
 
 def test_unit_native_activation_rejects_missing_directory(tmp_path: Path) -> None:

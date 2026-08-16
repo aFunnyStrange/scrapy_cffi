@@ -1,6 +1,5 @@
 # runner.py
 import asyncio
-import os
 import sys
 from settings import create_settings
 from typing import Optional, Tuple, Type
@@ -117,14 +116,10 @@ if __name__ == "__main__":
         crawler, engine_task = await advance_main_all()
 
         shutdown_task = asyncio.create_task(shutdown_event.wait())
-        if os.environ.get("SCRAPY_CFFI_VERIFY_HOLD_OPEN") == "1":
-            await shutdown_task
-            done = {shutdown_task}
-        else:
-            done, _ = await asyncio.wait(
-                [engine_task, shutdown_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
+        done, _ = await asyncio.wait(
+            [engine_task, shutdown_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
 
         if shutdown_event.is_set():
             print(">>> [main] Triggered shutdown, cleaning up...")

@@ -4,7 +4,11 @@ from pathlib import Path
 from .core.api import *
 from .interceptors import ChainManager, InterruptibleChainManager
 # from .interceptors import DownloadInterceptor
-from .interceptors.api import UpdateRequestSpiderInterceptor, RobotSpiderInterceptor
+from .interceptors.api import (
+    ClientHintsDownloadInterceptor,
+    RobotSpiderInterceptor,
+    UpdateRequestSpiderInterceptor,
+)
 from .pipelines import Pipeline
 from .extensions import SignalManager
 from .utils.common import (
@@ -121,7 +125,13 @@ class Crawler:
         self.settings.SPIDER_INTERCEPTORS_PATH.value.extend([RobotSpiderInterceptor, UpdateRequestSpiderInterceptor])
         self.spiderInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.SPIDER_INTERCEPTORS_PATH.value)
 
-        # self.settings.DOWNLOAD_INTERCEPTORS_PATH.value.insert(0, DownloadInterceptor)
+        if (
+            ClientHintsDownloadInterceptor
+            not in self.settings.DOWNLOAD_INTERCEPTORS_PATH.value
+        ):
+            self.settings.DOWNLOAD_INTERCEPTORS_PATH.value.append(
+                ClientHintsDownloadInterceptor
+            )
         self.downloadInterceptor_chain = InterruptibleChainManager.from_crawler(self, class_list=self.settings.DOWNLOAD_INTERCEPTORS_PATH.value)
 
         self.settings.ITEM_PIPELINES_PATH.value.insert(0, Pipeline)

@@ -95,8 +95,10 @@ class RabbitMqScheduler(RedisScheduler):
     async def get(self, spider: "Spider"=None, **kwargs):
         request_bytes = await self.request_queue.pop(self.get_queue_key(spider=spider))
         if request_bytes is None:
-            queue_size = await self.request_queue.size(self.get_queue_key(spider=spider))
-            return queue_size
+            # An empty broker read is only one transport observation. Engine
+            # completion is driven by producer and owned-work events, so a
+            # second queue-size RPC is both redundant and unsafe to cancel.
+            return 0
         request = Request.from_bytes(request_bytes)
         await self._restore_request_session(request, spider)
         return self._lease_request(request)

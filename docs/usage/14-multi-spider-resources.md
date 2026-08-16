@@ -6,6 +6,11 @@ When **one event loop** runs **multiple spiders** (single `Crawler` + `run_all_s
 
 Each spider gets its own **scheduler instance**. Override per spider via class attributes or `settings_overlay`.
 
+Scheduler families are preserved as well. A normal `Spider` keeps its
+in-memory scheduler when Redis, RabbitMQ, or Kafka spiders share the Crawler.
+There is no implicit promotion in `run_all_spiders`; only an explicit global
+`settings.SCHEDULER` selects one scheduler class for all spiders.
+
 | Resource | Scope | Isolation mechanism |
 | -------- | ----- | ------------------- |
 | Work queue (memory scheduler) | Per spider | `scheduler_queue_key` or `queue_name`; else `{QUEUE_NAME}:{name}` or `{name}_req` |

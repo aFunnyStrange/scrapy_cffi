@@ -59,14 +59,17 @@ def create_settings(
         CustomDownloadInterceptor1: 300,
         CustomDownloadInterceptor2: 200,
     }
-    settings.JS_PATH = str(get_run_py_dir() / "js_path") # can be a custom path string, or True to use the default: get_run_py_dir() / "js_path"
+    # Optional: requires a JavaScript runtime supported by PyExecJS.
+    # settings.JS_PATH = str(get_run_py_dir() / "js_path")
 
     # Optional runtime-only curl adapter. Point this to an ABI-compatible
     # self-built directory containing `_wrapper`, adjacent DLL/SO files, and
     # an optional scrapy_cffi_profiles.toml alias manifest.
     # The adapter is activated only when the default curl transport is first
     # constructed; every request must still select impersonate explicitly.
-    # settings.CURL_CFFI_NATIVE_DIR = Path("D:/native/my-curl-build")
+    # settings.CURL_CFFI_NATIVE_DIR = (
+    #     get_run_py_dir() / "profiles" / "artifacts" / "windows-x86_64-py312"
+    # )
 
     if sys.platform.startswith("win"):
         # Keep bounded defaults for run_all_spiders stability on Windows.
@@ -78,6 +81,7 @@ def create_settings(
 
     if used_kafka:
         settings.SCHEDULER_PERSIST = False
+        settings.MAX_SCHEDULER_LOOP_NUM = 1
         settings.SCHEDULER = KafkaScheduler
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Distributed deduplication (always required)
         settings.KAFKA_INFO.URL = "localhost:9092"
@@ -86,10 +90,10 @@ def create_settings(
         settings.SCHEDULER = RabbitMqScheduler
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379" # Distributed deduplication (always required)
         settings.RABBITMQ_INFO.URL = "amqp://guest:guest@127.0.0.1:5672"
-        # settings.SCHEDULER_LOOP_END = 5
         settings.MAX_SCHEDULER_LOOP_NUM = 1 # One crawler, run_all_spiders, aio_pika does not fully support a large number of concurrent robust connections.
     elif used_redis:
         settings.SCHEDULER = RedisScheduler # Starting the Redis scheduler requires configuring Redis information
+        settings.MAX_SCHEDULER_LOOP_NUM = 1
         settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
         settings.SCHEDULER_PERSIST = False
         # Optional: shared Redis Stream consumer-group defaults for RedisSpider (spider attrs override)
@@ -99,7 +103,6 @@ def create_settings(
         #     STREAM_KEY="demo:stream",
         #     GROUP_NAME="demo-group",
         # )
-        # settings.SCHEDULER_LOOP_END = 5
 
     # settings.LOG_INFO.LOG_FILE = "demo.log"
 

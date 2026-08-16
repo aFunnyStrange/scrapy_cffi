@@ -103,6 +103,27 @@ def _minimal_spider_module(tmp: Path, *, redis: bool = False, rabbit: bool = Fal
     return spiders
 
 
+def _add_memory_spider(spiders: Path) -> None:
+    """Add one finite memory spider beside a distributed spider fixture."""
+    body = textwrap.dedent(
+        """
+        from scrapy_cffi.spiders import Spider
+
+        class MemorySpider(Spider):
+            name = "memory"
+            allowed_domains = ["127.0.0.1"]
+
+            async def start(self):
+                if False:
+                    yield None
+        """
+    )
+    (spiders / "memory.py").write_text(
+        body.strip() + "\n",
+        encoding="utf-8",
+    )
+
+
 def _base_settings(spiders_path: Path):
     from scrapy_cffi.settings import SettingsInfo
 
@@ -112,7 +133,6 @@ def _base_settings(spiders_path: Path):
     settings.ITEM_PIPELINES_PATH = []
     settings.DOWNLOAD_INTERCEPTORS_PATH = {}
     settings.MAX_SCHEDULER_LOOP_NUM = 1
-    settings.SCHEDULER_LOOP_END = 0
     return settings
 
 
@@ -153,12 +173,18 @@ async def _init_crawler(
 
 
 def test_memory_scheduler_init(tmp_path):
+    from scrapy_cffi.interceptors import ClientHintsDownloadInterceptor
+
     spiders = _minimal_spider_module(tmp_path)
     settings = _base_settings(spiders)
     crawler = asyncio.run(_init_crawler(settings))
     assert crawler.schedulers["demo"].is_distributed is False
     assert type(crawler.schedulers["demo"]).__name__ == "Scheduler"
     assert crawler.engines[0].scheduler_loop.__name__ == "_local_scheduler_loop"
+    assert isinstance(
+        crawler.downloadInterceptor_chain.chain_tail.instance,
+        ClientHintsDownloadInterceptor,
+    )
 
 
 def test_redis_scheduler_init(tmp_path):
@@ -222,6 +248,47 @@ def test_kafka_scheduler_init(tmp_path):
     assert type(sch).__name__ == "KafkaScheduler"
     assert sch.get_queue_key(crawler.spiders[0]) == "demo.requests"
     assert sch.get_start_topic(crawler.spiders[0]) == "demo.start"
+
+
+def test_run_all_mixed_spiders_preserve_each_scheduler_family(tmp_path):
+    """A distributed spider must not promote a sibling memory spider."""
+    cases = (
+        ("redis", {"redis": True}, "RedisScheduler"),
+        ("rabbitmq", {"rabbit": True}, "RabbitMqScheduler"),
+        ("kafka", {"kafka": True}, "KafkaScheduler"),
+    )
+    for mode, fixture_kwargs, expected_scheduler in cases:
+        if mode == "kafka":
+            _install_aiokafka_stubs()
+        spiders = _minimal_spider_module(
+            tmp_path / mode,
+            **fixture_kwargs,
+        )
+        _add_memory_spider(spiders)
+        settings = _base_settings(spiders)
+        settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"
+        if mode == "rabbitmq":
+            settings.RABBITMQ_INFO.URL = (
+                "amqp://guest:guest@127.0.0.1:5672/"
+            )
+        elif mode == "kafka":
+            settings.KAFKA_INFO.URL = "127.0.0.1:9092"
+
+        crawler = asyncio.run(
+            _init_crawler(
+                settings,
+                mock_redis=True,
+                mock_rabbit=mode == "rabbitmq",
+                mock_kafka=mode == "kafka",
+            )
+        )
+
+        assert type(crawler.schedulers["memory"]).__name__ == "Scheduler"
+        assert type(crawler.schedulers["demo"]).__name__ == expected_scheduler
+        memory_engine = next(
+            engine for engine in crawler.engines if engine.spider.name == "memory"
+        )
+        assert memory_engine.scheduler_loop.__name__ == "_local_scheduler_loop"
 
 
 def test_repository_package_keeps_optional_drivers_lazy():

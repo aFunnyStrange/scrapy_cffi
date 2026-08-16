@@ -170,7 +170,7 @@ Each worker continuously pulls requests from the scheduler and executes the full
 This value directly determines the framework’s concurrency level.
 
 **Note:**
-In a `single Crawler` scenario, when using the `run_all_spiders` mode to start multiple spiders, each spider corresponds to an Engine, and **each Engine creates self.settings.MAX_SCHEDULER_LOOP_NUM scheduler_loop**. By default, **end_count (i.e., SCHEDULER_LOOP_END) is None**, meaning the loops continuously listen to the queue. Under these conditions, `aio_pika.connect_robust` may raise errors. This is fundamentally due to limitations in aio_pika's underlying connection pool implementation. While multiple scheduler_loop instances are used to increase concurrency under high task load, aio_pika does not fully support a large number of concurrent robust connections.
+In a `single Crawler` scenario, when using the `run_all_spiders` mode to start multiple spiders, each spider corresponds to an Engine, and **each Engine creates self.settings.MAX_SCHEDULER_LOOP_NUM scheduler_loop**. Under these conditions, `aio_pika.connect_robust` may raise errors. This is fundamentally due to limitations in aio_pika's underlying connection pool implementation. While multiple scheduler loops increase concurrency under high task load, aio_pika does not fully support a large number of concurrent robust connections. This worker count does not decide lifecycle completion.
 
 
 **Impact on Performance**
@@ -236,10 +236,15 @@ For these reasons, the framework always uses a **fixed-size worker pool**, with 
 ### 2.1.5 SCHEDULER_LOOP_END
 - **Type**: Union[int, None]
 - **Default**: None
-- **Description**: For terminable spiders using `RedisScheduler`, `RabbitMqScheduler`, or other custom schedulers in `scrapy-cffi >= 0.2.5`, this setting allows controlling the number of scheduler loops before the program exits automatically.
-    - If `None` (default), the scheduler continues listening indefinitely.
-    - Only set this for finite/terminable spiders.
-    - Continuous-listening spiders (e.g., `RedisSpider` + `RedisScheduler`, `RabbitMqSpider` + `RabbitMqScheduler`, or other custom persistent spiders) should **not** configure this option.
+- **Description**: Deprecated compatibility field. It no longer controls Engine completion because repeated empty reads are not a valid lifecycle signal.
+
+Use the producer contract instead:
+
+- A custom `start()` that returns is finite.
+- Standard Redis/RabbitMQ/Kafka Spiders use `start_request_limit = None` by default and listen continuously.
+- Set a positive `start_request_limit` only when a finite producer is defined by a known number of accepted ingress messages.
+- After producer completion, the Engine waits for its owned requests, callbacks, streams, and WebSocket listeners to complete before emitting `scheduler_empty` and closing.
+- Transport timeouts and empty reads mean only “no message now”; they never decrement a completion counter.
 
 
 ---
@@ -338,7 +343,7 @@ chooses a request profile. Set `impersonate` explicitly on each `HttpRequest`,
 Generated projects include an optional `.env.example` entry:
 
 ```dotenv
-SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=D:/native/my-curl-build
+SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=profiles/artifacts/windows-x86_64-py312
 ```
 
 The adapter is loaded only when the default curl transport is constructed.
@@ -583,9 +588,15 @@ This TTL applies **only to deduplication keys**; it does **not** affect request 
 
 ## 2.6 End Behavior
 ### 2.6.1 WS_END_TAG
+
+> Deprecated compatibility setting. WebSocket delivery no longer places an
+> end marker in a response queue. Listener shutdown is event-driven through
+> `WebSocketResponse.stop_listening()`, crawler shutdown, or the legacy
+> `CloseSignal` path, so this value has no runtime effect.
+
 - **Type**: Optional[str]
 - **Default**: "websocket end"
-- **Description**: You can customize the TAG to avoid conflicts with the response content。
+- **Description**: Retained only so existing settings files continue to load.
 
 ---
 

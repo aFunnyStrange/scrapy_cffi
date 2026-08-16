@@ -1,8 +1,9 @@
-"""Register explicit request profile aliases and load artifact manifests."""
+"""Register explicit request profiles and their browser metadata."""
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Union
+import re
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
 import toml
 
@@ -10,6 +11,18 @@ import toml
 PROFILE_MANIFEST_NAME = "scrapy_cffi_profiles.toml"
 PROFILE_MANIFEST_SCHEMA_VERSION = 1
 ImpersonateResolver = Callable[[Optional[str]], Optional[str]]
+ClientHintItems = Tuple[Tuple[str, str], ...]
+_CLIENT_HINT_NAME_RE = re.compile(r"^[A-Za-z0-9-]+$")
+_LEGACY_CLIENT_HINT_NAMES = {
+    "device-memory",
+    "downlink",
+    "dpr",
+    "ect",
+    "rtt",
+    "save-data",
+    "viewport-width",
+    "width",
+}
 
 
 class ProfileManifestError(ValueError):
@@ -18,10 +31,19 @@ class ProfileManifestError(ValueError):
 
 @dataclass(frozen=True)
 class ProfileSpec:
-    """Describe one stable profile alias and its native target name."""
+    """Describe one stable profile alias and optional Client Hint values."""
 
     name: str
     impersonate: str
+    client_hints: ClientHintItems = ()
+
+    def get_client_hint(self, name: str) -> Optional[str]:
+        """Return a configured Client Hint value case-insensitively."""
+        normalized = name.lower()
+        for hint_name, value in self.client_hints:
+            if hint_name.lower() == normalized:
+                return value
+        return None
 
 
 class ProfileRegistry:
@@ -82,6 +104,10 @@ class ProfileRegistry:
         registered = self._profiles.get(profile)
         return registered.impersonate if registered is not None else profile
 
+    def get(self, profile: str) -> Optional[ProfileSpec]:
+        """Return metadata for a registered alias without native fallback."""
+        return self._profiles.get(profile)
+
 
 DEFAULT_REGISTRY = ProfileRegistry()
 
@@ -91,32 +117,99 @@ def register_profile(
     impersonate: str,
     replace: bool = False,
     registry: ProfileRegistry = DEFAULT_REGISTRY,
+    client_hints: Optional[Mapping[str, str]] = None,
 ) -> ProfileSpec:
     """Register a user-owned alias for one compiled native target."""
     return registry.register(
-        ProfileSpec(name=name, impersonate=impersonate),
+        ProfileSpec(
+            name=name,
+            impersonate=impersonate,
+            client_hints=_validate_client_hints(
+                client_hints or {},
+                "profile %s" % name,
+            ),
+        ),
         replace=replace,
     )
 
 
-def _validate_manifest_profiles(value: object, manifest_path: Path) -> Mapping[str, str]:
-    """Validate and return the manifest profile mapping."""
+def _validate_client_hints(
+    value: object,
+    source: str,
+) -> ClientHintItems:
+    """Validate browser metadata without permitting arbitrary headers."""
+    if not isinstance(value, dict):
+        raise ProfileManifestError(
+            "Client Hints must be a table in %s" % source
+        )
+    result = []
+    for name, hint_value in value.items():
+        if not isinstance(name, str) or not _CLIENT_HINT_NAME_RE.fullmatch(name):
+            raise ProfileManifestError(
+                "Client Hint names must be HTTP tokens in %s" % source
+            )
+        normalized = name.lower()
+        if (
+            not normalized.startswith("sec-ch-")
+            and normalized not in _LEGACY_CLIENT_HINT_NAMES
+        ):
+            raise ProfileManifestError(
+                "Unsupported Client Hint name %r in %s" % (name, source)
+            )
+        if not isinstance(hint_value, str):
+            raise ProfileManifestError(
+                "Client Hint values must be strings in %s" % source
+            )
+        result.append((name, hint_value))
+    return tuple(result)
+
+
+def _validate_manifest_profiles(
+    value: object,
+    manifest_path: Path,
+) -> List[ProfileSpec]:
+    """Validate legacy strings and metadata-rich profile tables."""
     if not isinstance(value, dict):
         raise ProfileManifestError(
             "Manifest [profiles] must be a table: %s" % manifest_path
         )
-    profiles = value
-    for name, target in profiles.items():
+    profiles = []
+    for name, definition in value.items():
         if not isinstance(name, str) or not name.strip():
             raise ProfileManifestError(
                 "Manifest profile names must be non-empty strings: %s"
                 % manifest_path
             )
+        if isinstance(definition, str):
+            target = definition
+            client_hints = ()
+        elif isinstance(definition, dict):
+            unknown = set(definition) - {"impersonate", "client_hints"}
+            if unknown:
+                raise ProfileManifestError(
+                    "Unknown profile fields %r in %s"
+                    % (sorted(unknown), manifest_path)
+                )
+            target = definition.get("impersonate")
+            client_hints = _validate_client_hints(
+                definition.get("client_hints", {}),
+                "%s profile %s" % (manifest_path, name),
+            )
+        else:
+            target = None
+            client_hints = ()
         if not isinstance(target, str) or not target.strip():
             raise ProfileManifestError(
                 "Manifest profile targets must be non-empty strings: %s"
                 % manifest_path
             )
+        profiles.append(
+            ProfileSpec(
+                name=name,
+                impersonate=target,
+                client_hints=client_hints,
+            )
+        )
     return profiles
 
 
@@ -158,8 +251,8 @@ def load_profile_manifest(
         )
     profiles = _validate_manifest_profiles(manifest.get("profiles"), manifest_path)
     return [
-        register_profile(name, target, registry=registry)
-        for name, target in profiles.items()
+        registry.register(profile)
+        for profile in profiles
     ]
 
 
@@ -185,6 +278,7 @@ def get_impersonate_resolver(
 
 __all__ = [
     "DEFAULT_REGISTRY",
+    "ClientHintItems",
     "ImpersonateResolver",
     "PROFILE_MANIFEST_NAME",
     "PROFILE_MANIFEST_SCHEMA_VERSION",

@@ -209,8 +209,9 @@ class RedisScheduler(BaseScheduler):
     async def get(self, spider: "Spider"=None, **kwargs):
         request_bytes = await self.redis_repository.dequeue_request(queue_key=self.get_queue_key(spider=spider))
         if request_bytes is None:
-            queue_size = await self.redis_repository.llen(self.get_queue_key(spider=spider))
-            return queue_size
+            # Queue emptiness never controls Engine completion. Avoid an
+            # additional length query in the scheduling hot path.
+            return 0
         request = Request.from_bytes(request_bytes)
         await self._restore_request_session(request, spider)
         return self._lease_request(request)

@@ -203,11 +203,22 @@ class WebSocketResponse(Response):
         errback=None,
         desc_text="",
         request=None,
+        stop_listening: Optional[Callable[[], None]] = None,
         **kwargs
     ):
         super().__init__(session_id=session_id, meta=meta, callback=callback, errback=errback, desc_text=desc_text, request=request, **kwargs)
         self.websocket_id = websocket_id
         self.msg = msg
+        self._stop_listening = stop_listening
+        self._listening_stopped = False
+
+    def stop_listening(self) -> None:
+        """Request idempotent shutdown of this long-lived connection."""
+        if self._listening_stopped:
+            return
+        self._listening_stopped = True
+        if self._stop_listening is not None:
+            self._stop_listening()
 
     def protobuf_decode(self) -> Tuple[Dict, Dict]:
         return ProtobufFactory.protobuf_decode(self.msg)

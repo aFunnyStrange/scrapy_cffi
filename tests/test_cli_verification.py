@@ -15,10 +15,10 @@ def test_quick_verifier_collects_all_results_and_writes_summary(
         log_path.write_text("ok\n", encoding="utf-8")
         return True, 0.01
 
-    def fake_generate(work_root, mode):
+    def fake_generate(work_root, mode, log_path):
         project = work_root / mode / "demo"
         project.mkdir(parents=True)
-        return project
+        return project, True, 0.01
 
     monkeypatch.setattr(verification, "_run_logged", fake_run)
     monkeypatch.setattr(verification, "_generate_demo", fake_generate)
@@ -36,8 +36,14 @@ def test_quick_verifier_collects_all_results_and_writes_summary(
     assert summary["status"] == "PASS"
     assert [(item["scope"], item["phase"]) for item in summary["results"]] == [
         ("framework", "pytest"),
+        ("startproject", "cli-generate"),
+        ("startproject", "generate/import"),
+        ("tls", "cli-generate"),
+        ("tls", "generate/import"),
+        ("memory", "cli-generate"),
         ("memory", "generate/import"),
         ("memory", "plan-single"),
+        ("redis", "cli-generate"),
         ("redis", "generate/import"),
         ("redis", "plan-single"),
         ("redis", "plan-sentinel"),
@@ -57,10 +63,10 @@ def test_memory_is_not_run_for_distributed_only_topology(tmp_path, monkeypatch):
         log_path.write_text("ok\n", encoding="utf-8")
         return True, 0.01
 
-    def fake_generate(work_root, mode):
+    def fake_generate(work_root, mode, log_path):
         project = work_root / mode / "demo"
         project.mkdir(parents=True)
-        return project
+        return project, True, 0.01
 
     monkeypatch.setattr(verification, "_run_logged", fake_run)
     monkeypatch.setattr(verification, "_generate_demo", fake_generate)

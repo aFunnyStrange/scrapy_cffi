@@ -199,3 +199,42 @@ def test_failed_replacement_connect_is_retried_before_next_operation():
         await slot.close()
 
     asyncio.run(run())
+
+
+def test_replacement_never_exposes_an_empty_resource_slot() -> None:
+    """Concurrent operations retain a generation while replacement connects."""
+
+    async def run() -> None:
+        """Read the slot while a replacement is between construction and swap."""
+        connect_release = asyncio.Event()
+        replacement_connecting = asyncio.Event()
+        builds = {"count": 0}
+
+        class DelayedResource(FakeResource):
+            """Pause only the replacement generation during connect."""
+
+            async def connect(self) -> None:
+                """Publish construction state and wait for the test owner."""
+                if builds["count"] > 1:
+                    replacement_connecting.set()
+                    await connect_release.wait()
+
+        def factory() -> FakeResource:
+            """Create one initial and one delayed replacement resource."""
+            builds["count"] += 1
+            return DelayedResource(True)
+
+        slot = ResourceSlot(factory)
+        await slot.start()
+        original = slot.get()
+        replacement_task = asyncio.create_task(slot.replace(slot.generation))
+        await replacement_connecting.wait()
+
+        assert slot.get() is original
+
+        connect_release.set()
+        await replacement_task
+        assert slot.get() is not original
+        await slot.close()
+
+    asyncio.run(run())

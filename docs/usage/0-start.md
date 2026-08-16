@@ -85,6 +85,19 @@ scrapy-cffi demo -r
 scrapy-cffi demo -m
 ```
 
+### 4.4 TLS inspection
+
+```bash
+scrapy-cffi demo -tls
+cd demo
+python runner.py
+```
+
+The TLS demo is standalone: it requests several TLS inspection endpoints and
+sets `impersonate` explicitly for each request. Generated Demo and
+`startproject` projects also include `profiles/README.md` and an example
+`scrapy_cffi_profiles.toml` showing where user-built runtime artifacts belong.
+
 Framework development has one verification entry point:
 
 ```bash
@@ -98,7 +111,7 @@ scrapy-cffi test all
 scrapy-cffi test all --quick
 ```
 
-The full verifier generates all four Demo projects, starts the selected
+The full verifier generates the four scheduler Demo projects, starts the selected
 project-local Docker topologies serially, performs real HTTP/WebSocket crawls,
 checks non-persistent cleanup, sends real process interrupts, runs pytest, and
 always attempts topology cleanup. It writes `summary.md`, `summary.json`, and
@@ -109,7 +122,8 @@ the interrupt phase, `--log-dir` to select the evidence directory, and
 `--keep-workdir` to retain generated projects. Full verification requires its
 documented local Docker ports to be available; `--quick` does not use Docker.
 Memory is included only in `single`/`all`, because it has no infrastructure
-topology.
+topology. The TLS demo is kept outside that deterministic Docker matrix because
+it intentionally calls third-party diagnostic services.
 
 # 5.infra
 Generate an independent local-development Docker Compose stack into `infra/` (or `--output-dir`). It includes Redis, MySQL, PostgreSQL, MongoDB, RabbitMQ, and Kafka; it is deliberately separate from the crawler application image.

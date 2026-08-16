@@ -61,6 +61,7 @@ class SettingsInfo(BaseValidatedModel):
     QUEUE_NAME: Optional[Union[str]] = "" # Optional prefix: work queues resolve to `{QUEUE_NAME}:{spider.name}` per spider when set, else `{spider.name}_req`. Each spider mounts its own scheduler instance.
     ROBOTSTXT_OBEY: Optional[bool] = True # Whether to respect robots.txt rules
     MAX_SCHEDULER_LOOP_NUM: Optional[int] = 10
+    # Deprecated: completion is driven by producer completion and owned work.
     SCHEDULER_LOOP_END: Optional[Union[int, None]] = None
 
     USER_AGENT: Optional[str] = "scrapy_cffiBot"
@@ -100,7 +101,8 @@ class SettingsInfo(BaseValidatedModel):
     _new_seen: str = PrivateAttr()
     _sent_seeen: str = PrivateAttr()
 
-    WS_END_TAG: Optional[str] = "websocket end" # You can customize the TAG to avoid conflicts with the response content
+    # Deprecated compatibility setting. WebSocket shutdown is event-driven.
+    WS_END_TAG: Optional[str] = "websocket end"
     # RET_COOKIES: Optional[Union[str, Literal[False]]] = "ret_cookies"  # False to disable cookie return; a string to specify the key used for returned cookies
     
     JS_PATH: Optional[Union[str, bool]] = None # Absolute/relative path to JS files or default to ./js_path under the running script directory

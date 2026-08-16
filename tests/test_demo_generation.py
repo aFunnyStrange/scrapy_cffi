@@ -7,14 +7,22 @@ import sys
 
 import pytest
 
-from scrapy_cffi.commands import demo, genspider, startproject
+from scrapy_cffi.commands import demo, genspider, main as command_main, startproject
 
 
-def _generate_demo(tmp_path: Path, monkeypatch, *, redis=False, rabbit=False, kafka=False):
+def _generate_demo(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    redis=False,
+    rabbit=False,
+    kafka=False,
+    tls=False,
+):
     """Generate one demo project with the requested queue topology flags."""
     monkeypatch.chdir(tmp_path)
     assert startproject.run("demo", is_demo=True) is None
-    demo.run(redis, rabbit, kafka)
+    demo.run(redis, rabbit, kafka, use_tls=tls)
     return tmp_path / "demo"
 
 
@@ -30,7 +38,73 @@ def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
     assert 'spider_path="spiders.CustomSpider"' not in runner
     assert 'settings.EXTENSIONS_PATH = "' not in settings
     assert '"interceptors.CustomDownloadInterceptor' not in settings
+    assert '    settings.JS_PATH = str(' not in settings
+    assert "self.use_execjs(" not in (
+        project / "spiders" / "customSpider.py"
+    ).read_text(encoding="utf-8")
     assert 'infra_project_name = "scrapy_cffi"' in project_config
+
+
+def test_tls_demo_is_standalone_and_uses_explicit_impersonate(
+    tmp_path,
+    monkeypatch,
+):
+    """Generate the CLI TLS demo without queue or Docker dependencies."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["scrapy-cffi", "demo", "-tls"],
+    )
+
+    command_main.main()
+
+    project = tmp_path / "demo"
+    spider_path = project / "spiders" / "tlsSpider.py"
+    spider = spider_path.read_text(encoding="utf-8")
+    runner = (project / "runner.py").read_text(encoding="utf-8")
+    assert "class TlsSpider(Spider)" in spider
+    assert "impersonate=impersonate" in spider
+    assert 'session_id = f"tls-profile:{profile_name}"' in spider
+    assert "session_id=session_id" in spider
+    assert '"session_id": response.session_id' in spider
+    assert '"tls_session_id": tls.get("session_id")' in spider
+    assert "dont_filter=True" in spider
+    assert "TLS diagnostic:" in spider
+    assert "headers=self.settings.DEFAULT_HEADERS" not in spider
+    assert "https://tls.peet.ws/api/all" in spider
+    assert "https://tls.browserleaks.com/json" in spider
+    assert "https://www.howsmyssl.com/a/check" in spider
+    assert "from spiders.tlsSpider import TlsSpider" in runner
+    assert "DEFAULT_SPIDER: Type[BaseSpider] = TlsSpider" in runner
+    assert not (project / "infra").exists()
+    assert not (project / "demo_support").exists()
+    assert (project / "profiles" / "README.md").is_file()
+    assert (
+        project / "profiles" / "scrapy_cffi_profiles.example.toml"
+    ).is_file()
+    assert "scrapy-cffi demo -tls" in (
+        project / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "different profiles never share a pool" in (
+        project / "README.md"
+    ).read_text(encoding="utf-8")
+    compile(spider, str(spider_path), "exec")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import runner; "
+                "assert runner.DEFAULT_SPIDER.__name__ == 'TlsSpider'"
+            ),
+        ],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypatch):
@@ -38,10 +112,19 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     project = _generate_demo(tmp_path, monkeypatch, redis=True)
     runner = (project / "runner.py").read_text(encoding="utf-8")
     settings = (project / "settings.py").read_text(encoding="utf-8")
+    spider = (project / "spiders" / "customRedisSpider.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "from spiders.customRedisSpider import CustomRedisSpider" in runner
     assert "DEFAULT_SPIDER: Type[BaseSpider] = CustomRedisSpider" in runner
     assert "settings.SCHEDULER = RedisScheduler" in settings
+    assert "settings.SCHEDULER_LOOP_END" not in settings
+    assert "SCRAPY_CFFI_DEMO_CONTINUOUS" in spider
+    assert "start_request_limit = (" in spider
+    assert 'data.endswith("hello: 2")' in spider
+    assert "self.count" not in spider
+    assert "settings.MAX_SCHEDULER_LOOP_NUM = 1" in settings
     assert '"scrapy_cffi.scheduler.RedisScheduler"' not in settings
     assert "use_redis = true" in (project / "scrapy_cffi.toml").read_text(
         encoding="utf-8"
@@ -63,7 +146,13 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     assert "docker ps --filter publish=<PORT>" in manager
     assert "Only this mode's required services" in manager
     assert "signal.SIGBREAK" in runner
-    assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" in runner
+    assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" not in runner
+    assert "SCRAPY_CFFI_DEMO_CONTINUOUS" in manager
+    assert "wait_for_log_text(" in manager
+    assert "continuous crawler exited without a stop event" in manager
+    assert "from runner import advance_main_all" in manager
+    assert "await asyncio.wait_for(engine_task, timeout=60)" in manager
+    assert "await asyncio.sleep(" not in manager
     assert 'DEMO_MODE = "redis"' in (
         project / "demo_support" / "topology.py"
     ).read_text(encoding="utf-8")
@@ -198,11 +287,15 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert not (project / "docker-compose.yml").exists()
     assert not (project / "__pycache__").exists()
     assert not (project / "cpy_resources").exists()
+    assert (project / "profiles" / "README.md").is_file()
+    assert (
+        project / "profiles" / "scrapy_cffi_profiles.example.toml"
+    ).is_file()
     assert (project / ".env.example").is_file()
     assert "SCRAPY_CFFI_REDIS_INFO__URL" in (
         project / ".env.example"
     ).read_text(encoding="utf-8")
-    assert "settings.CURL_CFFI_NATIVE_DIR = Path(" in (
+    assert "settings.CURL_CFFI_NATIVE_DIR = (" in (
         project / "settings.py"
     ).read_text(encoding="utf-8")
     assert "SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR" in (

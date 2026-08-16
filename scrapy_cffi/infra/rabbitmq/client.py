@@ -165,17 +165,17 @@ class RabbitMQClient:
 
     async def dequeue_request(self, queue_name: str, timeout: float = 30) -> Optional[bytes]:
         """
-        Cancellation-safe short polling for aio-pika's ``Basic.Get`` RPC.
+        Cancellation-safe queue initialization and ``Basic.Get`` RPC.
 
         Polls are capped at one second so Ctrl+C remains responsive.
-        The underlying RPC is shielded and settled before shutdown closes the channel.
+        The complete broker operation is shielded and settled before shutdown closes
+        the channel because cancelling ``Queue.Declare`` also invalidates its channel.
         """
         if not self._exchange:
             await self.connect()
         poll_timeout = min(max(float(timeout), 0.1), 1.0)
-        queue = await self._get_consumer_queue(queue_name)
         get_task = asyncio.create_task(
-            queue.get(timeout=poll_timeout, fail=False)
+            self._get_message(queue_name, poll_timeout)
         )
         try:
             # Every logical queue owns a channel, so start/work Basic.Get RPCs
@@ -186,8 +186,13 @@ class RabbitMQClient:
                     return message.body
             return None
         except asyncio.CancelledError:
+            current_task = asyncio.current_task()
+            cancelling = current_task.cancelling() if current_task else 0
+            if current_task and hasattr(current_task, "uncancel"):
+                for _ in range(cancelling):
+                    current_task.uncancel()
             try:
-                message = await get_task
+                message = await asyncio.shield(get_task)
                 if message is not None:
                     await message.reject(requeue=True)
             except (asyncio.TimeoutError, QueueEmpty, ChannelClosed):
@@ -195,6 +200,11 @@ class RabbitMQClient:
             raise
         except (asyncio.TimeoutError, QueueEmpty):
             return None
+
+    async def _get_message(self, queue_name: str, timeout: float) -> Any:
+        """Initialize one consumer queue and return its next broker delivery."""
+        queue = await self._get_consumer_queue(queue_name)
+        return await queue.get(timeout=timeout, fail=False)
 
     async def _get_consumer_queue(self, queue_name: str) -> Any:
         """Return a queue backed by a dedicated consumer channel."""

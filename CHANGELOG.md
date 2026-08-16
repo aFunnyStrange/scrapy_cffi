@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.0** release: [docs/RELEASE-0.4.0.md](docs/RELEASE-0.4.0.md) · **0.3.3** release: [docs/RELEASE-0.3.3.md](docs/RELEASE-0.3.3.md)
 
-## [Unreleased]
+## [0.4.2] - 2026-08-16
 
 ### Added
 
@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   libraries at crawler composition time without selecting a global request
   profile. An optional adjacent `scrapy_cffi_profiles.toml` registers only the
   aliases declared by that user-owned build.
+- `scrapy-cffi demo -tls` generates a standalone TLS inspection spider, and
+  every generated project now includes the user-owned `profiles/` artifact and
+  manifest reference structure.
+- `WebSocketResponse.stop_listening()` provides explicit, idempotent listener
+  shutdown for long-lived connections.
 
 ### Changed
 
@@ -28,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session initialization selects and caches either a direct curl_cffi
   passthrough callback or a registered-alias resolver, avoiding per-request
   feature detection when no custom profiles are configured.
+- WebSocket frames are dispatched directly through callbacks and connection
+  completion is coordinated by lifecycle events instead of queue end markers.
+  Connect and initial send remain one operation; `CloseSignal` stays compatible.
+- Engine completion now requires an explicitly completed start producer plus
+  zero owned requests. `SCHEDULER_LOOP_END` is deprecated and empty broker
+  reads no longer impersonate completion. Queue Spiders expose
+  `start_request_limit`; `None` remains a true continuous subscription.
+- Release verification now covers real generated Demo projects, finite natural
+  exit, and queue consumers that remain alive after work until an explicit
+  console stop signal on both Windows and WSL Ubuntu.
 
 ## [0.4.1] - 2026-08-15
 

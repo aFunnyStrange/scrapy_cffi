@@ -1,7 +1,7 @@
 import asyncio, time
 from ..extensions import signals, SignalInfo
 from .downloader import *
-from ..exceptions import DownloadError
+from ..exceptions import DownloadError, SessionEndError
 from ..interceptors import ChainResult, ChainNextEnum
 from ..interceptors.chains import _ensure_asyncgen
 from ..utils.concurrency import safe_call, CallFunction
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from .sessions import SessionManager, SessionWrapper, WebSocketEntry, CloseSignal
 
 class Engine:
+    _WORK_ID_META_KEY = "_scrapy_cffi_engine_work_id"
+
     def __init__(self, crawler: "Crawler", spider: "Spider", scheduler: "Scheduler"):
         self.stop_event: asyncio.Event = crawler.stop_event
         self.taskManager: "TaskManager" = crawler.taskManager
@@ -38,6 +40,10 @@ class Engine:
         if base_req_limit is None:
             base_req_limit = 100
         self.max_inflight_downloader_tasks = max(int(base_req_limit) * 2, 50)
+        self._work_sequence = 0
+        self._pending_work_ids = set()
+        self._work_idle_event = asyncio.Event()
+        self._work_idle_event.set()
 
         # Select the hot scheduling path once. The loop no longer branches on
         # scheduler.is_distributed for every dequeued request.
@@ -65,7 +71,13 @@ class Engine:
 
         # Retrieve requests directly from the spider's start method without additional processing,
         # mark them as start URLs, and submit them to the spider middleware chain.
-        await self.taskManager.create(callfunc=CallFunction(func=self.run_spider_start, args=args, kwargs=kwargs))
+        producer_task = await self.taskManager.create(
+            callfunc=CallFunction(
+                func=self.run_spider_start,
+                args=args,
+                kwargs=kwargs,
+            )
+        )
 
         # Start a centralized scheduler loop:
         # Unlike the old recursive process_scheduler (where each put/get would create a new task forming a deep task chain),
@@ -73,13 +85,56 @@ class Engine:
         # caused by a growing task tree, significantly improving throughput and scheduling stability.
         # Recursive mode may give a more immediate "task chaining" perception to the user,
         # but it severely reduces performance under high concurrency.
-        for i in range(self.settings.MAX_SCHEDULER_LOOP_NUM):
-            await self.taskManager.create(callfunc=CallFunction(func=self.scheduler_loop))
+        scheduler_tasks = []
+        for _ in range(self.settings.MAX_SCHEDULER_LOOP_NUM):
+            scheduler_tasks.append(
+                await self.taskManager.create(
+                    callfunc=CallFunction(func=self.scheduler_loop)
+                )
+            )
 
+        scheduler_group = asyncio.gather(*scheduler_tasks)
+        error_wait = asyncio.create_task(self.taskManager.error_event.wait())
+        completion_wait = asyncio.create_task(
+            self._wait_for_explicit_completion(producer_task)
+        )
         try:
-            await self.taskManager.wait_until_stopped()
+            done, _ = await asyncio.wait(
+                (scheduler_group, error_wait, completion_wait),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if error_wait in done:
+                for scheduler_task in scheduler_tasks:
+                    scheduler_task.cancel()
+                await asyncio.gather(*scheduler_tasks, return_exceptions=True)
+            elif completion_wait in done:
+                await completion_wait
+                for scheduler_task in scheduler_tasks:
+                    scheduler_task.cancel()
+                await asyncio.gather(*scheduler_tasks, return_exceptions=True)
+            else:
+                await scheduler_group
         except KeyboardInterrupt:
             pass
+        finally:
+            if not error_wait.done():
+                error_wait.cancel()
+            if not completion_wait.done():
+                completion_wait.cancel()
+            if not scheduler_group.done():
+                for scheduler_task in scheduler_tasks:
+                    scheduler_task.cancel()
+            await asyncio.gather(
+                error_wait,
+                completion_wait,
+                scheduler_group,
+                return_exceptions=True,
+            )
+            if producer_task is not None and not producer_task.done():
+                producer_task.cancel()
+            if producer_task is not None:
+                await asyncio.gather(producer_task, return_exceptions=True)
+            await self.taskManager.wait_for_object_idle(id(self))
 
         if self.pipelines_chain.chain_list:
             await self.pipelines_chain.forward_pass(call_func_cls=self.pipelines_chain.chain_list[0].instance, call_func_name="close_spider", pad_data=self.spider)
@@ -92,44 +147,82 @@ class Engine:
                 callfunc=CallFunction(func=self.get_spider_output, output=output, mark_as_start=True)
             )
 
-    async def _at_downloader_limit(self) -> bool:
-        inflight = await self.taskManager.count_active_tasks_for_obj(
+    def _ensure_work_state(self) -> None:
+        """Initialize request ownership for tests constructing Engine directly."""
+        if not hasattr(self, "_pending_work_ids"):
+            self._work_sequence = 0
+            self._pending_work_ids = set()
+            self._work_idle_event = asyncio.Event()
+            self._work_idle_event.set()
+
+    def _track_request(self, request: Request) -> None:
+        """Own one accepted request until its complete callback boundary."""
+        self._ensure_work_state()
+        work_id = request.meta.get(self._WORK_ID_META_KEY)
+        if not work_id:
+            self._work_sequence += 1
+            work_id = f"{id(self)}:{self._work_sequence}"
+            request.meta[self._WORK_ID_META_KEY] = work_id
+        if work_id not in self._pending_work_ids:
+            self._pending_work_ids.add(work_id)
+            self._work_idle_event.clear()
+
+    def _release_request(self, request: Request) -> None:
+        """Publish a real idle event after one owned request completes."""
+        self._ensure_work_state()
+        work_id = request.meta.get(self._WORK_ID_META_KEY)
+        if work_id:
+            self._pending_work_ids.discard(work_id)
+        if not self._pending_work_ids:
+            self._work_idle_event.set()
+
+    async def _complete_request(self, request: Request) -> None:
+        """Complete broker acknowledgement before releasing Engine ownership."""
+        complete = getattr(getattr(self, "scheduler", None), "complete_request", None)
+        if complete:
+            await complete(request, getattr(self, "spider", None))
+        self._release_request(request)
+
+    async def _wait_for_explicit_completion(
+        self,
+        producer_task: asyncio.Task,
+    ) -> None:
+        """Finish only after producer completion and request ownership reaches zero."""
+        self._ensure_work_state()
+        await producer_task
+        while True:
+            await self._work_idle_event.wait()
+            await self.taskManager.wait_for_object_quiescent(
+                id(self),
+                exclude_prefixes=(
+                    "_local_scheduler_loop",
+                    "_distributed_scheduler_loop",
+                    "run_spider_start",
+                ),
+            )
+            if self._work_idle_event.is_set():
+                self.signalManager.send(
+                    signal=signals.scheduler_empty,
+                    data=SignalInfo(signal_time=time.time()),
+                )
+                return
+
+    async def _wait_for_downloader_capacity(self) -> None:
+        """Suspend until a downloader task completion publishes capacity."""
+        await self.taskManager.wait_for_object_task_count_below(
             id(self),
             prefixes=("process_downloader",),
+            limit=self.max_inflight_downloader_tasks,
         )
-        if inflight < self.max_inflight_downloader_tasks:
-            return False
-        await asyncio.sleep(0.01)
-        return True
 
     async def _distributed_scheduler_loop(self):
-        distributed_empty = False # Avoid unlimited sending
-        end_count = self.settings.SCHEDULER_LOOP_END
-        is_queue_wait_spider = bool(
-            getattr(self.spider, "wait_for_start_requests", False)
-        )
         try:
             while not self.stop_event.is_set():
-                if await self._at_downloader_limit():
-                    continue
+                await self._wait_for_downloader_capacity()
                 request = await self.scheduler.get(spider=self.spider)
                 if isinstance(request, int) and (not request): # scheduler empty
-                    if not distributed_empty:
-                        self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                    distributed_empty = True
-                    if end_count is not None:
-                        end_count -= 1
-                        if end_count <= 0:
-                            return
-                    if (end_count is None) and (not is_queue_wait_spider):
-                        has_local_work = await self.taskManager.has_active_tasks_for_obj(
-                            id(self),
-                            exclude_prefixes=("_distributed_scheduler_loop",),
-                        )
-                        if not has_local_work:
-                            return
+                    continue
                 elif isinstance(request, Request):
-                    distributed_empty = False
                     await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
         except asyncio.CancelledError:
             raise
@@ -137,26 +230,10 @@ class Engine:
     async def _local_scheduler_loop(self):
         try:
             while not self.stop_event.is_set():
-                try:
-                    if await self._at_downloader_limit():
-                        continue
-                    request = await asyncio.wait_for(
-                        self.scheduler.get(spider=self.spider),
-                        timeout=1.0,
-                    )
-                    if isinstance(request, Request):
-                        await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
-                except asyncio.TimeoutError:
-                    if not self.scheduler.empty(spider=self.spider):
-                        continue
-                    has_local_work = await self.taskManager.has_active_tasks_for_obj(
-                        id(self),
-                        exclude_prefixes=("_local_scheduler_loop",),
-                    )
-                    if has_local_work:
-                        continue
-                    self.signalManager.send(signal=signals.scheduler_empty, data=SignalInfo(signal_time=time.time()))
-                    return
+                await self._wait_for_downloader_capacity()
+                request = await self.scheduler.get(spider=self.spider)
+                if isinstance(request, Request):
+                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, request=request))
         except asyncio.CancelledError:
             raise
 
@@ -181,10 +258,12 @@ class Engine:
         finally:
             if isinstance(response, StreamResponse):
                 await response.aclose()
-            if completed and source_request is not None:
-                complete = getattr(self.scheduler, "complete_request", None)
-                if complete:
-                    await complete(source_request, self.spider)
+            if (
+                completed
+                and source_request is not None
+                and not isinstance(response, WebSocketResponse)
+            ):
+                await self._complete_request(source_request)
 
     async def manager_spiderinterceptors_result(self, spiderinterceptors_result: ChainResult, wait_for_boundary=False):
         if spiderinterceptors_result.next == ChainNextEnum.RESCHEDULE:
@@ -214,6 +293,9 @@ class Engine:
                 self.end_websocket(signal=spiderinterceptors_result.signal)
             elif spiderinterceptors_result.signal.session_end:
                 self.sessions.mark_end(session_id=spiderinterceptors_result.signal.session_id)
+                self.sessions.release(
+                    session_id=spiderinterceptors_result.signal.session_id
+                )
 
     def end_websocket(self, signal: "CloseSignal"):
         wrapper: "SessionWrapper" = self.sessions.get_or_create_session(signal.session_id)
@@ -238,7 +320,17 @@ class Engine:
             return
             
         if request:
-            await self.scheduler.put(request=request, spider=self.spider)
+            self._track_request(request)
+            try:
+                accepted = await self.scheduler.put(
+                    request=request,
+                    spider=self.spider,
+                )
+            except BaseException:
+                self._release_request(request)
+                raise
+            if accepted is False:
+                self._release_request(request)
 
     # Download middleware processing
     async def process_downloadInterceptor_chain(self, response: Union[Response, BaseException, None]=None, request: Request=None):
@@ -280,9 +372,7 @@ class Engine:
         if isinstance(response, BaseException):
             output = self.get_backFunc(backFunc=request.errback, response=response, fill_text=f"Response error {str(response)} with no errback provided, ignoring this request")
             if not output:
-                complete = getattr(self.scheduler, "complete_request", None)
-                if complete:
-                    await complete(request, self.spider)
+                await self._complete_request(request)
                 return
         elif isinstance(response, Response):
             await self.scheduler.put_is_req(request=request, spider=self.spider)
@@ -321,8 +411,29 @@ class Engine:
         wrapper: "SessionWrapper" = self.sessions.get_or_create_session(request.session_id, cookies=request.cookies)
         if not request.url:
             raise ValueError("Scheduling logic error: this request was not properly processed by spider middleware")
-        
-        websocket_entry: "WebSocketEntry" = wrapper.get_websocket(request.url)
+
+        # A request carrying websocket_id is a send on an existing connection,
+        # even when the spider interceptor resolved its URL earlier. The
+        # listener may close between enqueue and download; never reinterpret
+        # that stale send as a new long-lived connection.
+        if request.websocket_id:
+            websocket_entry: "WebSocketEntry" = (
+                wrapper.websocket_pool.get_from_key(request.websocket_id)
+            )
+            if websocket_entry is None or websocket_entry.websocket is None:
+                self.sessions.release(request.session_id)
+                await self.process_downloadInterceptor_chain(
+                    response=SessionEndError(
+                        exception=ValueError(
+                            f"WebSocket connection {request.websocket_id} has closed"
+                        ),
+                        request=request,
+                    ),
+                    request=request,
+                )
+                return
+        else:
+            websocket_entry = wrapper.get_websocket(request.url)
         if websocket_entry and request.send_message:
             if websocket_entry.websocket is not None:
                 # WebSocket communication is deduplicated by connection only.
@@ -333,35 +444,31 @@ class Engine:
 
             websocket_entry.release()
             self.sessions.release(request.session_id)
+            await self._complete_request(request)
             return
         await self.do_websocket_connect(wrapper=wrapper, connect_request=request)
 
     async def do_websocket_connect(self, wrapper: "SessionWrapper", connect_request: WebSocketRequest):
+        terminal = False
         try:
-            task, queue, websocket_event = await self.downloader.fetch_websocket(wrapper, connect_request)
-            while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
-                try:
-                    msg = await queue.get()
-                    # msg = await asyncio.wait_for(queue.get(), timeout=3.0)
-                    if isinstance(msg, DownloadError) or (isinstance(msg, str) and msg == self.settings.WS_END_TAG):
-                        websocket_event.set()
-                        # task.cancel()
-                        # self.logger.debug(f'{msg}: {connect_request.url}, listener ended')
-                        break
-                    await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, response=msg, request=connect_request))
-                    if b'keepalive ping timeout' in msg.msg[0]:
-                        websocket_event.set()
-                    await asyncio.sleep(0)
-                except asyncio.TimeoutError:
-                    pass
+            entry = await self.downloader.fetch_websocket(
+                wrapper,
+                connect_request,
+                callback=self.process_downloadInterceptor_chain,
+            )
+            await entry.wait_closed()
+            terminal = True
         except asyncio.CancelledError:
             self.logger.debug(f'WebSocket listener task cancelled: {connect_request.url}')
             raise
-        except BaseException as e:
+        except Exception as e:
             results = DownloadError(exception=e, request=connect_request)
             await self.taskManager.create(callfunc=CallFunction(func=self.process_downloadInterceptor_chain, response=results, request=connect_request))
             self.end_websocket(signal=CloseSignal(session_id=connect_request.session_id, websocket_end_for_url=connect_request.url))
+            terminal = True
         finally:
             # Release session regardless of normal exit or exception cancellation
             self.sessions.release(connect_request.session_id) # Release the session
             await wrapper.close_websocket(connect_request.url) # Close underlying connection
+            if terminal:
+                await self._complete_request(connect_request)

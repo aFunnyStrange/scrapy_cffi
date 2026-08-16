@@ -14,6 +14,7 @@ class KafkaSpider(RedisSpider):
     kafka_start_group = None
 
     async def start(self, *args, **kwargs):
+        accepted_count = 0
         while not self.stop_event.is_set():
             get_req_task = asyncio.create_task(self.hooks.scheduler.get_start_req(spider=self))
             stop_task = asyncio.create_task(self.stop_event.wait())
@@ -38,7 +39,6 @@ class KafkaSpider(RedisSpider):
 
             message = get_req_task.result()
             if message is None:
-                await asyncio.sleep(1)
                 continue
             if message.value.startswith(b"SCF1"):
                 request = Request.from_bytes(message.value)
@@ -47,6 +47,9 @@ class KafkaSpider(RedisSpider):
             if request:
                 self.hooks.scheduler.attach_start_req(request=request, message=message)
                 yield request
+                accepted_count += 1
+                if self.start_request_limit_reached(accepted_count):
+                    return
             else:
                 await self.hooks.scheduler.ack_start_req(spider=self, message=message)
 

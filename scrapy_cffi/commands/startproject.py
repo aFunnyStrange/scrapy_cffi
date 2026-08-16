@@ -1,10 +1,15 @@
-import toml
+"""Generate an IDE-friendly scrapy_cffi project from bundled templates."""
+
 from pathlib import Path
+
+import toml
+
 from ._template_build import copytree_merge_text_safe, read_text_template, write_utf8_file
 from .infra import default_project_prefix
 
 
 def run(project_name, is_demo=False):
+    """Create a normal or Demo project and its optional profile reference."""
     base = Path(__file__).parent.parent
     template_dir = base / "templates"
     target: Path = Path.cwd() / project_name
@@ -19,6 +24,7 @@ def run(project_name, is_demo=False):
         skip_files={"push_kafka_demo.py", "push_rabbitmq_demo.py"},
     )
     copytree_merge_text_safe(template_dir / "js_path", target / "js_path")
+    copytree_merge_text_safe(template_dir / "profiles", target / "profiles")
     for docker_file in [
         "Dockerfile",
         "Dockerfile.dockerignore",
@@ -45,8 +51,8 @@ def run(project_name, is_demo=False):
         }
     }
     config_path = target / "scrapy_cffi.toml"
-    with config_path.open("w", encoding="utf-8") as f:
-        toml.dump(config_data, f)
+    with config_path.open("w", encoding="utf-8") as file_obj:
+        toml.dump(config_data, file_obj)
 
     if is_demo:
         print(f"Demo project '{project_name}' created at {target}")
@@ -55,4 +61,4 @@ def run(project_name, is_demo=False):
         print(f"Project '{project_name}' created.")
         print(f"\tcd {project_name}")
         print(f"\tscrapy-cffi genspider <spider_name> <domain>")
-        print(f"\tcpy_resources/ — optional native modules (see cpy_resources/README.md)")
+        print("\tprofiles/ - optional self-built curl runtime layout reference")

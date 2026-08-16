@@ -52,9 +52,16 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         self.proxies_list = [{"http": proxy_url, "https": proxy_url} for proxy_url in self.settings.PROXIES_LIST]
 
     def pre_check(self, request: Request) -> Request:
-        if not request.headers:
-            request.headers = self.default_headers
-        if self.default_ua:
+        use_impersonate_headers = request.impersonate is not None
+        if request.headers is None:
+            request.headers = (
+                {}
+                if use_impersonate_headers
+                else dict(self.default_headers or {})
+            )
+        elif not request.headers and not use_impersonate_headers:
+            request.headers = dict(self.default_headers or {})
+        if self.default_ua and not use_impersonate_headers:
             ua = request.find_header_key(key="user-agent")
             if not ua:
                 request.headers["user-agent"] = self.default_ua

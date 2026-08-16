@@ -28,6 +28,7 @@ class RedisSpider(BaseSpider):
 
     async def start(self, *args, **kwargs):
         ingress = self.get_redis_ingress_config()
+        accepted_count = 0
         while not self.stop_event.is_set():
             get_req_task = asyncio.create_task(self.hooks.scheduler.get_start_req(spider=self))
             stop_task = asyncio.create_task(self.stop_event.wait())
@@ -52,7 +53,6 @@ class RedisSpider(BaseSpider):
             if get_req_task in done:
                 data = get_req_task.result()
                 if not data:
-                    await asyncio.sleep(1)
                     continue
                 stream_message = self._get_stream_message(data)
                 if stream_message:
@@ -65,6 +65,9 @@ class RedisSpider(BaseSpider):
                             message=stream_message or data,
                         )
                     yield request
+                    accepted_count += 1
+                    if self.start_request_limit_reached(accepted_count):
+                        return
                 elif stream_message and ingress.auto_ack:
                     await self.hooks.scheduler.ack_start_req(spider=self, message=stream_message)
 

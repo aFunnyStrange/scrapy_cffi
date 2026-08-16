@@ -9,7 +9,15 @@ def copytree_merge(src: Path, dst: Path) -> None:
     copytree_merge_text_safe(src, dst)
 
 
-def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
+def run(
+    use_redis: bool,
+    use_rabbitmq: bool,
+    use_kafka: bool,
+    use_tls: bool = False,
+) -> None:
+    """Generate one queue-backed, memory, or standalone TLS demo."""
+    if use_tls and (use_redis or use_rabbitmq or use_kafka):
+        raise ValueError("TLS demo cannot be combined with queue demo modes")
     base = Path(__file__).parent.parent
     template_dir = base / "templates"
     target: Path = Path.cwd() / "demo"
@@ -36,6 +44,23 @@ def run(use_redis: bool, use_rabbitmq: bool, use_kafka: bool):
         else "scrapy_cffi"
     )
     write_utf8_file(target / "requirements.txt", requirement + "\n")
+
+    if use_tls:
+        spider_dir = target / "spiders"
+        tls_spider = template_dir / "demo_spider" / "tlsSpider.py"
+        write_utf8_file(
+            spider_dir / "tlsSpider.py",
+            read_text_template(tls_spider),
+        )
+        update_spiders_package(
+            demo_spider_files=["tlsSpider"],
+            spider_dir=spider_dir,
+        )
+        update_runner_default_spider(target, "TlsSpider", "tlsSpider")
+        tls_guide = template_dir / "tls_demo_GUIDE.md"
+        write_utf8_file(target / "README.md", read_text_template(tls_guide))
+        print("Project 'demo' created with the TLS inspection spider.")
+        return
 
     _infra_templates.run(output_dir=str(target / "infra"), generate_all=True)
     management_dir = template_dir / "demo_management"

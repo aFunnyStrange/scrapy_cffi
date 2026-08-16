@@ -7,6 +7,7 @@ from .native import (
     get_activation_info,
 )
 from .registry import (
+    ClientHintItems,
     DEFAULT_REGISTRY,
     ImpersonateResolver,
     PROFILE_MANIFEST_NAME,
@@ -23,6 +24,7 @@ from .runtime import ProfileRuntimeInfo, activate_profile_runtime
 
 __all__ = [
     "ActivationInfo",
+    "ClientHintItems",
     "DEFAULT_REGISTRY",
     "ImpersonateResolver",
     "NativeActivationError",

@@ -25,6 +25,7 @@ htmlcov/
 .cache
 .pytest_cache/
 artifacts/
+demo/
 
 # VS Code / JetBrains / Editors
 .vscode/

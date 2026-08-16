@@ -10,6 +10,7 @@ from functools import partial
 from http.cookiejar import Cookie
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
 from typing import Union, Dict, Set, TYPE_CHECKING, Literal, Optional, List
+from .client_hints import ClientHintsState
 from .downloader.internet import MediaRequest
 from ..platform.http import (
     AsyncHttpSessionProtocol,
@@ -48,140 +49,178 @@ class CloseSignal:
         return f"<CloseSignal session_id={self.session_id} ws_end={self.websocket_end_for_url} sess_end={self.session_end}>"
 
 class WebSocketEntry:
-    """
-    Represents a single WebSocket connection identified by its URL (including parameters) and the underlying WebSocket object.
-    Manages reference counting for shared usage, supports graceful close on last release or explicit end marking, and handles listener task cancellation and connection cleanup.
-    """
+    """Own one WebSocket connection and its event-driven listener lifecycle."""
+
     def __init__(
-        self, 
-        logger, 
-        end_tag: str, 
-        url: str, 
-        task: asyncio.Task, 
-        queue: asyncio.Queue,
-        ping_data: "WebSocketMsg"=None,
-        ping_interval: float=15.0
-    ):
+        self,
+        logger,
+        url: str,
+        ping_data: "WebSocketMsg" = None,
+        ping_interval: float = 15.0,
+    ) -> None:
+        """Create a registered connection before its listener task starts."""
         self.logger: "Logger" = logger
-        self.end_tag: str = end_tag
         self.url: str = url
-        self.task: asyncio.Task = task
+        self.task: Optional[asyncio.Task] = None
         self.websocket: Optional[AsyncWebSocketProtocol] = None
-        self.queue: asyncio.Queue = queue
         self.stop_event: asyncio.Event = asyncio.Event()
-        self.stop_event.clear()
+        self.closed_event: asyncio.Event = asyncio.Event()
+        self._ping_data = ping_data
+        self._ping_interval = ping_interval
 
         self.ref_count = 0
         self.marked_end = False
         self._closed = False
         self._close_lock = asyncio.Lock()
+        self._ping_task: Optional[asyncio.Task] = None
 
-        self._ping_task: asyncio.Task = None
-        if ping_data is not None:
-            self._ping_task = asyncio.create_task(self._ping_loop(ping_data, ping_interval))
+    def set_listener_task(self, task: asyncio.Task) -> None:
+        """Attach the retained listener task after pool registration."""
+        self.task = task
 
-    def acquire(self):
+    def set_websocket(self, websocket: AsyncWebSocketProtocol) -> None:
+        """Attach the connected socket and start optional protocol pings."""
+        self.websocket = websocket
+        if self._ping_data is not None and self._ping_task is None:
+            self._ping_task = asyncio.create_task(
+                self._ping_loop(self._ping_data, self._ping_interval)
+            )
+
+    def acquire(self) -> None:
+        """Retain one callback or follow-up request reference."""
         self.ref_count += 1
 
-    def release(self):
+    def release(self) -> None:
+        """Release one reference and request stop after an explicit end."""
         self.ref_count -= 1
         if self.marked_end and self.ref_count <= 0:
-            asyncio.create_task(self.close())
+            self.request_stop()
 
-    def mark_end(self):
+    def request_stop(self) -> None:
+        """Request listener shutdown without sending a queue sentinel."""
+        self.marked_end = True
+        self.stop_event.set()
+
+    def mark_end(self) -> None:
+        """Keep the legacy CloseSignal entrypoint on the event-driven path."""
         self.marked_end = True
         if self.ref_count <= 0:
-            asyncio.create_task(self.close())
+            self.request_stop()
 
-    async def _ping_loop(self, ping_data: "WebSocketMsg", interval):
+    async def wait_closed(self) -> None:
+        """Wait until the listener owner completes connection cleanup."""
+        await self.closed_event.wait()
+
+    async def _ping_loop(
+        self,
+        ping_data: "WebSocketMsg",
+        interval: float,
+    ) -> None:
+        """Send optional application pings until stop is requested."""
         try:
-            while not self.stop_event.is_set() and not self.marked_end:
-                await asyncio.sleep(interval)
+            while not self.stop_event.is_set():
+                try:
+                    await asyncio.wait_for(self.stop_event.wait(), timeout=interval)
+                    break
+                except asyncio.TimeoutError:
+                    pass
                 try:
                     if self.websocket:
-                        await safe_call(self.websocket.send, ping_data.data, flags=ping_data.flags)
-                    else:
-                        await asyncio.sleep(0)
+                        await safe_call(
+                            self.websocket.send,
+                            ping_data.data,
+                            flags=ping_data.flags,
+                        )
                 except Exception as e:
                     self.logger.warning(f"[WebSocketEntry] Ping failed for {self.url}: {e}")
+                    self.request_stop()
                     break
         except asyncio.CancelledError:
             raise
 
-    async def close(self):
+    async def close(self) -> None:
+        """Close listener, ping task, and socket exactly once."""
+        current_task = asyncio.current_task()
         try:
             async with self._close_lock:
                 if self._closed:
                     return
                 self._closed = True
-
                 self.stop_event.set()
-                await self.queue.put(self.end_tag)
+                ping_task = self._ping_task
+                listener_task = self.task
+                websocket = self.websocket
 
-                if self._ping_task:
-                    self._ping_task.cancel()
-                    try:
-                        await self._ping_task
-                    except asyncio.CancelledError:
-                        pass
+            if ping_task and ping_task is not current_task:
+                ping_task.cancel()
+                try:
+                    await ping_task
+                except asyncio.CancelledError:
+                    pass
 
-                if self.task:
-                    self.task.cancel()
-                    try:
-                        await self.task
-                    except asyncio.CancelledError:
-                        self.logger.debug(f"[WebSocketEntry] Listener task cancelled for {self.url}")
-                    except Exception as e:
-                        self.logger.warning(f"[WebSocketEntry] Listener task raised exception for {self.url}: {e}")
+            if listener_task and listener_task is not current_task:
+                listener_task.cancel()
+                try:
+                    await listener_task
+                except asyncio.CancelledError:
+                    self.logger.debug(f"[WebSocketEntry] Listener task cancelled for {self.url}")
+                except Exception as e:
+                    self.logger.warning(f"[WebSocketEntry] Listener task raised exception for {self.url}: {e}")
 
-                if self.websocket is not None:
-                    try:
-                        await self.websocket.close()
-                    except Exception as e:
-                        self.logger.warning(f"[WebSocketEntry] websocket.close() error for {self.url}: {e}")
-        except BaseException as e:
+            if websocket is not None:
+                try:
+                    await websocket.close()
+                except Exception as e:
+                    self.logger.warning(f"[WebSocketEntry] websocket.close() error for {self.url}: {e}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
             self.logger.error(f"[WebSocketEntry] Error closing websocket for {self.url}: {e}")
+        finally:
+            self.closed_event.set()
 
 class WebSocketPool:
-    """
-    Manages all WebSocket connections under a single session.
-    Keeps a dictionary of WebSocketEntry objects keyed by the MD5 hash of their URL.
-    Supports initialization, acquisition, release, marking end, retrieval, and cleanup of WebSocket connections.
-    """
-    def __init__(self, logger=None):
+    """Own event-driven WebSocket entries under one HTTP session."""
+
+    def __init__(self, logger=None) -> None:
+        """Create an empty connection pool."""
         self._pool: Dict[str, WebSocketEntry] = {}
         self.logger: "Logger" = logger
 
     def _key(self, url: str) -> str:
+        """Build the stable connection key used by public responses."""
         return hashlib.md5(url.encode("utf-8")).hexdigest()
 
     def init_websocket(
-        self, 
-        end_tag: str, 
-        url: str, 
-        task: asyncio.Task, 
-        queue: asyncio.Queue, 
-        ping_data: "WebSocketMsg"=None, 
-        ping_interval: float=15.0,
-    ) -> str: # return websocket_id
+        self,
+        url: str,
+        ping_data: "WebSocketMsg" = None,
+        ping_interval: float = 15.0,
+    ) -> WebSocketEntry:
+        """Register an entry before creating its listener task."""
         key = self._key(url)
         if key not in self._pool:
             self._pool[key] = WebSocketEntry(
-                logger=self.logger, 
-                end_tag=end_tag, 
-                url=url, 
-                task=task, 
-                queue=queue,
+                logger=self.logger,
+                url=url,
                 ping_data=ping_data,
-                ping_interval=ping_interval
+                ping_interval=ping_interval,
             )
-        return key
+        return self._pool[key]
+
+    def set_listener_task(self, url: str, task: asyncio.Task) -> None:
+        """Attach the listener task to an already registered entry."""
+        entry = self.get_from_url(url)
+        if entry is None:
+            raise ValueError("WebSocketEntry has not been initialized yet.")
+        entry.set_listener_task(task)
     
     def set_websocket(self, url: str, websocket: AsyncWebSocketProtocol) -> str: # return websocket_id
+        """Attach one connected socket and return its public identifier."""
         key = self._key(url)
         if key not in self._pool:
-            raise ValueError(f'WebSocketEntry has not been initialized yet.')
-        self._pool[key].websocket = websocket
+            raise ValueError("WebSocketEntry has not been initialized yet.")
+        self._pool[key].set_websocket(websocket)
         return key
     
     def get_from_key(self, key: str) -> Optional[WebSocketEntry]:
@@ -222,10 +261,16 @@ class WebSocketPool:
             websocket_entry.mark_end()
 
     def remove(self, key: str) -> Optional[WebSocketEntry]:
+        """Remove one entry by public identifier."""
         entry = self._pool.pop(key, None)
         return entry
 
-    async def close_all(self):
+    def remove_from_url(self, url: str) -> Optional[WebSocketEntry]:
+        """Remove one entry by connection URL."""
+        return self.remove(self._key(url))
+
+    async def close_all(self) -> None:
+        """Close and remove every connection owned by the session."""
         for entry in list(self._pool.values()):
             await entry.close()
         self._pool.clear()
@@ -265,6 +310,7 @@ class SessionWrapper:
         from ..profiles import get_impersonate_resolver
 
         self._impersonate_resolver = get_impersonate_resolver()
+        self.client_hints = ClientHintsState()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
         self.default_cookies = cookies or self.settings.DEFAULT_COOKIES
         self.update_session_cookies(self.default_cookies)
@@ -372,8 +418,22 @@ class SessionWrapper:
     def get_websocket(self, url: str) -> WebSocketEntry:
         return self.websocket_pool.get_from_url(url)
     
-    def init_websocket(self, url: str, task: asyncio.Task, queue: asyncio.Queue, ping_data: bytes=None, ping_interval: float=15.0) -> str: # return websocket_id
-        return self.websocket_pool.init_websocket(end_tag=self.settings.WS_END_TAG, url=url, task=task, queue=queue, ping_data=ping_data, ping_interval=ping_interval)
+    def init_websocket(
+        self,
+        url: str,
+        ping_data: "WebSocketMsg" = None,
+        ping_interval: float = 15.0,
+    ) -> WebSocketEntry:
+        """Register a WebSocket entry before its listener starts."""
+        return self.websocket_pool.init_websocket(
+            url=url,
+            ping_data=ping_data,
+            ping_interval=ping_interval,
+        )
+
+    def set_websocket_listener(self, url: str, task: asyncio.Task) -> None:
+        """Attach the retained listener task to one registered connection."""
+        self.websocket_pool.set_listener_task(url=url, task=task)
 
     def set_websocket(self, url: str, websocket: AsyncWebSocketProtocol) -> str: # return websocket_id
         return self.websocket_pool.set_websocket(url=url, websocket=websocket)
@@ -417,11 +477,14 @@ class SessionWrapper:
     async def session_close(self):
         await self.session.close()
 
-    async def close_websocket(self, key: str):
-        entry = self.websocket_pool.get_from_key(key)
+    async def close_websocket(self, identifier: str) -> None:
+        """Close and remove a WebSocket by identifier or URL."""
+        entry = self.websocket_pool.get_from_key(identifier)
+        if entry is None:
+            entry = self.websocket_pool.get_from_url(identifier)
         if entry:
             await entry.close()
-            self.websocket_pool.remove(key)
+            self.websocket_pool.remove_from_url(entry.url)
 
 class SessionManager:
     """
@@ -640,14 +703,21 @@ class SessionManager:
             for member_id in self._group_sessions[session_id]:
                 wrapper = self._sessions.get(member_id)
                 if wrapper:
-                    members[member_id] = wrapper.export_cookies()
+                    members[member_id] = {
+                        "cookies": wrapper.export_cookies(),
+                        "client_hints": wrapper.client_hints.export_state(),
+                    }
             state = {"kind": "group", "members": members}
         else:
             actual_id = session_id or self._default_session_id
             wrapper = self._sessions.get(actual_id)
             if not wrapper:
                 return False
-            state = {"kind": "session", "cookies": wrapper.export_cookies()}
+            state = {
+                "kind": "session",
+                "cookies": wrapper.export_cookies(),
+                "client_hints": wrapper.client_hints.export_state(),
+            }
 
         await redis_manager.hset(state_key, field, encode_state(state))
         self._restored_session_fields.add((state_key, field))
@@ -678,14 +748,22 @@ class SessionManager:
         state = decode_state(payload)
         if state["kind"] == "group":
             member_ids = []
-            for member_id, cookies in state["members"].items():
+            for member_id, member_state in state["members"].items():
                 wrapper = self.get_or_create_session(member_id)
+                if isinstance(member_state, dict):
+                    cookies = member_state.get("cookies", [])
+                    client_hints = member_state.get("client_hints")
+                else:
+                    cookies = member_state
+                    client_hints = None
                 wrapper.import_cookies(cookies)
+                wrapper.client_hints.import_state(client_hints)
                 member_ids.append(member_id)
             self._group_sessions[session_id] = member_ids
         else:
             wrapper = self.get_or_create_session(session_id)
             wrapper.import_cookies(state["cookies"])
+            wrapper.client_hints.import_state(state.get("client_hints"))
         return True
 
     async def close_all(self) -> None:

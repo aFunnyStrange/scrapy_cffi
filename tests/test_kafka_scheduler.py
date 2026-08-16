@@ -625,6 +625,7 @@ def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
         get_started = asyncio.Event()
         finish_get = asyncio.Event()
         rejected = []
+        queue_initialized = []
 
         class Message:
             async def reject(self, requeue):
@@ -643,7 +644,15 @@ def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
             persist=False,
         )
         manager._exchange = object()
-        manager._consumer_queues["shared"] = Queue()
+
+        async def get_consumer_queue(queue_name):
+            assert queue_name == "shared"
+            get_started.set()
+            await finish_get.wait()
+            queue_initialized.append(queue_name)
+            return Queue()
+
+        manager._get_consumer_queue = get_consumer_queue
 
         task = asyncio.create_task(
             manager.dequeue_request("shared", timeout=30)
@@ -659,7 +668,42 @@ def test_rabbit_dequeue_cancellation_settles_rpc_and_requeues_delivery():
             pass
         else:
             raise AssertionError("dequeue must propagate cancellation")
+        assert queue_initialized == ["shared"]
         assert rejected == [True]
+
+    asyncio.run(run())
+
+
+def test_distributed_schedulers_do_not_query_size_after_an_empty_read():
+    """An empty transport read must not trigger a second lifecycle probe."""
+    from scrapy_cffi.core.scheduler.rabbitmq import RabbitMqScheduler
+    from scrapy_cffi.core.scheduler.redis import RedisScheduler
+
+    class EmptyRabbit:
+        async def pop(self, queue_name, **kwargs):
+            return None
+
+        async def size(self, queue_name):
+            raise AssertionError("RabbitMQ size must not drive completion")
+
+    class EmptyRedis:
+        async def dequeue_request(self, queue_key):
+            return None
+
+        async def llen(self, queue_key):
+            raise AssertionError("Redis length must not drive completion")
+
+    async def run():
+        rabbit_scheduler = object.__new__(RabbitMqScheduler)
+        rabbit_scheduler.request_queue = EmptyRabbit()
+        rabbit_scheduler.get_queue_key = lambda spider: "rabbit"
+
+        redis_scheduler = object.__new__(RedisScheduler)
+        redis_scheduler.redis_repository = EmptyRedis()
+        redis_scheduler.get_queue_key = lambda spider: "redis"
+
+        assert await rabbit_scheduler.get() == 0
+        assert await redis_scheduler.get() == 0
 
     asyncio.run(run())
 

@@ -1,7 +1,7 @@
-# Draft for scrapy_cffi 0.4.2: self-built curl profiles
+# scrapy_cffi 0.4.2: self-built curl profiles
 
-This unreleased draft documents the self-built profile support planned for
-scrapy_cffi 0.4.2. It integrates the request-profile adapter that was previously
+This release documents the self-built profile support added in scrapy_cffi
+0.4.2. It integrates the request-profile adapter that was previously
 a separate local package. A compatible self-built `curl-impersonate` wrapper
 can be selected by the framework while every request still chooses its own
 profile explicitly.
@@ -33,8 +33,12 @@ settings = SettingsInfo(
 Generated projects expose the same optional setting in `.env.example`:
 
 ```dotenv
-SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=D:/native/my-curl-build
+SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=profiles/artifacts/windows-x86_64-py312
 ```
+
+`scrapy-cffi startproject`, the scheduler demos, and `scrapy-cffi demo -tls`
+generate a `profiles/` reference directory. Native files remain user-owned and
+are not copied into the published wheel.
 
 ## Artifact directory contract
 
@@ -59,8 +63,12 @@ The optional manifest is the user-friendly alias registration contract:
 ```toml
 schema_version = 1
 
-[profiles]
-my-browser-stable = "my_native_profile_v1"
+[profiles.my-browser-stable]
+impersonate = "my_native_profile_v1"
+
+[profiles.my-browser-stable.client_hints]
+Sec-CH-UA-Arch = '"x86"'
+Sec-CH-UA-Bitness = '"64"'
 ```
 
 When the default curl transport activates `CURL_CFFI_NATIVE_DIR`, it loads this
@@ -120,6 +128,21 @@ through unchanged to preserve curl_cffi built-in profiles and direct compiled
 targets. The same resolution applies to media, streaming, and WebSocket
 requests, and the selected value survives scheduler persistence.
 
+## Mandatory Client Hints interceptor
+
+The download chain always installs a session-aware Client Hints interceptor.
+It remains a no-op for requests without an explicit `impersonate`. For HTTPS
+profiled requests it observes `Accept-CH`, stores the origin preference in the
+same session, and injects known high-entropy values into later requests for the
+same origin and profile. Existing request headers have priority, and curl_cffi
+continues to own the low-entropy UA headers it emits for impersonation.
+
+Missing values may be supplied by `Spider.resolve_client_hint`. The
+interceptor deliberately does not replay `Critical-CH` responses: it returns
+the original response and never creates a `RESCHEDULE` result, so the request
+manager's existing acquire/release pair remains the sole lifecycle owner.
+Client Hint session state is persisted together with cookies.
+
 ## Compatibility
 
 - Python 3.9 keeps the existing `curl_cffi>=0.7.4,<0.14` dependency contract.
@@ -128,3 +151,39 @@ requests, and the selected value survives scheduler persistence.
   curl_cffi Python API.
 - Without `CURL_CFFI_NATIVE_DIR`, the official installed curl_cffi behavior is
   unchanged.
+
+## TLS inspection demo
+
+`scrapy-cffi demo -tls` generates a standalone spider that calls several TLS
+diagnostic JSON endpoints. Its `impersonate_profiles` tuple is intentionally
+empty-by-default (`None` only): users add curl_cffi built-ins, manifest aliases,
+or direct compiled targets explicitly and compare the returned fingerprints.
+
+## Event-driven WebSocket lifecycle
+
+Long-lived WebSocket listeners dispatch frames directly to callbacks and wait
+on lifecycle events rather than passing a configurable end marker through a
+queue. The connecting `WebSocketRequest` still owns its initial `send_message`,
+which is sent before the first receive operation. Call
+`response.stop_listening()` when the spider is done. Crawler shutdown and the
+legacy `CloseSignal` path set the same stop event; `WS_END_TAG` remains only as
+a deprecated settings compatibility field.
+
+Follow-up sends retain the same public `WebSocketRequest` API. Internally, a
+request with `websocket_id` is classified as an existing-connection operation.
+If the listener closes after enqueue but before download, the request follows
+the normal `SessionEndError` path instead of silently opening a replacement
+long-lived connection.
+
+## Finite crawler lifecycle
+
+Each Engine tracks its own producer, scheduler loops, downloader work,
+callbacks, and listeners even when several spiders share one TaskManager. A
+finite queue-backed spider stops after its producer explicitly returns and its
+owned request count reaches zero. Standard queue Spiders expose
+`start_request_limit`: `None` listens continuously, while a positive value
+returns after that many accepted ingress messages. Empty broker reads and
+elapsed time never produce a completion signal.
+The generated Memory, Redis, RabbitMQ, and Kafka demos exercise this path from
+`runner.py`; verification no longer treats a timed sleep followed by forced
+`crawler.shutdown()` as success.

@@ -1,4 +1,5 @@
 import random
+from demo_support.endpoints import DEMO_HTTP_URL
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.internet import HttpRequest, HttpResponse
 from copy import deepcopy
@@ -10,7 +11,7 @@ class StudentSpider(Spider):
 
     school_id = int(random.random() * 100)
     count = 0
-    start_urls = [f"http://127.0.0.1:8002/school/{school_id}"]
+    start_urls = [f"{DEMO_HTTP_URL}/school/{school_id}"]
 
     async def parse(self, response: HttpResponse):
         response_json = response.json()
@@ -27,7 +28,7 @@ class StudentSpider(Spider):
                     abs_tid = self.count + class_id * 100 + tid
                     yield HttpRequest(
                         session_id=response.session_id,
-                        url=f"http://127.0.0.1:8002/student/{abs_tid}",
+                        url=f"{DEMO_HTTP_URL}/student/{abs_tid}",
                         method="GET",
                         callback=self.parse_student,
                         errback=self.errRet,
@@ -53,7 +54,7 @@ class StudentSpider(Spider):
         response_json = response.json()
         meta.update({"student_info": response_json})
 
-        img_url = f'http://127.0.0.1:8002{response_json["img"]}'
+        img_url = f'{DEMO_HTTP_URL}{response_json["img"]}'
         yield HttpRequest(
             session_id=response.session_id,
             url=img_url,

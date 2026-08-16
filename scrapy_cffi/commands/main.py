@@ -163,6 +163,12 @@ def main():
         action="store_true",
         help="Use KafkaSpider and KafkaScheduler",
     )
+    demo_p.add_argument(
+        "-tls",
+        "--tls",
+        action="store_true",
+        help="Create a standalone TLS fingerprint inspection demo",
+    )
 
     args = parser.parse_args()
 
@@ -210,7 +216,9 @@ def main():
             args.kafka,
         )
     elif args.command == "demo":
+        if args.tls and (args.redis or args.rabbitmq or args.kafka):
+            parser.error("demo -tls cannot be combined with queue demo flags")
         result = startproject.run("demo", is_demo=True)
         if result is not None:
             return
-        demo.run(args.redis, args.rabbitmq, args.kafka)
+        demo.run(args.redis, args.rabbitmq, args.kafka, use_tls=args.tls)

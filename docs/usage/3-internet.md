@@ -45,7 +45,7 @@ ja3: Optional[str] = None
 akamai: Optional[str] = None
 ```
 
-Planned for `scrapy_cffi 0.4.2`, self-built curl profiles use the existing
+In `scrapy_cffi 0.4.2`, self-built curl profiles use the existing
 request-scoped `impersonate` argument. Configure only the native implementation
 directory globally; do not configure a global impersonation profile:
 
@@ -73,8 +73,12 @@ user-owned aliases when the directory is activated:
 ```toml
 schema_version = 1
 
-[profiles]
-my-browser-stable = "my_native_profile_v1"
+[profiles.my-browser-stable]
+impersonate = "my_native_profile_v1"
+
+[profiles.my-browser-stable.client_hints]
+Sec-CH-UA-Full-Version-List = '"Chromium";v="123.0.0.0"'
+Sec-CH-UA-Arch = '"x86"'
 ```
 
 The same registration can be performed programmatically with
@@ -82,6 +86,30 @@ The same registration can be performed programmatically with
 aliases are selected through `impersonate`. Unknown values pass through
 unchanged, preserving curl_cffi built-in profiles and direct native targets,
 so a manifest is optional. Omitting `impersonate` selects no profile.
+
+The built-in Client Hints download interceptor is always registered. It is
+transport-version independent (HTTP/1.1 and HTTP/2 are both supported), but is
+dormant unless an HTTPS request explicitly selects `impersonate`. When a
+response advertises `Accept-CH`, requested high-entropy values are read from
+that profile's manifest metadata and sent on later requests for the same
+origin, session, and profile. `Clear-Site-Data: "clientHints"` clears the
+origin state. Existing user headers win.
+
+For values that must be resolved at runtime, override the optional spider
+callback:
+
+```python
+async def resolve_client_hint(self, name, origin, response):
+    if name.lower() == "sec-ch-ua-platform-version":
+        return '"15.0.0"'
+    return None
+```
+
+The interceptor never creates or retries a request. In particular, it does
+not automatically replay `Critical-CH`; this preserves the framework's
+acquire/release ownership for finite crawls. A value learned from the response
+applies to subsequent requests only. Session state is included in persistent
+scheduler snapshots.
 
 `params` are merged into `url` at construction time (`url?key=value&...`). For deduplication, query parameters are canonicalized (sorted by key/value) when building the fingerprint, so parameter order does not affect duplicate detection.
 
@@ -268,7 +296,6 @@ According to the gRPC wire protocol:
 | Attribute | Description |
 | --------- | ----------- |
 | **websocket_id** | Identifier for an existing WebSocket session (for reuse). Not required for initial connection. |
-| **websocket_end** | Indicates that the WebSocket should be closed. |
 | **send_message** | Message to send over the WebSocket connection. A single message will be automatically wrapped as `[message]`. You may also pass a list to send multiple messages in a single request. (Since version ≥ 0.2.2, each message must be wrapped in a `WebSocketMsg` object, because in WebSocket communication, messages are not always byte streams — `WebSocketMsg` provides a one-to-one mapping between message content and its type.)  |
 | **ping_data** | User-level ping data. Some connections define custom ping content; maintaining this in the crawler layer would be inconvenient, so the framework implements internal management for it (configured when the WebSocket is established and cannot be changed afterward). This field applies only to user-defined pings and has no effect on protocol-level pings (which are handled internally by the underlying `curl_cff`). Like `send_message`, the value should be wrapped in `WebSocketMsg`, but without the `[message]` list form. |
 | **ping_interval** | Interval between ping messages. |
@@ -353,6 +380,26 @@ yield WebSocketRequest(
 WebSocket communication is based on a single persistent connection that allows multiple messages to be sent and received over time. In this framework, all WebSocket interactions—regardless of the number of messages—are uniformly represented using the WebSocketRequest class. There is no need to distinguish between initial or subsequent messages, as they all share the same request structure.
 
 However, in some cases, a website may expect a message to be sent immediately after the WebSocket connection is established. If no message is sent within a very short time, the server might close the connection prematurely. To handle such scenarios, the framework allows you to configure some initial messages that is automatically sent as soon as the connection is established.
+
+The framework therefore deliberately keeps connection establishment and its
+initial `send_message` on the same `WebSocketRequest`. After connecting, those
+messages are sent before the first receive operation.
+
+Incoming frames are dispatched directly to the request callback. A long-lived
+listener remains active until the user stops it, the peer closes it, or the
+crawler shuts down; no queue-end sentinel is involved. Stop explicitly from a
+callback when the spider has collected enough data:
+
+```python
+async def parse_socket(self, response: WebSocketResponse):
+    yield {"message": response.msg}
+    if self.enough_data:
+        response.stop_listening()
+```
+
+`CloseSignal(websocket_end_for_key=...)` remains supported for compatibility,
+but new spiders should prefer the response control because it expresses the
+connection lifecycle at the callback that owns the decision.
 
 
 
@@ -647,6 +694,11 @@ for data, typedef in results:
 | **msg** | The message received over the WebSocket |
 
 ### 3.3.2 Methods
-#### 3.3.2.1 protobuf_decode
-#### 3.3.2.2 grpc_decode
+#### 3.3.2.1 stop_listening
+
+Requests idempotent shutdown of the long-lived listener. This is a synchronous
+control method; call it directly from the async callback without `await`.
+
+#### 3.3.2.2 protobuf_decode
+#### 3.3.2.3 grpc_decode
 same as in `HttpResponse`, but applies to msg.

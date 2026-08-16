@@ -58,6 +58,13 @@ Each spider is bound to its own **engine**, while all other components (middlewa
 
 When running `run_all_spiders`, all spiders execute within the **same thread and event loop**, allowing seamless integration with external asyncio-based systems or frameworks. This shared-loop design keeps things simple and efficient for standard use cases.
 
+Each spider still retains its own Engine and scheduler semantics. A finite
+spider can complete while a Redis/RabbitMQ/Kafka sibling continues listening,
+so the shared Crawler remains alive. A normal `Spider` also keeps the in-memory
+`Scheduler`; it is not implicitly promoted by a distributed sibling. Configure
+`settings.SCHEDULER` explicitly only when one scheduler class should override
+all spiders.
+
 However, if isolation is needed—such as giving each spider its own environment or event loop—you can switch to a multi-threaded or multi-process mode using `run_spider`. The framework's interface is designed with this flexibility in mind: it supports multiple spiders per loop, **while also enabling users to fully control execution at a higher level**. See [scheduler](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/images/scheduler.jpg) for how to build custom orchestration logic.
 
 This design allows `scrapy_cffi` to adapt cleanly to both **monolithic** and **distributed** usage patterns.

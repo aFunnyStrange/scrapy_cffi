@@ -1,6 +1,6 @@
 import asyncio, time
 from ...utils import async_context_factory, safe_call, run_with_timeout
-from typing import Tuple, TYPE_CHECKING, List, Callable
+from typing import TYPE_CHECKING, List, Callable
 # from ...utils import run_with_timeout
 from .internet import *
 from ...exceptions import DownloadError
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from ...crawler import Crawler
     from ...settings import SettingsInfo
     from ...extensions import SignalManager
-    from ..sessions import SessionManager, SessionWrapper
+    from ..sessions import SessionManager, SessionWrapper, WebSocketEntry
     from ...repo.queue import KafkaQueueRepository
 
 class Downloader:
@@ -41,6 +41,7 @@ class Downloader:
         )
         stream_limit = self.settings.MAX_CONCURRENT_REQ or 100
         self._stream_semaphore = asyncio.Semaphore(stream_limit)
+        self._websocket_semaphore = asyncio.Semaphore(stream_limit)
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -155,23 +156,35 @@ class Downloader:
             except Exception as e:
                 self.logger.debug(f"Downloader Task cancelled or failed: {e}")
 
-    async def downloaderWebSocketListener(self, websocket_event: asyncio.Event, wrapper: "SessionWrapper", request: WebSocketRequest, queue: asyncio.Queue):
+    async def _websocket_listener(
+        self,
+        entry: "WebSocketEntry",
+        wrapper: "SessionWrapper",
+        request: WebSocketRequest,
+        callback: Callable,
+    ) -> None:
+        """Dispatch socket messages directly until an event requests stop."""
         try:
-            async with self.sem_ctx():
+            async with self._websocket_semaphore:
                 websocket = await wrapper.do_request(request=request, is_ws=True)
                 websocket_id = wrapper.set_websocket(url=request.url, websocket=websocket)
-                if request.send_message: # Sending requests is supported during the initial WebSocket handshake
-                    # await run_with_timeout(websocket.send, request.send_message, stop_event=self.stop_event)
+                if entry.stop_event.is_set() or self.stop_event.is_set():
+                    return
+                if request.send_message:
+                    # Preserve connect-and-send as one operation for servers
+                    # that close idle handshakes almost immediately.
                     for msg in request.send_message:
                         await safe_call(websocket.send, msg.data, flags=msg.flags)
 
-                while (not self.stop_event.is_set()) and (not websocket_event.is_set()):
+                while not self.stop_event.is_set() and not entry.stop_event.is_set():
+                    tasks = []
                     try:
                         recv_task = asyncio.create_task(websocket.recv())
-                        wait_task = asyncio.create_task(websocket_event.wait())
+                        wait_task = asyncio.create_task(entry.stop_event.wait())
                         stop_task = asyncio.create_task(self.stop_event.wait())
                         tasks = [recv_task, wait_task, stop_task]
                         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                        await self.cancel_ws_tasks(tasks=list(pending))
                         if recv_task in done:
                             msg = recv_task.result()
                             # if msg[0] in [b'\x03\xe8', b'\x03\xe8Bye', b'\x03\xf3keepalive ping timeout']: # Predefined termination messages as per protocol convention
@@ -185,12 +198,19 @@ class Downloader:
                                 callback=request.callback,
                                 errback=request.errback,
                                 desc_text=request.desc_text,
-                                request=request
+                                request=request,
+                                stop_listening=entry.request_stop,
                             )
                             self.signalManager.send(signal=signals.response_received, data=SignalInfo(signal_time=time.time(), request=request, response=response))
-                            await queue.put(response)
+                            await callback(response=response, request=request)
+                            if (
+                                isinstance(msg, (tuple, list))
+                                and msg
+                                and isinstance(msg[0], bytes)
+                                and b"keepalive ping timeout" in msg[0]
+                            ):
+                                entry.request_stop()
                         else:
-                            await self.cancel_ws_tasks(tasks=tasks)
                             break
                     except asyncio.CancelledError:
                         await self.cancel_ws_tasks(tasks=tasks)
@@ -198,7 +218,7 @@ class Downloader:
                     except Exception as e:
                         result = DownloadError(exception=e, request=request)
                         self.logger.error(str(result))
-                        await queue.put(result)
+                        await callback(response=result, request=request)
                         # if "initializer for ctype" in str(e):
                         #     self.logger.info(f"WebSocket connection {request.url} has already been closed. Exiting listener.")
                         break
@@ -209,18 +229,38 @@ class Downloader:
             result = DownloadError(exception=e, request=request)
             self.logger.error(str(result))
             try:
-                await queue.put(result)
-            except Exception as e:
-                self.logger.warning(f"fetch Queue put failed: {e}")
+                await callback(response=result, request=request)
+            except Exception as callback_error:
+                self.logger.warning(
+                    f"WebSocket error callback failed for {request.url}: "
+                    f"{callback_error}"
+                )
         finally:
-            websocket_event.set()
-            await queue.put(self.settings.WS_END_TAG)
+            await entry.close()
 
-    async def fetch_websocket(self, wrapper: "SessionWrapper", request: WebSocketRequest) -> Tuple[asyncio.Task, asyncio.Queue, asyncio.Event]:
-        self.signalManager.send(signal=signals.request_reached_downloader, data=SignalInfo(signal_time=time.time(), request=request))
-        websocket_event = asyncio.Event()
-        websocket_event.clear()
-        queue = asyncio.Queue()
-        task = asyncio.create_task(self.downloaderWebSocketListener(websocket_event=websocket_event, wrapper=wrapper, request=request, queue=queue))
-        websocket_id = wrapper.init_websocket(url=request.url, task=task, queue=queue, ping_data=request.ping_data, ping_interval=request.ping_interval)
-        return task, queue, websocket_event
+    async def fetch_websocket(
+        self,
+        wrapper: "SessionWrapper",
+        request: WebSocketRequest,
+        callback: Callable,
+    ) -> "WebSocketEntry":
+        """Register and start one event-driven WebSocket listener."""
+        self.signalManager.send(
+            signal=signals.request_reached_downloader,
+            data=SignalInfo(signal_time=time.time(), request=request),
+        )
+        entry = wrapper.init_websocket(
+            url=request.url,
+            ping_data=request.ping_data,
+            ping_interval=request.ping_interval,
+        )
+        task = asyncio.create_task(
+            self._websocket_listener(
+                entry=entry,
+                wrapper=wrapper,
+                request=request,
+                callback=callback,
+            )
+        )
+        wrapper.set_websocket_listener(url=request.url, task=task)
+        return entry

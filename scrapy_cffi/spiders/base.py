@@ -1,11 +1,13 @@
+"""Define the framework's directly extensible spider base classes."""
+
 import asyncio, json
 from pathlib import Path
 from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
 from ..settings import merge_spider_settings
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..core.downloader.internet.response import HttpResponse
+    from ..core.downloader.internet.response import Response
     from ..exceptions import Failure
     from ..crawler import Crawler
     from ..hooks.spiders import SpidersHooks
@@ -13,12 +15,16 @@ if TYPE_CHECKING:
     from ..service import ResourceService
 
 class BaseSpider(object):
+    """Provide crawler-owned resources and overridable spider callbacks."""
+
     name = "cffiSpider"
     robot_scheme = "https"
     allowed_domains = []
     settings_overlay = {}  # class-level overrides merged into Crawler.settings per spider
+    start_request_limit: Optional[int] = None
 
     def __init__(self, settings=None, run_py_dir="", stop_event=None, resources=None, session_id="", hooks=None, *args, **kwargs):
+        """Bind one spider instance to crawler-owned settings and resources."""
         self.settings: "SettingsInfo" = settings
         self.run_py_dir: Path = run_py_dir
         self.stop_event: asyncio.Event = stop_event
@@ -41,6 +47,7 @@ class BaseSpider(object):
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler", scheduler=None):
+        """Construct a spider with its scheduler-specific settings overlay."""
         sch = scheduler or crawler.scheduler
         if sch is None:
             raise RuntimeError(
@@ -57,22 +64,42 @@ class BaseSpider(object):
         )
 
     def use_execjs(self, ctx_key: str="", funcname: str="", params: tuple=()) -> str:
+        """Execute one named function from a configured JavaScript context."""
         # funcName = funcname + str(params)
         funcName = f"{funcname}({','.join(json.dumps(p) for p in params)})"
         encrypt_words = self.ctx_dict[ctx_key].eval(funcName)
         return encrypt_words
     
     async def parse(self, response: "HttpResponse"):
+        """Process a response in a concrete spider implementation."""
         raise NotImplementedError("parse is no defined.")
+
+    async def resolve_client_hint(
+        self,
+        name: str,
+        origin: str,
+        response: "Response",
+    ) -> Optional[str]:
+        """Optionally provide a Client Hint absent from profile metadata."""
+        return None
+
+    def start_request_limit_reached(self, accepted_count: int) -> bool:
+        """Return whether an ingress producer has emitted its explicit quota."""
+        limit = self.start_request_limit
+        return limit is not None and accepted_count >= limit
     
     async def errRet(self, failure: "Failure"):
+        """Handle an unprocessed request failure."""
         print(str(failure))
         yield None
 
 class Spider(BaseSpider):
+    """Schedule configured start URLs through the standard HTTP request."""
+
     start_urls = []
         
     async def start(self, *args, **kwargs):
+        """Yield one initial GET request for each configured start URL."""
         for url in self.start_urls:
             yield HttpRequest(
                 session_id=self.session_id,

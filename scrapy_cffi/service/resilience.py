@@ -54,16 +54,6 @@ class ResourceSlot(Generic[T]):
             if observed_generation is not None and observed_generation != self._generation:
                 return
             previous = self._resource
-            self._resource = None
-            if previous is not None:
-                try:
-                    await self._call_optional(previous, "close")
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    # A broken transport may also fail while closing. Recovery
-                    # must still be able to construct a fresh generation.
-                    pass
             replacement = self._factory()
             try:
                 await self._call_optional(replacement, "connect", "init")
@@ -72,6 +62,15 @@ class ResourceSlot(Generic[T]):
                 raise
             self._resource = replacement
             self._generation += 1
+            if previous is not None:
+                try:
+                    await self._call_optional(previous, "close")
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # The connected replacement is already visible, so a
+                    # broken old generation cannot create an empty-slot gap.
+                    pass
 
     async def close(self) -> None:
         """Close the current resource and make the slot unavailable."""

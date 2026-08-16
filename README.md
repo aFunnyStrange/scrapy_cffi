@@ -98,6 +98,9 @@ scrapy-cffi genspider <spider_name> <domain>
 # Kafka start/work request queues
 scrapy-cffi genspider --kafka <spider_name> <domain>
 
+# Standalone TLS inspection demo
+scrapy-cffi demo -tls
+
 python runner.py
 ```
 
@@ -105,6 +108,11 @@ Generated `runner.py` imports the generated Spider class directly, and generated
 `settings.py` assigns imported Scheduler, Extension, Pipeline, and Interceptor
 classes instead of opaque strings. IDE navigation and completion therefore work
 out of the box; legacy string import paths remain supported.
+
+Every generated project contains a `profiles/` reference directory. Place each
+self-built, ABI-specific runtime under `profiles/artifacts/<runtime>/`, copy the
+example manifest there as `scrapy_cffi_profiles.toml`, and point
+`SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR` at that exact runtime directory.
 
 Streaming chat/SSE endpoints use the same request model:
 
@@ -144,13 +152,27 @@ The framework ships no concrete custom profile. Users declare aliases in the
 artifact directory's optional `scrapy_cffi_profiles.toml`, or register them
 programmatically with `scrapy_cffi.profiles.register_profile`.
 
-See [the draft 0.4.2 guide](docs/RELEASE-0.4.2.md) for the native artifact
+WebSocket connections are long-lived and event-driven. The initial
+`send_message` remains part of the connecting `WebSocketRequest` and is sent
+before receiving; callbacks stop listening explicitly with
+`response.stop_listening()`.
+
+See [the 0.4.2 release guide](docs/RELEASE-0.4.2.md) for the native artifact
 layout, compatibility rules, official-profile passthrough, and persistence
 behavior.
 
-For finite spiders, use `SCHEDULER_LOOP_END` to stop after a bounded number of
-empty scheduler loops. Continuous Redis/RabbitMQ/Kafka spiders normally leave
-it as `None`.
+Finite completion is event-driven. A naturally returning `Spider.start()` is a
+finite producer; standard Redis/RabbitMQ/Kafka Spiders may set a positive
+`start_request_limit` to return after that many accepted ingress messages.
+Their default `None` means continuous listening, and an empty broker read never
+signals completion. Engine shutdown is scoped per spider and waits for that
+spider's callbacks, downloader work, and WebSocket listeners. A queued
+`WebSocketRequest` carrying a
+`websocket_id` is always an existing-connection send and is never converted
+into a new connection if the original listener has already closed.
+
+See [the mandatory verification contract](docs/TESTING.md) before changing the
+framework or generated templates.
 
 Framework maintainers can validate every generated Demo path serially with
 `scrapy-cffi test all`. The command uses disposable local infrastructure,

@@ -96,6 +96,7 @@ def test_state_codec_rejects_oversized_raw_and_compressed_payloads():
 
 def test_session_cookie_hash_round_trip_preserves_cookie_attributes():
     from scrapy_cffi.core.sessions import SessionManager
+    from scrapy_cffi.profiles import DEFAULT_REGISTRY
     from scrapy_cffi.settings import SettingsInfo
 
     async def run():
@@ -104,6 +105,16 @@ def test_session_cookie_hash_round_trip_preserves_cookie_attributes():
         source = SessionManager(asyncio.Event(), settings)
         source_wrapper = source.get_or_create_session("account-1")
         source_wrapper.session.cookies.jar.set_cookie(_cookie())
+        source_wrapper.client_hints.replace_requested(
+            "https://example.com",
+            {"sec-ch-ua-arch": "Sec-CH-UA-Arch"},
+        )
+        source_wrapper.client_hints.set_runtime_value(
+            "https://example.com",
+            "browser-profile",
+            "Sec-CH-UA-Arch",
+            '"x86"',
+        )
 
         assert await source.persist_session(redis, "demo_req:sessions", "account-1")
         payload = redis.data["demo_req:sessions"]["S:account-1"]
@@ -119,6 +130,12 @@ def test_session_cookie_hash_round_trip_preserves_cookie_attributes():
         assert restored.secure is True
         assert restored.expires == 2_000_000_000
         assert restored._rest["SameSite"] == "Lax"
+        restored_wrapper = target.get_or_create_session("account-1")
+        assert restored_wrapper.client_hints.headers_for_request(
+            "https://example.com",
+            "browser-profile",
+            registry=DEFAULT_REGISTRY,
+        ) == [("Sec-CH-UA-Arch", '"x86"')]
 
         # A field is loaded only once; current in-process cookies stay authoritative.
         assert not await target.restore_session(redis, "demo_req:sessions", "account-1")
