@@ -1,14 +1,29 @@
+"""Compose and dispatch the scrapy-cffi command-line interface."""
+
 import argparse
+import sys
+from typing import Optional
 
-from . import cinstall, demo, genspider, infra, startproject, verification
+from . import banner, cinstall, demo, genspider, infra, startproject, verification
 
 
-def main():
+def main() -> Optional[int]:
+    """Parse command-line arguments and dispatch one CLI operation."""
     parser = argparse.ArgumentParser(
         prog="scrapy-cffi",
         description="scrapy_cffi command-line tools",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    banner_p = subparsers.add_parser(
+        "banner",
+        help="Show the scrapy-cffi terminal banner",
+    )
+    banner_p.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Render plain ASCII without ANSI color sequences.",
+    )
 
     sp = subparsers.add_parser("startproject", help="Create a new project")
     sp.add_argument("name", help="Project name")
@@ -170,7 +185,18 @@ def main():
         help="Create a standalone TLS fingerprint inspection demo",
     )
 
-    args = parser.parse_args()
+    arguments = [
+        "--help" if argument == "-help" else argument
+        for argument in sys.argv[1:]
+    ]
+    if any(argument in {"-h", "--help"} for argument in arguments):
+        banner.print_banner(force=True)
+
+    args = parser.parse_args(arguments)
+
+    if args.command == "banner":
+        banner.print_banner(force=True, use_color=not args.no_color)
+        return 0
 
     if args.command == "startproject":
         startproject.run(args.name)

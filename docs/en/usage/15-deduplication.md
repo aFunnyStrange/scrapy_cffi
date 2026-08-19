@@ -1,0 +1,115 @@
+# Deduplication architecture
+
+How Bloom filters, Redis SET dedup, and cluster jump-hash routing fit together — and when **not** to add another service layer.
+
+## What each piece does
+
+| Component | Role |
+| --------- | ---- |
+| **Fingerprint** (`dupefilter/fingerprint.py`) | Canonical URL + headers → SHA1; no Redis |
+| **MemoryDupeFilter / BloomDupeFilter** | In-process dedup for local `Scheduler` |
+| **RedisDupeFilter** | SET + Lua script (`do_filter`) in Redis |
+| **RedisBloomDupeFilter** | Redis bitmap Bloom (`do_bloom_filter`) — lower memory, small FP rate |
+| **DedupKeyRouter** (`dupefilter/routing.py`) | Maps fingerprint → `{new_seen, sent_seen}` keys |
+
+## Cluster jump-hash — purpose
+
+Redis Cluster routes keys by **hash slot**. Dedup keys must land on the correct node.
+
+`DedupKeyRouter` uses **jump consistent hash** over cluster startup nodes (`utils.algorithm.get_node`) to append `:{host:port}` to key names. That is:
+
+- **Key affinity** (same URL → same shard keys)
+- **Not** crawler load balancing
+- **Not** a replacement for Redis Cluster’s own routing
+
+The crawler still talks to one `RedisRepository` backed by a cluster-aware `RedisClient`; only **key names** are sharded.
+
+## Separate dedup service?
+
+| Approach | Pros | Cons |
+| -------- | ---- | ---- |
+| **Current (in-process router + Redis)** | Simple deploy; works offline in tests; no extra hop | Jump-hash logic lives in framework (now isolated in `routing.py`) |
+| **Dedicated dedup Redis (single/sentinel)** | No jump-hash; one SET namespace; easy ops | Second Redis to run; still one logical store |
+| **HTTP/gRPC dedup microservice** | Central policy, language-agnostic | New SPOF unless HA; latency; you re-implement Bloom/cluster rules |
+| **RedisBloom / Redis Stack module** | Server-side structures | Different ops model; not always available in cluster |
+
+**Practical recommendation**
+
+1. **Most teams**: single Redis or sentinel for **both** queue + dedup → use `RedisDupeFilter`, no jump-hash.
+2. **Large scale, shared cluster**: keep jump-hash router; configure via settings only (`FILTER_KEY`, `DEDUP_TTL`, `BLOOM_INFO`, spider `redis_namespace`).
+3. **Avoid** a custom dedup service unless you need cross-language clients or centralized dedup policy — Redis **is** already the distributed dedup service.
+
+## Configuration (no spider code for cluster routing)
+
+```python
+settings.REDIS_INFO.CLUSTER_NODES = [
+    "redis-cluster-01.internal:6379",
+    "redis-cluster-02.internal:6379",
+    "redis-cluster-03.internal:6379",
+]
+settings.FILTER_KEY = "myproject"          # → myproject_new_seen / myproject_sent_seen
+settings.DEDUP_TTL = 86400                 # optional key expiry (cluster cleanup hint)
+settings.DUPEFILTER = "scrapy_cffi.dupefilter.api.RedisDupeFilter"
+# or RedisBloomDupeFilter for bitmap bloom in Redis
+
+# Per-spider namespace (multi-spider one Crawler):
+class MySpider(Spider):
+    name = "worker_a"
+    # scheduler sets redis_namespace=spider.name on RedisScheduler dedup
+```
+
+Bloom tuning: `settings.BLOOM_INFO` (`SIZE`, `EXPECTED`, `HASH_COUNT`). The
+framework uses the versioned `xxh3-km-v1` algorithm: two XXH3 hashes followed
+by Kirsch-Mitzenmacher double hashing. Install `scrapy_cffi[bloom]` to select
+the `fastbloom-rs` PyO3 stable-ABI backend; without it, the pure-Python adapter
+uses `ppxxh` and produces exactly the same indices. Backend selection happens
+once at import time, not during each deduplication operation.
+
+Redis bitmap keys include the algorithm version. Existing FNV-based bitmap
+keys are therefore never interpreted using the new hash contract; they can be
+removed after upgrading when no old crawler process still uses them.
+
+## Shutdown cleanup (`SCHEDULER_PERSIST`)
+
+When `SCHEDULER_PERSIST` is **False** (default), `Crawler.shutdown()` deletes:
+
+- Spider ingress key (`redis_key`) and distributed work queue
+- RabbitMQ/Kafka start and work queues/topics owned by each spider
+- Dedup keys from `RedisDupeFilter.dedup_cleanup_keys()` → `DedupKeyRouter.cleanup_keys()`
+
+This runs on normal exit and on **Ctrl+C** (`KeyboardInterrupt` in `runner.py`).
+Redis deletion is started independently from broker queue/topic deletion and
+before the global stop event. A RabbitMQ/Kafka cleanup error therefore cannot
+prevent Redis cleanup; the shutdown path retries failed backend cleanup once.
+
+| Mode | Keys removed |
+| ---- | ------------ |
+| Single / sentinel | `{FILTER_KEY}_new_seen[:namespace][:algorithm]`, `{FILTER_KEY}_sent_seen[:namespace][:algorithm]` |
+| Cluster | Same bases with `:{host:port}` suffix per startup node |
+
+**Notes**
+
+- **Cluster**: jump-hash spreads fingerprints across shard suffixes; cleanup deletes all known node suffix keys. Residual keys are possible — use `DEDUP_TTL` as a safety net.
+- RabbitMQ/Kafka always use Redis for distributed deduplication. Their demo
+  configurations set `SCHEDULER_PERSIST = False`, so normal exit and Ctrl+C
+  remove broker request state and Redis dedup/session keys.
+- **Re-run still deduping?** Keys from a pre-0.3.2 run may remain; delete manually or set `SCHEDULER_PERSIST = False` and exit cleanly once.
+
+Ingress / `start_urls` requests carry `meta["is_start_url"]` and bypass dedup in `RedisScheduler` / `RabbitMqScheduler.put`.
+
+## Standalone tool use
+
+```python
+from scrapy_cffi.dupefilter.routing import DedupKeyRouter
+from scrapy_cffi.repo import RedisRepository
+
+router = DedupKeyRouter.from_redis_repository(settings, resources.redis, namespace="spider_a")
+keys = router.for_fingerprint("abc123fingerprint...")
+# keys.new_seen, keys.sent_seen
+```
+
+## Related
+
+- Multi-spider key ownership: [14-multi-spider-resources.md](./14-multi-spider-resources.md)
+- Standalone imports: [13-standalone-tools.md](./13-standalone-tools.md)
+- Architecture roadmap: [ARCHITECTURE-ROADMAP.md](../ARCHITECTURE-ROADMAP.md)

@@ -157,7 +157,7 @@ WebSocket connections are long-lived and event-driven. The initial
 before receiving; callbacks stop listening explicitly with
 `response.stop_listening()`.
 
-See [the 0.4.2 release guide](docs/RELEASE-0.4.2.md) for the native artifact
+See [the 0.4.2 release guide](docs/en/RELEASE-0.4.2.md) for the native artifact
 layout, compatibility rules, official-profile passthrough, and persistence
 behavior.
 
@@ -264,11 +264,11 @@ settings.REDIS_STREAM_INFO = RedisStreamConsumerInfo(
 
 ## 📖 Documentation
 
-Full technical documentation and module-level guides are available in the [`docs/usage/`](https://github.com/aFunnyStrange/scrapy_cffi/tree/main/docs/usage) directory.
+Full technical documentation and module-level guides are available in [English](docs/en/README.md) and [简体中文](docs/cn/README.md).
 
-0.4.0 architecture and compatibility notes: [`docs/RELEASE-0.4.0.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.4.0.md).
+0.4.0 architecture and compatibility notes: [`docs/en/RELEASE-0.4.0.md`](docs/en/RELEASE-0.4.0.md).
 
-Release history: [`CHANGELOG.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/CHANGELOG.md) · Architecture: [`docs/ARCHITECTURE-ROADMAP.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/ARCHITECTURE-ROADMAP.md) · **0.4.0**: [`docs/RELEASE-0.4.0.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.4.0.md) · **0.3.3**: [`docs/RELEASE-0.3.3.md`](https://github.com/aFunnyStrange/scrapy_cffi/blob/main/docs/RELEASE-0.3.3.md).
+Release history: [`CHANGELOG.md`](CHANGELOG.md) · Architecture: [`docs/en/ARCHITECTURE-ROADMAP.md`](docs/en/ARCHITECTURE-ROADMAP.md) · **0.4.0**: [`docs/en/RELEASE-0.4.0.md`](docs/en/RELEASE-0.4.0.md) · **0.3.3**: [`docs/en/RELEASE-0.3.3.md`](docs/en/RELEASE-0.3.3.md).
 
 ---
 

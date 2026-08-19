@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Cluster deployment</title>
+  <desc id="desc">Horizontally scaled crawler workers with broker ingress and shared deduplication.</desc>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0L0 6L9 3z" fill="#475569"/></marker><style>.box{stroke:#334155;stroke-width:2;rx:16}.title{font:700 26px system-ui,sans-serif;fill:#0f172a}.label{font:600 19px system-ui,sans-serif;fill:#0f172a}.small{font:16px system-ui,sans-serif;fill:#334155}.arrow{stroke:#475569;stroke-width:3;fill:none;marker-end:url(#a)}.dash{stroke:#64748b;stroke-width:2.5;stroke-dasharray:8 7;fill:none;marker-end:url(#a)}</style></defs>
+  <rect width="1200" height="700" fill="#f8fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Horizontally scaled crawler deployment</text>
+  <rect x="50" y="120" width="190" height="95" class="box" fill="#fef3c7"/><text x="145" y="160" text-anchor="middle" class="label">Task producers</text><text x="145" y="188" text-anchor="middle" class="small">backend / API</text>
+  <rect x="330" y="105" width="240" height="125" class="box" fill="#fed7aa"/><text x="450" y="148" text-anchor="middle" class="label">Shared ingress</text><text x="450" y="178" text-anchor="middle" class="small">Redis Streams, RabbitMQ,</text><text x="450" y="204" text-anchor="middle" class="small">or Kafka partitions</text>
+  <path d="M240 167H330" class="arrow"/>
+  <rect x="675" y="80" width="465" height="330" class="box" fill="#ffffff"/><text x="907" y="120" text-anchor="middle" class="label">scrapy-cffi worker pool</text>
+  <rect x="720" y="155" width="170" height="90" class="box" fill="#dbeafe"/><text x="805" y="192" text-anchor="middle" class="label">Worker A</text><text x="805" y="220" text-anchor="middle" class="small">Crawler + Engine</text>
+  <rect x="925" y="155" width="170" height="90" class="box" fill="#dbeafe"/><text x="1010" y="192" text-anchor="middle" class="label">Worker B</text><text x="1010" y="220" text-anchor="middle" class="small">Crawler + Engine</text>
+  <rect x="822" y="285" width="170" height="90" class="box" fill="#dbeafe"/><text x="907" y="322" text-anchor="middle" class="label">Worker N</text><text x="907" y="350" text-anchor="middle" class="small">Crawler + Engine</text>
+  <path d="M570 167H720M570 167Q625 330 822 330" class="arrow"/>
+  <rect x="160" y="475" width="275" height="125" class="box" fill="#dcfce7"/><text x="297" y="518" text-anchor="middle" class="label">Shared deduplication</text><text x="297" y="548" text-anchor="middle" class="small">Redis / RedisBloom</text><text x="297" y="575" text-anchor="middle" class="small">namespaced per spider</text>
+  <rect x="520" y="475" width="275" height="125" class="box" fill="#f3e8ff"/><text x="657" y="518" text-anchor="middle" class="label">External resources</text><text x="657" y="548" text-anchor="middle" class="small">SQL / Mongo / Redis</text><text x="657" y="575" text-anchor="middle" class="small">real service endpoints</text>
+  <rect x="880" y="475" width="260" height="125" class="box" fill="#fee2e2"/><text x="1010" y="518" text-anchor="middle" class="label">Pipeline outputs</text><text x="1010" y="548" text-anchor="middle" class="small">application-owned sinks</text>
+  <path d="M805 245Q650 420 435 505M907 375Q820 460 795 505M1010 245V475" class="dash"/>
+  <text x="600" y="660" text-anchor="middle" class="small">Local Docker topologies simulate dependencies; production workers connect directly to managed or dedicated services.</text>
+</svg>

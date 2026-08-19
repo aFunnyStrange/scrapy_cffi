@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Spider orchestration modes</title>
+  <desc id="desc">Comparison of one Crawler with multiple Engines and multiple isolated Crawlers on one event loop.</desc>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0L0 6L9 3z" fill="#475569"/></marker><style>.box{stroke:#334155;stroke-width:2;rx:16}.title{font:700 25px system-ui,sans-serif;fill:#0f172a}.label{font:600 19px system-ui,sans-serif;fill:#0f172a}.small{font:16px system-ui,sans-serif;fill:#334155}.arrow{stroke:#475569;stroke-width:2.5;fill:none;marker-end:url(#a)}</style></defs>
+  <rect width="1200" height="720" fill="#f8fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Orchestration on one asyncio event loop</text>
+  <rect x="45" y="80" width="535" height="580" class="box" fill="#ffffff"/><text x="312" y="120" text-anchor="middle" class="title">run_all_spiders</text><text x="312" y="150" text-anchor="middle" class="small">one Crawler, shared runtime components</text>
+  <rect x="170" y="190" width="285" height="90" class="box" fill="#e0f2fe"/><text x="312" y="230" text-anchor="middle" class="label">Crawler</text><text x="312" y="255" text-anchor="middle" class="small">composition + shutdown owner</text>
+  <rect x="80" y="365" width="140" height="115" class="box" fill="#eef2ff"/><text x="150" y="405" text-anchor="middle" class="label">Engine A</text><text x="150" y="435" text-anchor="middle" class="small">Scheduler A</text><text x="150" y="460" text-anchor="middle" class="small">finite</text>
+  <rect x="243" y="365" width="140" height="115" class="box" fill="#ecfeff"/><text x="313" y="405" text-anchor="middle" class="label">Engine B</text><text x="313" y="435" text-anchor="middle" class="small">Scheduler B</text><text x="313" y="460" text-anchor="middle" class="small">continuous</text>
+  <rect x="406" y="365" width="140" height="115" class="box" fill="#fff7ed"/><text x="476" y="405" text-anchor="middle" class="label">Engine N</text><text x="476" y="435" text-anchor="middle" class="small">Scheduler N</text>
+  <path d="M312 280V330M312 330H150V365M312 330V365M312 330H476V365" class="arrow"/>
+  <text x="312" y="535" text-anchor="middle" class="small">A finite Engine finishing does not stop</text><text x="312" y="562" text-anchor="middle" class="small">a continuous sibling Engine.</text>
+  <rect x="620" y="80" width="535" height="580" class="box" fill="#ffffff"/><text x="887" y="120" text-anchor="middle" class="title">run_spiders</text><text x="887" y="150" text-anchor="middle" class="small">multiple Crawlers, isolated settings/resources</text>
+  <rect x="670" y="205" width="160" height="215" class="box" fill="#eef2ff"/><text x="750" y="245" text-anchor="middle" class="label">Crawler A</text><rect x="695" y="290" width="110" height="75" class="box" fill="#dbeafe"/><text x="750" y="335" text-anchor="middle" class="small">Engine A</text>
+  <rect x="807" y="445" width="160" height="120" class="box" fill="#dcfce7"/><text x="887" y="493" text-anchor="middle" class="label">Event loop</text><text x="887" y="525" text-anchor="middle" class="small">task owner</text>
+  <rect x="945" y="205" width="160" height="215" class="box" fill="#fff7ed"/><text x="1025" y="245" text-anchor="middle" class="label">Crawler B</text><rect x="970" y="290" width="110" height="75" class="box" fill="#fed7aa"/><text x="1025" y="335" text-anchor="middle" class="small">Engine B</text>
+  <path d="M750 420Q765 500 807 500M1025 420Q1010 500 967 500" class="arrow"/>
+  <text x="887" y="610" text-anchor="middle" class="small">Use threads/processes only when a separate loop</text><text x="887" y="636" text-anchor="middle" class="small">or process boundary is actually required.</text>
+</svg>

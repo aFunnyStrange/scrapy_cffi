@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Single spider lifecycle</title>
+  <desc id="desc">Event-driven request, response, and item flow through one scrapy-cffi Engine.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
+    <style>
+      .box{stroke:#334155;stroke-width:2;rx:16}.label{font:600 22px system-ui,sans-serif;fill:#0f172a}.small{font:17px system-ui,sans-serif;fill:#334155}.flow{fill:none;stroke:#475569;stroke-width:3;marker-end:url(#arrow)}.event{fill:none;stroke:#16a34a;stroke-width:3;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="720" fill="#f8fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="label" font-size="30">Single Spider — Event-driven Lifecycle</text>
+  <rect x="450" y="105" width="300" height="92" class="box" fill="#dbeafe"/><text x="600" y="145" text-anchor="middle" class="label">Per-spider Scheduler</text><text x="600" y="174" text-anchor="middle" class="small">Memory / Redis / RabbitMQ / Kafka</text>
+  <rect x="450" y="290" width="300" height="105" class="box" fill="#e2e8f0"/><text x="600" y="336" text-anchor="middle" class="label">Engine</text><text x="600" y="368" text-anchor="middle" class="small">owns this Spider's work</text>
+  <rect x="850" y="290" width="260" height="105" class="box" fill="#fef3c7"/><text x="980" y="350" text-anchor="middle" class="label">Downloader</text>
+  <rect x="850" y="505" width="260" height="105" class="box" fill="#cffafe"/><text x="980" y="550" text-anchor="middle" class="label">Target</text><text x="980" y="580" text-anchor="middle" class="small">HTTP / SSE / WebSocket</text>
+  <rect x="450" y="505" width="300" height="105" class="box" fill="#fecaca"/><text x="600" y="550" text-anchor="middle" class="label">Spider callbacks</text><text x="600" y="580" text-anchor="middle" class="small">yield requests and items</text>
+  <rect x="70" y="505" width="270" height="105" class="box" fill="#fed7aa"/><text x="205" y="550" text-anchor="middle" class="label">Pipeline chain</text><text x="205" y="580" text-anchor="middle" class="small">process terminal items</text>
+  <path d="M600 197 V290" class="flow"/><text x="582" y="250" text-anchor="end" class="small">accepted request</text>
+  <path d="M750 342 H850" class="flow"/><text x="790" y="327" text-anchor="middle" class="small">request</text>
+  <path d="M980 395 V505" class="flow"/><text x="997" y="455" class="small">I/O</text>
+  <path d="M850 557 H750" class="event"/><text x="800" y="542" text-anchor="middle" class="small">response event</text>
+  <path d="M450 557 H340" class="event"/><text x="395" y="542" text-anchor="middle" class="small">item</text>
+  <path d="M530 505 V425 Q530 415 520 415 H385 Q370 415 370 400 V151 Q370 135 386 135 H450" class="event"/><text x="385" y="390" class="small">new request</text>
+  <path d="M750 315 Q800 250 850 315" class="flow"/><text x="800" y="276" text-anchor="middle" class="small">download interceptors</text>
+  <path d="M750 530 Q800 465 850 530" class="flow"/><text x="800" y="457" text-anchor="middle" class="small">spider interceptors</text>
+  <text x="600" y="675" text-anchor="middle" class="small">Completion is signaled by producer and owned-work events — never by an empty-queue timeout.</text>
+</svg>

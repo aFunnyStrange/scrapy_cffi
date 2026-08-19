@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Crawler structure</title>
+  <desc id="desc">One Crawler shares runtime services while each Spider Engine retains its scheduler.</desc>
+  <defs><style>.panel{stroke:#334155;stroke-width:2;rx:18}.title{font:700 27px system-ui,sans-serif;fill:#0f172a}.label{font:600 20px system-ui,sans-serif;fill:#0f172a}.small{font:17px system-ui,sans-serif;fill:#334155}.line{stroke:#64748b;stroke-width:2;fill:none}</style></defs>
+  <rect width="1200" height="760" fill="#f8fafc"/>
+  <rect x="40" y="35" width="1120" height="690" class="panel" fill="#ffffff"/>
+  <text x="600" y="80" text-anchor="middle" class="title">Crawler composition root</text>
+  <rect x="85" y="115" width="1030" height="230" class="panel" fill="#e0f2fe"/>
+  <text x="600" y="155" text-anchor="middle" class="label">Shared runtime components</text>
+  <rect x="115" y="190" width="190" height="95" class="panel" fill="#f8fafc"/><text x="210" y="230" text-anchor="middle" class="label">Downloader</text><text x="210" y="260" text-anchor="middle" class="small">session factory</text>
+  <rect x="330" y="190" width="220" height="95" class="panel" fill="#f8fafc"/><text x="440" y="230" text-anchor="middle" class="label">Interceptors</text><text x="440" y="260" text-anchor="middle" class="small">download + spider</text>
+  <rect x="575" y="190" width="220" height="95" class="panel" fill="#f8fafc"/><text x="685" y="230" text-anchor="middle" class="label">Pipeline + signals</text><text x="685" y="260" text-anchor="middle" class="small">extensions + robots</text>
+  <rect x="820" y="190" width="265" height="95" class="panel" fill="#dcfce7"/><text x="952" y="230" text-anchor="middle" class="label">ResourceService</text><text x="952" y="260" text-anchor="middle" class="small">repos + bounded resilience</text>
+  <path d="M210 345 V395 M440 345 V395 M685 345 V395 M952 345 V395 M210 395 H952" class="line"/>
+  <rect x="80" y="430" width="320" height="230" class="panel" fill="#eef2ff"/><text x="240" y="470" text-anchor="middle" class="label">Engine: normal Spider</text><rect x="120" y="505" width="240" height="70" class="panel" fill="#dbeafe"/><text x="240" y="548" text-anchor="middle" class="label">Memory Scheduler</text><text x="240" y="625" text-anchor="middle" class="small">finite by default</text>
+  <rect x="440" y="430" width="320" height="230" class="panel" fill="#ecfeff"/><text x="600" y="470" text-anchor="middle" class="label">Engine: RedisSpider</text><rect x="480" y="505" width="240" height="70" class="panel" fill="#cffafe"/><text x="600" y="548" text-anchor="middle" class="label">Redis Scheduler</text><text x="600" y="625" text-anchor="middle" class="small">finite or continuous</text>
+  <rect x="800" y="430" width="320" height="230" class="panel" fill="#fff7ed"/><text x="960" y="470" text-anchor="middle" class="label">Engine: queue Spider</text><rect x="840" y="505" width="240" height="70" class="panel" fill="#fed7aa"/><text x="960" y="535" text-anchor="middle" class="label">RabbitMQ / Kafka</text><text x="960" y="562" text-anchor="middle" class="small">Scheduler</text><text x="960" y="625" text-anchor="middle" class="small">finite or continuous</text>
+  <path d="M240 395 V430 M600 395 V430 M960 395 V430" class="line"/>
+  <text x="600" y="705" text-anchor="middle" class="small">Only an explicit global settings.SCHEDULER overrides every per-spider scheduler choice.</text>
+</svg>
