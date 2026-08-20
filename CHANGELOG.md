@@ -4,7 +4,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.0** release: [docs/RELEASE-0.4.0.md](docs/RELEASE-0.4.0.md) · **0.3.3** release: [docs/RELEASE-0.3.3.md](docs/RELEASE-0.3.3.md)
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.3** release: [docs/RELEASE-0.4.3.md](docs/RELEASE-0.4.3.md) · **0.4.2** release: [docs/RELEASE-0.4.2.md](docs/RELEASE-0.4.2.md)
+
+## [0.4.3] - 2026-08-20
+
+### Added
+
+- Per-session request-start rate limits through
+  `SESSION_REQUESTS_PER_SECOND` and the session hook API. `None` consistently
+  means unlimited, matching the downloader concurrency contract.
+- Typed request timeout failures are delivered to Spider errbacks, with
+  request-specific retry count and delay overrides.
+- Database and message-queue resources are available from every user-editable
+  component: Spiders, pipelines, interceptors, extensions, and signal hooks.
+- A colored CLI banner displayed only by root `scrapy-cffi -h` and the explicit
+  `scrapy-cffi banner` command.
+
+### Changed
+
+- Process-level curl native activation now belongs to
+  `scrapy_cffi.platform.curl_native`; request-scoped `impersonate` remains the
+  only profile-selection mechanism. `CURL_CFFI_RUNTIME_DIR` is the preferred
+  setting and `CURL_CFFI_NATIVE_DIR` remains a compatibility alias.
+- The runtime-wide task limit retains its established default of `300`, while
+  the downloader-specific `MAX_CONCURRENT_REQ` default remains `None`.
+- Redis scheduler persistence stores task state by default. Session cookies and
+  client hints require explicit session-persistence opt-in; durable account and
+  device data belongs in SQL or another durable user-selected store.
+- Pydantic settings accept natural unprefixed `.env` and process-environment
+  names such as `TIMEOUT` and `REDIS_INFO__URL`. Existing
+  `SCRAPY_CFFI_`-prefixed names remain compatible.
+- English and Simplified Chinese documentation now have matching trees, and
+  the crawler architecture diagrams were regenerated from corrected sources.
+
+### Fixed
+
+- WebSocket close frames are treated as lifecycle events instead of UTF-8
+  business messages, including compatibility across supported `websockets`
+  server APIs.
+- Downloader stream and WebSocket paths no longer introduce a hidden local
+  concurrency cap when `MAX_CONCURRENT_REQ=None`.
+
+FFmpeg multiprocessing is intentionally outside the 0.4.3 scope.
 
 ## [0.4.2] - 2026-08-16
 

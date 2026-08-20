@@ -1,5 +1,10 @@
 # 1.Introduction
-`scrapy_cffi` provides support for loading C extensions. Users only need to configure the relevant information in `SettingsInfo`, and the framework will automatically load all registered C extensions.
+The `CPY_EXTENSIONS`/`cinstall` path is a legacy compatibility boundary for
+application-owned ctypes libraries. It is not the curl impersonation runtime
+and must not select TLS/browser profiles. New distributable native features
+should normally use standard wheels and optional extras; curl runtime activation
+belongs to `scrapy_cffi.platform` through `CURL_CFFI_RUNTIME_DIR`, while
+request-scoped `impersonate` remains a profile choice.
 
 **Loading order** (per module directory):
 

@@ -37,8 +37,8 @@ may use indented multiline JSON:
 
 ```dotenv
 SCRAPY_CFFI_LOG_INFO__LOG_LEVEL=INFO
-SCRAPY_CFFI_REDIS_INFO__URL=redis://redis.internal:6379/0
-SCRAPY_CFFI_REDIS_INFO__SENTINELS='[
+REDIS_INFO__URL=redis://redis.internal:6379/0
+REDIS_INFO__SENTINELS='[
   ["redis-1", 26379],
   ["redis-2", 26379],
   ["redis-3", 26379]
@@ -279,6 +279,20 @@ If a request does not explicitly specify a User-Agent header, this value will be
 
 Internally, this uses either `asyncio.Semaphore` or `asyncio.BoundedSemaphore`, depending on the `USE_STRICT_SEMAPHORE` setting (see below for details).
 
+The downloader has no separate concurrency cap by default. Explicit `None`
+means unlimited and is never replaced by a hidden value. The runtime-wide
+`MAX_GLOBAL_CONCURRENT_TASKS` lock defaults to `300`, protecting selector-based
+Windows transports and process file descriptors across downloader, callbacks,
+interceptors, and other managed tasks.
+
+### 2.2.4.1 SESSION_REQUESTS_PER_SECOND
+
+- **Type**: Optional[float]
+- **Default**: None
+- **Description**: Maximum request starts per second for each concrete
+  `session_id`. `None` means unlimited. Configure it globally, while registering
+  sessions, or at runtime through `hooks.session.configure_rate_limit()`.
+
 **Important Note**  
 This setting operates in conjunction with the global task limiter `MAX_GLOBAL_CONCURRENT_TASKS`. Even if `MAX_CONCURRENT_REQ` is set to a large value (or `None`), the **effective concurrency will never exceed the global task limit**. The downloader must acquire the global lock **in addition to** its local semaphore before dispatching a request.
 
@@ -330,7 +344,7 @@ settings.HTTP_SESSION_FACTORY = MyHttpSession
 
 ---
 
-### 2.2.10 CURL_CFFI_NATIVE_DIR
+### 2.2.10 CURL_CFFI_RUNTIME_DIR
 
 Optional path containing an ABI-compatible self-built curl_cffi `_wrapper`
 and adjacent `libcurl-impersonate` runtime libraries. The default `None` keeps
@@ -343,13 +357,18 @@ chooses a request profile. Set `impersonate` explicitly on each `HttpRequest`,
 Generated projects include an optional `.env.example` entry:
 
 ```dotenv
-SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR=profiles/artifacts/windows-x86_64-py312
+CURL_CFFI_RUNTIME_DIR=profiles/artifacts/windows-x86_64-py312
 ```
 
 The adapter is loaded only when the default curl transport is constructed.
 Leaving this variable unset keeps the official installed `curl_cffi` wrapper.
 If `scrapy_cffi_profiles.toml` exists in this directory, its user-owned aliases
 are registered automatically; no concrete profile ships with the framework.
+`CURL_CFFI_NATIVE_DIR` remains a deprecated compatibility alias.
+
+Dotenv and process environment keys use the Pydantic field names directly,
+including nested `__` names such as `REDIS_INFO__URL`. Historical
+`SCRAPY_CFFI_`-prefixed settings remain readable, but are no longer required.
 
 ---
 
@@ -503,7 +522,8 @@ positives.
 ### 2.5.4 SCHEDULER_PERSIST
 - **Type**: Optional[bool]
 - **Default**: False
-- **Persistent sessions**: When enabled, session cookies survive a restart. They are stored in a Redis Hash (one field per `session_id`) as compact JSON with adaptive zlib compression, and restored lazily when a queued request is dequeued. Request queue payloads use the same compact, versioned codec. Binary payloads are stored directly without outer Base64 encoding, which avoids its memory overhead.
+- **Scheduler state only by default**: The flag retains owned queue and dedup
+  state. It does not copy cookies, account data, or device data into Redis.
 - **State size boundary**: A single decoded request/session state is limited to 16 MiB. Oversized states and compressed payloads that expand beyond this limit are rejected so Redis/MQ messages cannot exhaust crawler memory; large files belong in object/file storage and the queue should contain only their references.
 - **Session Hash key**: Defaults to `{scheduler_queue_key}:sessions`. Set `SCHEDULER_SESSION_KEY` to use an explicit key.
 - **Ctrl+C ordering**: Active tasks are cancelled while broker writes are still available. Unfinished Redis/RabbitMQ work and start requests are returned to their queues; Kafka offsets remain uncommitted. Session cookies are then snapshotted before the global stop event disables Redis writes.
@@ -532,6 +552,15 @@ Since **0.3.2**, dedup key deletion uses `RedisDupeFilter.dedup_cleanup_keys()` 
 - **Type**: Optional[str]
 - **Default**: None
 - **Description**: Optional Redis Hash key for persisted session cookies. Leave unset to isolate session state automatically per scheduler queue.
+
+#### 2.5.4.2 SCHEDULER_PERSIST_SESSIONS
+
+- **Type**: bool
+- **Default**: False
+- **Description**: Explicitly opt into Redis cookie/Client-Hints snapshots.
+  Requires `SCHEDULER_PERSIST=True`. Prefer loading durable account and device
+  records from SQL in a spider or download interceptor and keeping only a
+  lightweight `session_id` in queue payloads.
 
 ---
 

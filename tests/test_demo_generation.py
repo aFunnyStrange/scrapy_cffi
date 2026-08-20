@@ -292,13 +292,13 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
         project / "profiles" / "scrapy_cffi_profiles.example.toml"
     ).is_file()
     assert (project / ".env.example").is_file()
-    assert "SCRAPY_CFFI_REDIS_INFO__URL" in (
+    assert "REDIS_INFO__URL" in (
         project / ".env.example"
     ).read_text(encoding="utf-8")
-    assert "settings.CURL_CFFI_NATIVE_DIR = (" in (
+    assert "settings.CURL_CFFI_RUNTIME_DIR = (" in (
         project / "settings.py"
     ).read_text(encoding="utf-8")
-    assert "SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR" in (
+    assert "CURL_CFFI_RUNTIME_DIR" in (
         project / ".env.example"
     ).read_text(encoding="utf-8")
     assert not (project / "settings.example.toml").exists()

@@ -67,12 +67,15 @@ class SettingsInfo(BaseValidatedModel):
     USER_AGENT: Optional[str] = "scrapy_cffiBot"
     DEFAULT_HEADERS: Optional[Dict] = Field(default_factory=dict)
     DEFAULT_COOKIES: Optional[Dict] = Field(default_factory=dict)
-    MAX_CONCURRENT_REQ: Optional[int] = None # asyncio.Semaphore()
+    MAX_CONCURRENT_REQ: Optional[int] = Field(default=None, gt=0)
+    SESSION_REQUESTS_PER_SECOND: Optional[float] = Field(default=None, gt=0)
     USE_STRICT_SEMAPHORE: Optional[bool] = False # asyncio.BoundedSemaphore()
     TIMEOUT: Optional[int] = 30 # Request timeout in seconds
     MAX_REQ_TIMES: Optional[int] = 2 # Maximum number of retry attempts for a failed request
     DELAY_REQ_TIME: Optional[int] = 3 # Delay in seconds before retrying a failed request
     HTTP_SESSION_FACTORY: Optional[Union[str, HttpSessionFactory]] = None
+    CURL_CFFI_RUNTIME_DIR: Optional[Path] = None
+    # Deprecated alias retained for generated projects from <=0.4.2.
     CURL_CFFI_NATIVE_DIR: Optional[Path] = None
     INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
     INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
@@ -93,6 +96,7 @@ class SettingsInfo(BaseValidatedModel):
     DUPEFILTER: Optional[Union[str, Type[Any]]] = None
     BLOOM_INFO: Optional[BloomInfo] = BloomInfo()
     SCHEDULER_PERSIST: bool = False
+    SCHEDULER_PERSIST_SESSIONS: bool = False
     SCHEDULER_SESSION_KEY: Optional[str] = None # Redis Hash key for compressed session cookies; defaults to `{queue_key}:sessions`.
     DEDUP_TTL: Optional[int] = 0
     INCLUDE_HEADERS: Optional[List] = Field(default_factory=list) # Keys in headers to include during deduplication
@@ -157,11 +161,33 @@ class SettingsInfo(BaseValidatedModel):
     
     @model_validator(mode='after')
     def check_after(self):
+        if self.CURL_CFFI_RUNTIME_DIR is None:
+            object.__setattr__(
+                self,
+                "CURL_CFFI_RUNTIME_DIR",
+                self.CURL_CFFI_NATIVE_DIR,
+            )
+        elif (
+            self.CURL_CFFI_NATIVE_DIR is not None
+            and self.CURL_CFFI_NATIVE_DIR != self.CURL_CFFI_RUNTIME_DIR
+        ):
+            raise ValueError(
+                "CURL_CFFI_RUNTIME_DIR and deprecated CURL_CFFI_NATIVE_DIR "
+                "cannot select different directories"
+            )
+        if self.SCHEDULER_PERSIST_SESSIONS and not self.SCHEDULER_PERSIST:
+            raise ValueError(
+                "SCHEDULER_PERSIST_SESSIONS requires SCHEDULER_PERSIST=True"
+            )
         if self.PROXY_URL:
-            self.PROXIES = {"http": self.PROXY_URL, "https": self.PROXY_URL}
+            object.__setattr__(
+                self,
+                "PROXIES",
+                {"http": self.PROXY_URL, "https": self.PROXY_URL},
+            )
 
         if self.POSTGRESS_INFO and not self.POSTGRES_INFO.resolved_url:
-            self.POSTGRES_INFO = self.POSTGRESS_INFO
+            object.__setattr__(self, "POSTGRES_INFO", self.POSTGRESS_INFO)
 
         self._new_seen  = f'{self.FILTER_KEY}_new_seen'
         self._sent_seeen = f'{self.FILTER_KEY}_sent_seen'

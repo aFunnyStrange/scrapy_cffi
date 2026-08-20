@@ -73,9 +73,9 @@ def test_process_environment_overrides_dotenv_and_python_defaults(
         encoding="utf-8",
     )
     process_values: Dict[str, str] = {
-        "SCRAPY_CFFI_TIMEOUT": "30",
-        "SCRAPY_CFFI_REDIS_INFO__URL": "redis://process:6379/0",
-        "SCRAPY_CFFI_REDIS_INFO__PASSWORD": "123456",
+        "TIMEOUT": "30",
+        "REDIS_INFO__URL": "redis://process:6379/0",
+        "REDIS_INFO__PASSWORD": "123456",
         "SCRAPY_CFFI_VERIFY_HOLD_OPEN": "1",
     }
 
@@ -91,6 +91,40 @@ def test_process_environment_overrides_dotenv_and_python_defaults(
     assert "SCRAPY_CFFI_VERIFY_HOLD_OPEN" not in settings.model_extra
 
 
+def test_direct_process_name_wins_over_legacy_prefix(tmp_path: Path) -> None:
+    """Prefer Pydantic field names while keeping old process names readable."""
+    settings = load_env_settings(
+        SettingsInfo(),
+        env_path=tmp_path / "missing.env",
+        environ={
+            "SCRAPY_CFFI_TIMEOUT": "10",
+            "TIMEOUT": "25",
+        },
+    )
+
+    assert settings.TIMEOUT == 25
+
+
+def test_direct_dotenv_name_wins_over_legacy_prefix(tmp_path: Path) -> None:
+    """Use the same deterministic precedence inside one dotenv file."""
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "TIMEOUT=25\nSCRAPY_CFFI_TIMEOUT=10\n",
+        encoding="utf-8",
+    )
+
+    settings = env_to_settings(env_path, SettingsInfo, environ={})
+
+    assert settings.TIMEOUT == 25
+
+
+def test_global_task_lock_defaults_to_300_and_downloader_is_unlimited() -> None:
+    """Bound total runtime work without adding a downloader-local default."""
+    assert SettingsInfo().MAX_GLOBAL_CONCURRENT_TASKS == 300
+    assert SettingsInfo().MAX_CONCURRENT_REQ is None
+    assert SettingsInfo(MAX_CONCURRENT_REQ=None).MAX_CONCURRENT_REQ is None
+
+
 def test_optional_curl_native_directory_round_trips_as_path(
     tmp_path: Path,
 ) -> None:
@@ -98,10 +132,10 @@ def test_optional_curl_native_directory_round_trips_as_path(
     native_dir = tmp_path / "native" / "windows"
     env_path = tmp_path / ".env"
     env_path.write_text(
-        "SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR='%s'\n" % native_dir,
+        "CURL_CFFI_RUNTIME_DIR='%s'\n" % native_dir,
         encoding="utf-8",
     )
 
     settings = env_to_settings(env_path, SettingsInfo, environ={})
 
-    assert settings.CURL_CFFI_NATIVE_DIR == native_dir
+    assert settings.CURL_CFFI_RUNTIME_DIR == native_dir

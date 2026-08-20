@@ -202,9 +202,9 @@ def load_env_settings(
 ) -> SettingsModel:
     """Overlay dotenv and process variables onto Python settings defaults.
 
-    Process variables have highest precedence and require the
-    ``SCRAPY_CFFI_`` prefix. Dotenv accepts both the new nested syntax and all
-    historical unprefixed names and compact JSON values.
+    Process variables have highest precedence and use the same unprefixed
+    field names as dotenv. Historical ``SCRAPY_CFFI_`` names remain accepted;
+    when both forms exist, the direct Pydantic field name wins.
     """
     process_values = dict(os.environ if environ is None else environ)
     model_fields = set(type(defaults).model_fields)
@@ -218,15 +218,46 @@ def load_env_settings(
         _environment_overlay(
             dotenv_data,
             prefix=env_prefix,
-            accept_legacy_names=True,
+            accept_legacy_names=False,
+            allowed_roots=model_fields,
         ),
     )
+    unprefixed_dotenv_values = {
+        key: value
+        for key, value in dotenv_data.items()
+        if not key.startswith(env_prefix)
+    }
+    _deep_merge(
+        data,
+        _environment_overlay(
+            unprefixed_dotenv_values,
+            prefix=env_prefix,
+            accept_legacy_names=True,
+            allowed_roots=model_fields,
+        ),
+    )
+    # Apply the historical prefixed form first, then let the direct Pydantic
+    # field name win when an operator supplies both forms.
     _deep_merge(
         data,
         _environment_overlay(
             process_values,
             prefix=env_prefix,
             accept_legacy_names=False,
+            allowed_roots=model_fields,
+        ),
+    )
+    unprefixed_process_values = {
+        key: value
+        for key, value in process_values.items()
+        if not key.startswith(env_prefix)
+    }
+    _deep_merge(
+        data,
+        _environment_overlay(
+            unprefixed_process_values,
+            prefix=env_prefix,
+            accept_legacy_names=True,
             allowed_roots=model_fields,
         ),
     )

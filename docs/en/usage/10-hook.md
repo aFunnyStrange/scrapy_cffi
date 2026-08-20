@@ -23,6 +23,8 @@ Allows batch registration of accounts and cookies at the spider level. The frame
 **Parameters**:
 - `user_cookies: Dict[str, Dict]` – a dictionary mapping user identifiers to cookie dictionaries.
 - `group_id: Optional[str] = None` – optional group identifier.
+- `requests_per_second: Optional[float]` – omitted inherits
+  `SESSION_REQUESTS_PER_SECOND`; explicit `None` means unlimited.
 
 **Returns**:
 - `str` – the session_id of this session group.
@@ -64,6 +66,12 @@ Retrieve cookies of a session immediately by `session_id`, without waiting for s
 **Returns**:
 - `dict` – cookies dictionary; empty if no cookies are available.
 
+### 2.1.3 `configure_rate_limit(session_id, requests_per_second)`
+
+Change one concrete session or every member of a session group at runtime.
+The value is request starts per second; `None` always means unlimited. This
+hook is available to spiders, pipelines, interceptors, and extensions.
+
 ---
 
 # 3.Pipeline
@@ -87,7 +95,10 @@ Some signals like `item_dropped` or `item_error` cannot be automatically detecte
 ---
 
 # 4.Interceptor
-No hook plugins are currently provided for interceptors.
+
+Interceptors can acquire/release sessions and call
+`self.hooks.session.configure_rate_limit(...)`. All interceptor instances also
+receive `self.resources` for DB/MQ access.
 
 ---
 

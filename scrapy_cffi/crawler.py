@@ -82,6 +82,9 @@ class Crawler:
         self._runtime_closed = False
 
         self.settings: "SettingsInfo" = settings
+        from .composition import activate_http_runtime
+
+        activate_http_runtime(self.settings)
         if self.settings.CPY_EXTENSIONS.RESOURCES:
             from .cpy import CExtensionLoader
 
@@ -113,7 +116,6 @@ class Crawler:
 
             session_factory = partial(
                 CurlCffiHttpSession,
-                native_dir=self.settings.CURL_CFFI_NATIVE_DIR,
             )
         if not callable(session_factory):
             raise TypeError("HTTP_SESSION_FACTORY must be callable or an import path")
@@ -294,7 +296,11 @@ class Crawler:
             self._runtime_closed = True
 
     async def _persist_scheduler_sessions(self):
-        if not self.settings.SCHEDULER_PERSIST or not self.resources.redis:
+        if (
+            not self.settings.SCHEDULER_PERSIST
+            or not self.settings.SCHEDULER_PERSIST_SESSIONS
+            or not self.resources.redis
+        ):
             return
         for spider in self.spiders or []:
             scheduler = self.schedulers.get(spider.name)

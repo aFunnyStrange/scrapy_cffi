@@ -9,7 +9,7 @@ from scrapy_cffi.settings import SettingsInfo
 
 settings = SettingsInfo(
     MAX_GLOBAL_CONCURRENT_TASKS=300,
-    MAX_CONCURRENT_REQ=50,
+    MAX_CONCURRENT_REQ=None,
     ROBOTSTXT_OBEY=True,
 )
 ```
@@ -18,7 +18,7 @@ settings = SettingsInfo(
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MAX_GLOBAL_CONCURRENT_TASKS` | `300` | Crawler 全局任务上限，使用 `asyncio.BoundedSemaphore`；`None` 表示不设置该边界 |
+| `MAX_GLOBAL_CONCURRENT_TASKS` | `300` | Crawler 全局任务上限，使用 `asyncio.BoundedSemaphore` 保护 Windows selector 与进程 FD；`None` 表示不设置该边界 |
 | `QUEUE_NAME` | `""` | 工作队列前缀；设置后通常解析为 `{QUEUE_NAME}:{spider.name}`，否则为 `{spider.name}_req` |
 | `ROBOTSTXT_OBEY` | `True` | 是否读取并遵守 robots.txt |
 | `MAX_SCHEDULER_LOOP_NUM` | `10` | Scheduler 并行循环数量，不是完成判据 |
@@ -31,17 +31,21 @@ settings = SettingsInfo(
 | `USER_AGENT` | `scrapy_cffiBot` | 默认 User-Agent |
 | `DEFAULT_HEADERS` | `{}` | 默认 Header |
 | `DEFAULT_COOKIES` | `{}` | 默认 Cookie |
-| `MAX_CONCURRENT_REQ` | `None` | Downloader 请求并发上限 |
+| `MAX_CONCURRENT_REQ` | `None` | Downloader 自身的并发上限；默认不额外限制，显式 `None` 不会被替换为隐藏上限 |
+| `SESSION_REQUESTS_PER_SECOND` | `None` | 每个具体 `session_id` 每秒允许启动的请求数；`None` 表示不限速 |
 | `USE_STRICT_SEMAPHORE` | `False` | 使用 `BoundedSemaphore` 检查过度 release |
 | `TIMEOUT` | `30` | 单次请求超时秒数；属于传输边界，不是 Crawler 生命周期信号 |
 | `MAX_REQ_TIMES` | `2` | 失败请求最大尝试次数 |
 | `DELAY_REQ_TIME` | `3` | 请求重试延迟秒数 |
 | `HTTP_SESSION_FACTORY` | `None` | HTTP Session 工厂或导入路径；为空时使用 `CurlCffiHttpSession` |
-| `CURL_CFFI_NATIVE_DIR` | `None` | 自构建 curl 包装目录，只选择进程级原生实现，不代表默认 `impersonate` |
+| `CURL_CFFI_RUNTIME_DIR` | `None` | 自构建 curl 运行时目录，只选择进程级原生实现，不代表默认 `impersonate` |
 | `INFRA_RETRY_ATTEMPTS` | `3` | 外部资源有界恢复次数，至少 1 |
 | `INFRA_RETRY_DELAY` | `1.0` | 外部资源重试间隔秒数 |
 
-`HTTP_SESSION_FACTORY` 应实现框架自有异步 HTTP Protocol。自构建 curl 目录契约见 [0.4.2 说明](../RELEASE-0.4.2.md)。
+`CURL_CFFI_NATIVE_DIR` 仅作为旧项目兼容别名保留。`HTTP_SESSION_FACTORY` 应实现框架自有异步 HTTP Protocol。自构建 curl 目录契约见 [0.4.2 说明](../RELEASE-0.4.2.md)。
+
+`.env` 和进程环境变量直接使用 Pydantic 字段名，例如 `TIMEOUT=30`、
+`REDIS_INFO__URL=redis://...`，不需要添加 `SCRAPY_CFFI_` 前缀。旧前缀仍兼容；两种写法同时存在时，无前缀字段优先。
 
 ## 3. 代理
 
@@ -80,7 +84,8 @@ settings.DOWNLOAD_INTERCEPTORS_PATH = ComponentInfo.from_raw({
 | --- | --- | --- |
 | `SCHEDULER` | `None` | 显式全局 Scheduler 类/路径；为空时按每个 Spider 类型选择 Memory、Redis、RabbitMQ 或 Kafka Scheduler |
 | `DUPEFILTER` | `None` | 自定义去重器类/路径 |
-| `SCHEDULER_PERSIST` | `False` | 是否跨运行保留队列、Session 和去重状态 |
+| `SCHEDULER_PERSIST` | `False` | 是否跨运行保留队列和去重状态；默认不复制 Session Cookie |
+| `SCHEDULER_PERSIST_SESSIONS` | `False` | 显式把 Cookie/Client Hints 快照存入 Redis；要求 `SCHEDULER_PERSIST=True` |
 | `SCHEDULER_SESSION_KEY` | `None` | 压缩 Session Cookie 的 Redis Hash；为空时使用 `{queue_key}:sessions` |
 | `DEDUP_TTL` | `0` | 去重键 TTL；0 表示不自动过期 |
 | `INCLUDE_HEADERS` | `[]` | 计算指纹时纳入的 Header 名 |
@@ -88,7 +93,7 @@ settings.DOWNLOAD_INTERCEPTORS_PATH = ComponentInfo.from_raw({
 | `DONT_FILTER` | `False` | 全局禁用请求去重 |
 | `_NEW_SEEN` / `_SENT_SEEN` | 派生值 | 分别为 `{FILTER_KEY}_new_seen` 与 `{FILTER_KEY}_sent_seen`，只读 |
 
-不要为了队列 Spider 混跑而设置全局 `SCHEDULER`；默认逻辑会为每个 Spider 选择正确 Scheduler。`SCHEDULER_PERSIST=False` 时，正常关闭和 Ctrl+C 会清理框架拥有的临时状态。
+不要为了队列 Spider 混跑而设置全局 `SCHEDULER`；默认逻辑会为每个 Spider 选择正确 Scheduler。`SCHEDULER_PERSIST=False` 时，正常关闭和 Ctrl+C 会清理框架拥有的临时状态。账号和设备等持久事实应由 Spider 或下载拦截器按 `session_id` 从 SQL 读取，队列与 Redis 只携带轻量标识和任务状态。
 
 ### `BLOOM_INFO`
 

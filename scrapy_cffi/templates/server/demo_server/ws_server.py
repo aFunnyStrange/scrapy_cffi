@@ -37,7 +37,8 @@ async def hello_handler(websocket: "ServerConnection"):
         await websocket.send(f"[/hello] send: {message.decode()}")
 
 async def handle_connection(websocket: "ServerConnection"):
-    path = websocket.request.path
+    request = getattr(websocket, "request", None)
+    path = getattr(request, "path", None) or getattr(websocket, "path", "/")
     handler = ROUTES.get(path)
     if handler:
         try:

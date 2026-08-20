@@ -72,8 +72,8 @@ def print_banner(
     """Print the banner when interactive or explicitly forced.
 
     Returns ``True`` when output was written. Non-forced calls stay quiet for
-    redirected output and honor ``SCRAPY_CFFI_NO_BANNER``; help and the
-    explicit ``banner`` command pass ``force=True``.
+    redirected output and honor ``SCRAPY_CFFI_NO_BANNER``; exact root ``-h``
+    and the explicit ``banner`` command pass ``force=True``.
     """
     output = sys.stdout if stream is None else stream
     environment = os.environ if environ is None else environ

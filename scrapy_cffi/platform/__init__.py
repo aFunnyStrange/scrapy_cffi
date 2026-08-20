@@ -9,6 +9,7 @@ from .http import (
     CookieJarProtocol,
     HttpResponseProtocol,
     HttpSessionFactory,
+    HttpTimeoutError,
     HttpTransportError,
     WebSocketFlag,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "CurlCffiWebSocket",
     "HttpResponseProtocol",
     "HttpSessionFactory",
+    "HttpTimeoutError",
     "HttpTransportError",
     "ProtobufCodecProtocol",
     "PythonBloomFilter",

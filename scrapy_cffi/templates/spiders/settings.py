@@ -1,6 +1,5 @@
 """Build typed crawler settings with optional operational dotenv overrides."""
 
-import sys
 from pathlib import Path
 from typing import Optional, Type, Union
 
@@ -67,14 +66,12 @@ def create_settings(
     # an optional scrapy_cffi_profiles.toml alias manifest.
     # The adapter is activated only when the default curl transport is first
     # constructed; every request must still select impersonate explicitly.
-    # settings.CURL_CFFI_NATIVE_DIR = (
+    # settings.CURL_CFFI_RUNTIME_DIR = (
     #     get_run_py_dir() / "profiles" / "artifacts" / "windows-x86_64-py312"
     # )
 
-    if sys.platform.startswith("win"):
-        # Keep bounded defaults for run_all_spiders stability on Windows.
-        settings.MAX_GLOBAL_CONCURRENT_TASKS = 200
-        settings.MAX_CONCURRENT_REQ = 50
+    # Optional per-session request-start rate. None always means unlimited.
+    # settings.SESSION_REQUESTS_PER_SECOND = 2.0
 
     # from scrapy_cffi.dupefilter import BloomDupeFilter
     # settings.DUPEFILTER = BloomDupeFilter # In-memory Bloom filter deduplication

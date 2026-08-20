@@ -3,7 +3,7 @@
 Database support follows one dependency direction:
 
 ```text
-Crawler / Pipeline / Spider
+Crawler / Spider / Interceptor / Pipeline / Extension
   -> ResourceService
   -> repository
   -> infra client
@@ -29,7 +29,8 @@ pip install "scrapy_cffi[mongodb]"
 
 ## Framework use
 
-Spiders, pipelines, and extensions receive one typed `resources` service:
+Spiders, download/spider interceptors, pipelines, and signal extensions all
+receive the same typed `resources` service:
 
 ```python
 from scrapy_cffi.pipelines import Pipeline
@@ -47,6 +48,19 @@ class SavePipeline(Pipeline):
 ```
 
 Available repositories are `resources.redis`, `mysql`, `postgres`, `mongodb`, `rabbitmq`, and `kafka`. An unconfigured resource is `None`.
+
+## State ownership
+
+Redis is the default home for transient coordination: request queues, leases,
+deduplication, and lightweight task state. Durable account, device, and policy
+facts belong in MySQL/PostgreSQL/MongoDB. A useful pattern is to queue only a
+`session_id`, then let a download interceptor load the current account/device
+record from SQL immediately before sending the request. This avoids duplicating
+large or stale identity payloads in Redis while keeping every editable
+component free to use the repository best suited to its job.
+
+Cookie/Client-Hints snapshots are also opt-in through
+`SCHEDULER_PERSIST_SESSIONS`; normal scheduler persistence does not create them.
 
 ## Direct and test use
 

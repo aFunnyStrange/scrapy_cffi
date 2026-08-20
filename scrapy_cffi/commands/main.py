@@ -189,7 +189,7 @@ def main() -> Optional[int]:
         "--help" if argument == "-help" else argument
         for argument in sys.argv[1:]
     ]
-    if any(argument in {"-h", "--help"} for argument in arguments):
+    if arguments == ["-h"]:
         banner.print_banner(force=True)
 
     args = parser.parse_args(arguments)

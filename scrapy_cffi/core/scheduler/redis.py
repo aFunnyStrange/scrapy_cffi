@@ -68,7 +68,7 @@ class RedisScheduler(BaseScheduler):
         return configured or f"{self.get_queue_key(spider)}:sessions"
 
     async def _request_to_bytes(self, request: "Request", spider: "Spider") -> bytes:
-        if getattr(self.settings, "SCHEDULER_PERSIST", False) is True:
+        if getattr(self.settings, "SCHEDULER_PERSIST_SESSIONS", False) is True:
             await self.sessions.persist_session(
                 self.redis_repository,
                 self.get_session_state_key(spider),
@@ -77,7 +77,7 @@ class RedisScheduler(BaseScheduler):
         return request.to_bytes()
 
     async def persist_all_sessions(self, spider: "Spider") -> int:
-        if getattr(self.settings, "SCHEDULER_PERSIST", False) is not True:
+        if getattr(self.settings, "SCHEDULER_PERSIST_SESSIONS", False) is not True:
             return 0
         return await self.sessions.persist_all(
             self.redis_repository,
@@ -144,7 +144,7 @@ class RedisScheduler(BaseScheduler):
         return deleted
 
     async def _restore_request_session(self, request: "Request", spider: "Spider") -> None:
-        if getattr(self.settings, "SCHEDULER_PERSIST", False) is True:
+        if getattr(self.settings, "SCHEDULER_PERSIST_SESSIONS", False) is True:
             await self.sessions.restore_session(
                 self.redis_repository,
                 self.get_session_state_key(spider),

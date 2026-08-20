@@ -10,6 +10,18 @@ if TYPE_CHECKING:
     from logging import Logger
 
 
+def activate_http_runtime(settings: SettingsInfo) -> None:
+    """Activate a configured curl runtime and then register profile metadata."""
+    runtime_dir = settings.CURL_CFFI_RUNTIME_DIR
+    if runtime_dir is None:
+        return
+    from .platform.curl_native import activate_curl_native_runtime
+    from .profiles import load_profile_manifest
+
+    runtime = activate_curl_native_runtime(runtime_dir)
+    load_profile_manifest(runtime.runtime_dir)
+
+
 def build_resource_service(
     settings: SettingsInfo,
     stop_event: asyncio.Event,
@@ -143,4 +155,4 @@ def build_resource_service(
     return resources
 
 
-__all__ = ["build_resource_service"]
+__all__ = ["activate_http_runtime", "build_resource_service"]

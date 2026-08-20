@@ -29,16 +29,15 @@ pip install -e .
 
 ## CLI 字符横幅
 
-在交互式终端中查看根帮助时，会显示彩色的 `SCRAPY-CFFI` 字符横幅；
-重定向帮助输出时会自动使用便于复制的纯 ASCII 版本。也可以单独预览：
+字符横幅只在精确执行根命令 `scrapy-cffi -h`，或显式执行 `banner` 时展示。
+根级 `--help`、`-help` 以及所有子命令的帮助都保持简洁，因为此时用户已经进入具体工作流。
 
 ```bash
 scrapy-cffi banner
 scrapy-cffi banner --no-color
 ```
 
-CLI 同时支持 `-h`、`--help` 和 `-help`。设置标准环境变量 `NO_COLOR`
-可关闭 ANSI 颜色。
+三种帮助写法仍然都可用。横幅显示时可用标准环境变量 `NO_COLOR` 关闭 ANSI 颜色。
 
 # 2. `startproject`
 

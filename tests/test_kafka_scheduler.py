@@ -144,7 +144,10 @@ def test_kafka_work_and_start_topics_are_separate_and_manually_acked():
     from scrapy_cffi.settings import SettingsInfo
 
     async def run():
-        settings = SettingsInfo(SCHEDULER_PERSIST=True)
+        settings = SettingsInfo(
+            SCHEDULER_PERSIST=True,
+            SCHEDULER_PERSIST_SESSIONS=True,
+        )
         settings.KAFKA_INFO.URL = "127.0.0.1:9092"
         redis = FakeRedis()
         kafka = FakeKafka()
@@ -461,7 +464,10 @@ def test_crawler_shutdown_cancels_then_requeues_then_snapshots_before_stop():
                 events.append("snapshot")
 
         crawler = Crawler()
-        crawler.settings = SettingsInfo(SCHEDULER_PERSIST=True)
+        crawler.settings = SettingsInfo(
+            SCHEDULER_PERSIST=True,
+            SCHEDULER_PERSIST_SESSIONS=True,
+        )
         crawler.stop_event = asyncio.Event()
         crawler.sessions = Sessions()
         crawler.taskManager = ManagedTasks()

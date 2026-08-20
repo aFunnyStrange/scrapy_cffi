@@ -1,9 +1,9 @@
 import asyncio, time
-from ...utils import async_context_factory, safe_call, run_with_timeout
+from ...utils import async_context_factory, safe_call
 from typing import TYPE_CHECKING, List, Callable
-# from ...utils import run_with_timeout
 from .internet import *
-from ...exceptions import DownloadError
+from ...exceptions import DownloadError, RequestTimeoutError
+from ...platform.http import HttpTimeoutError, WebSocketFlag
 from ...extensions import signals, SignalInfo
 if TYPE_CHECKING:
     from ...crawler import Crawler
@@ -39,9 +39,14 @@ class Downloader:
             max_tasks=self.settings.MAX_CONCURRENT_REQ,
             semaphore_cls=asyncio.Semaphore if not self.settings.USE_STRICT_SEMAPHORE else None
         )
-        stream_limit = self.settings.MAX_CONCURRENT_REQ or 100
-        self._stream_semaphore = asyncio.Semaphore(stream_limit)
-        self._websocket_semaphore = asyncio.Semaphore(stream_limit)
+        request_limit = self.settings.MAX_CONCURRENT_REQ
+        self._stream_semaphore = (
+            None if request_limit is None else asyncio.Semaphore(request_limit)
+        )
+        self._websocket_context = async_context_factory(
+            max_tasks=request_limit,
+            semaphore_cls=asyncio.Semaphore,
+        )
 
     @classmethod
     def from_crawler(cls, crawler: "Crawler"):
@@ -53,6 +58,44 @@ class Downloader:
             signalManager=crawler.signalManager,
             kafka_repository=crawler.resources.kafka,
         )
+
+    def _timeout_failure(
+        self,
+        request: Request,
+        exception: BaseException,
+    ) -> RequestTimeoutError:
+        """Build the stable timeout object delivered to request errbacks."""
+        timeout = float(request.timeout or self.settings.TIMEOUT or 30)
+        attempts = int(request.max_retry_times or self.settings.MAX_REQ_TIMES or 1)
+        return RequestTimeoutError(
+            request=request,
+            exception=exception,
+            timeout=timeout,
+            attempts=attempts,
+        )
+
+    def _request_deadline(self, request: Request) -> float:
+        """Return a safety bound that still permits all configured retries."""
+        timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0)
+        attempts = int(request.max_retry_times or self.settings.MAX_REQ_TIMES or 1)
+        retry_delay = float(
+            request.retry_delay
+            if request.retry_delay is not None
+            else (self.settings.DELAY_REQ_TIME or 0)
+        )
+        return timeout * attempts + retry_delay * max(attempts - 1, 0) + 2.0
+
+    @staticmethod
+    def _is_websocket_close_message(message) -> bool:
+        """Recognize close frames across curl_cffi metadata versions."""
+        if not isinstance(message, (tuple, list)) or len(message) < 2:
+            return False
+        metadata = message[1]
+        flags = getattr(metadata, "flags", metadata)
+        try:
+            return bool(int(flags) & int(WebSocketFlag.CLOSE))
+        except (TypeError, ValueError):
+            return False
     
     async def fetch_http(self, request: HttpRequest, callback: Callable) -> asyncio.Task:
         try:
@@ -66,15 +109,11 @@ class Downloader:
                 return
             raw_response = None
             async with self.sem_ctx():
-                # Some curl_cffi calls can occasionally hang on cancellation under heavy load.
-                # Enforce a hard upper bound here so process_downloader cannot stall indefinitely.
-                hard_timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0) + 2.0
-                raw_response = await run_with_timeout(
-                    wrapper.do_request,
-                    request=request,
-                    stop_event=self.stop_event,
-                    timeout=hard_timeout,
-                    max_total_time=hard_timeout,
+                # This is an external transport safety bound, not a retry or
+                # crawler-completion signal. SessionWrapper owns retry policy.
+                raw_response = await asyncio.wait_for(
+                    wrapper.do_request(request),
+                    timeout=self._request_deadline(request),
                 )
 
             if raw_response:
@@ -93,8 +132,12 @@ class Downloader:
                 await callback(response=response, request=request)
             else:
                 self.logger.warning(f'HTTP request timed out or got no response: {request.url}')
-        except asyncio.CancelledError as e:
+        except asyncio.CancelledError:
             raise
+        except (asyncio.TimeoutError, HttpTimeoutError) as exception:
+            result = self._timeout_failure(request, exception)
+            self.logger.warning(str(result))
+            await callback(response=result, request=request)
         except Exception as e:
             result = DownloadError(request=request, exception=e)
             self.logger.error(str(result))
@@ -110,20 +153,21 @@ class Downloader:
         callback: Callable,
     ) -> None:
         """Open a bounded live stream and transfer closure to StreamResponse."""
-        await self._stream_semaphore.acquire()
+        if self._stream_semaphore is not None:
+            await self._stream_semaphore.acquire()
         response = None
         try:
-            hard_timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0) + 2.0
-            stream = await run_with_timeout(
-                wrapper.open_stream,
-                request=request,
-                stop_event=self.stop_event,
-                timeout=hard_timeout,
-                max_total_time=hard_timeout,
+            stream = await asyncio.wait_for(
+                wrapper.open_stream(request),
+                timeout=self._request_deadline(request),
             )
             response = StreamResponse(
                 stream=stream,
-                release=self._stream_semaphore.release,
+                release=(
+                    None
+                    if self._stream_semaphore is None
+                    else self._stream_semaphore.release
+                ),
                 session_id=request.session_id,
                 meta=request.meta,
                 dont_filter=request.dont_filter,
@@ -140,7 +184,7 @@ class Downloader:
         except BaseException:
             if response is not None:
                 await response.aclose()
-            else:
+            elif self._stream_semaphore is not None:
                 self._stream_semaphore.release()
             raise
 
@@ -165,7 +209,7 @@ class Downloader:
     ) -> None:
         """Dispatch socket messages directly until an event requests stop."""
         try:
-            async with self._websocket_semaphore:
+            async with self._websocket_context():
                 websocket = await wrapper.do_request(request=request, is_ws=True)
                 websocket_id = wrapper.set_websocket(url=request.url, websocket=websocket)
                 if entry.stop_event.is_set() or self.stop_event.is_set():
@@ -187,6 +231,9 @@ class Downloader:
                         await self.cancel_ws_tasks(tasks=list(pending))
                         if recv_task in done:
                             msg = recv_task.result()
+                            if self._is_websocket_close_message(msg):
+                                entry.request_stop()
+                                break
                             # if msg[0] in [b'\x03\xe8', b'\x03\xe8Bye', b'\x03\xf3keepalive ping timeout']: # Predefined termination messages as per protocol convention
                             #     break
                             
@@ -216,7 +263,11 @@ class Downloader:
                         await self.cancel_ws_tasks(tasks=tasks)
                         raise
                     except Exception as e:
-                        result = DownloadError(exception=e, request=request)
+                        result = (
+                            self._timeout_failure(request, e)
+                            if isinstance(e, (asyncio.TimeoutError, HttpTimeoutError))
+                            else DownloadError(exception=e, request=request)
+                        )
                         self.logger.error(str(result))
                         await callback(response=result, request=request)
                         # if "initializer for ctype" in str(e):
@@ -225,8 +276,11 @@ class Downloader:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            # self.logger.error(f"DownloadError：{e}")
-            result = DownloadError(exception=e, request=request)
+            result = (
+                self._timeout_failure(request, e)
+                if isinstance(e, (asyncio.TimeoutError, HttpTimeoutError))
+                else DownloadError(exception=e, request=request)
+            )
             self.logger.error(str(result))
             try:
                 await callback(response=result, request=request)

@@ -25,9 +25,9 @@
 
 - [架构路线图](ARCHITECTURE-ROADMAP.md)
 - [强制验证契约](TESTING.md)
+- [0.4.3 版本说明](RELEASE-0.4.3.md)
 - [0.4.2 版本说明](RELEASE-0.4.2.md)
 - [0.4.0 版本说明](RELEASE-0.4.0.md)
 - [0.3.3 版本说明](RELEASE-0.3.3.md)
 - [0.3.2 版本说明](RELEASE-0.3.2.md)
 - [0.3.1 版本说明](RELEASE-0.3.1.md)
-

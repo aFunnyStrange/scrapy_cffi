@@ -37,6 +37,8 @@ headers: Optional[HeaderTypes] = None
 cookies: Optional[CookieTypes] = None
 proxies: Optional[ProxySpec] = None
 timeout: Union[int] = 30
+max_retry_times: Optional[int] = None
+retry_delay: Optional[float] = None
 allow_redirects: bool = True
 max_redirects: int = 30
 verify: Optional[bool] = None
@@ -57,7 +59,7 @@ from scrapy_cffi.settings import SettingsInfo
 
 
 settings = SettingsInfo(
-    CURL_CFFI_NATIVE_DIR=Path("D:/native/my-curl-build"),
+    CURL_CFFI_RUNTIME_DIR=Path("D:/native/my-curl-build"),
 )
 
 request = HttpRequest(
@@ -124,6 +126,36 @@ Additional Framework-specific Parameters:
 | **desc_text** | Human-readable string for identifying the request in logs or callbacks. |
 | **no_proxy** | Disables proxy for this specific request, even if global proxy settings are active. |
 | **stream** | Keep the response body open for incremental consumption through `StreamResponse`. |
+| **max_retry_times** | Override `MAX_REQ_TIMES` for this request. The value is the total number of attempts. |
+| **retry_delay** | Override `DELAY_REQ_TIME` for this request; zero is allowed. |
+
+### Timeout errbacks
+
+HTTP, streaming, and WebSocket transport timeouts become
+`RequestTimeoutError` after retries are exhausted. The failure reaches the
+request's `errback` and exposes `request`, `exception`, `timeout`, and
+`attempts`:
+
+```python
+from scrapy_cffi.exceptions import RequestTimeoutError
+
+yield HttpRequest(
+    url=url,
+    timeout=10,
+    max_retry_times=3,
+    retry_delay=0.5,
+    callback=self.parse,
+    errback=self.on_error,
+)
+
+async def on_error(self, failure):
+    if isinstance(failure, RequestTimeoutError):
+        self.logger.warning(
+            "task=%s timeout attempts=%s",
+            failure.request.meta.get("task_id"),
+            failure.attempts,
+        )
+```
 
 Advanced options via `**kwargs` (passed directly to `curl_cffi`, no autocomplete):
 

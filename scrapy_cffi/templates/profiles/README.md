@@ -17,7 +17,7 @@ Linux uses its ABI-specific `_wrapper*.so` and adjacent shared libraries in a
 separate directory. Copy `scrapy_cffi_profiles.example.toml` into the selected
 runtime directory as `scrapy_cffi_profiles.toml`, then edit its aliases.
 
-Point `SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR` at that exact runtime directory. The
+Point `CURL_CFFI_RUNTIME_DIR` at that exact runtime directory. The
 framework loads it only when the default curl transport is constructed. Every
 request must still select an alias or native target explicitly through
 `impersonate`.

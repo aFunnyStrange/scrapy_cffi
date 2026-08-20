@@ -24,7 +24,7 @@ different profiles never share a pool. This ensures that an existing
 connection cannot hide the TLS handshake selected by a later profile.
 
 For a self-built runtime, copy the native files using the structure documented
-under `profiles/`, then set `SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR` in `.env` to the
+under `profiles/`, then set `CURL_CFFI_RUNTIME_DIR` in `.env` to the
 specific runtime directory. Profile selection remains explicit per request.
 
 The endpoints are third-party diagnostic services intended for development

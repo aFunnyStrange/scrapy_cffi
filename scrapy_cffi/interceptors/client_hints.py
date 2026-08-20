@@ -89,6 +89,7 @@ class ClientHintsDownloadInterceptor(DownloadInterceptor):
             sessions=crawler.sessions,
             stop_event=crawler.stop_event,
             settings=crawler.settings,
+            resources=crawler.resources,
             kafka_repository=crawler.resources.kafka,
         )
 

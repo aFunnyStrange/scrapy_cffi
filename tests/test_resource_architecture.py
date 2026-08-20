@@ -87,3 +87,55 @@ def test_legacy_database_and_mq_implementation_modules_are_removed():
     for legacy_name in ("databases", "mq"):
         legacy = package_root / legacy_name
         assert not list(legacy.glob("*.py"))
+
+
+def test_all_user_components_share_crawler_resource_service() -> None:
+    """Spider, pipeline, interceptor, and extension see one owned registry."""
+    from types import SimpleNamespace
+
+    from scrapy_cffi.extensions import Extension
+    from scrapy_cffi.interceptors import DownloadInterceptor
+    from scrapy_cffi.pipelines import Pipeline
+    from scrapy_cffi.spiders import Spider
+
+    class Sessions:
+        register_sessions_batch = staticmethod(lambda *args, **kwargs: "group")
+        get_session_cookies = staticmethod(lambda *args, **kwargs: {})
+        configure_rate_limit = staticmethod(lambda *args, **kwargs: None)
+        acquire = staticmethod(lambda *args, **kwargs: None)
+        release = staticmethod(lambda *args, **kwargs: None)
+        get_or_create_session = staticmethod(lambda *args, **kwargs: None)
+
+    class Signals:
+        send = staticmethod(lambda *args, **kwargs: None)
+        connect = staticmethod(lambda *args, **kwargs: None)
+
+    resources = SimpleNamespace(
+        redis=object(),
+        mysql=object(),
+        postgres=object(),
+        mongodb=object(),
+        rabbitmq=object(),
+        kafka=None,
+    )
+    scheduler = SimpleNamespace()
+    crawler = SimpleNamespace(
+        settings=SettingsInfo(ROBOTSTXT_OBEY=False),
+        run_py_dir=Path.cwd(),
+        stop_event=asyncio.Event(),
+        resources=resources,
+        sessions=Sessions(),
+        sessions_lock=asyncio.Lock(),
+        signalManager=Signals(),
+        scheduler=scheduler,
+    )
+
+    spider = Spider.from_crawler(crawler, scheduler=scheduler)
+    pipeline = Pipeline.from_crawler(crawler)
+    interceptor = DownloadInterceptor.from_crawler(crawler)
+    extension = Extension.from_crawler(hooks=object(), resources=resources)
+
+    assert spider.resources is resources
+    assert pipeline.resources is resources
+    assert interceptor.resources is resources
+    assert extension.resources is resources

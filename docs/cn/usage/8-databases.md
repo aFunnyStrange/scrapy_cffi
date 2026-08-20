@@ -5,7 +5,7 @@
 数据库能力遵循单向依赖：
 
 ```text
-Crawler / Pipeline / Spider
+Crawler / Spider / Interceptor / Pipeline / Extension
   -> ResourceService
   -> Repository
   -> Infra Client
@@ -26,7 +26,19 @@ pip install "scrapy_cffi[mongodb]"
 
 ## 框架内使用
 
-Spider、Pipeline 与 Extension 都获得同一个 `resources` 服务。可用 Repository 为 `redis`、`mysql`、`postgres`、`mongodb`、`rabbitmq`、`kafka`；未配置时值为 `None`。
+Spider、下载/Spider Interceptor、Pipeline 与 Signal Extension 都获得同一个
+`resources` 服务。可用 Repository 为 `redis`、`mysql`、`postgres`、`mongodb`、
+`rabbitmq`、`kafka`；未配置时值为 `None`。
+
+## 状态归属
+
+Redis 默认只承担临时协调：请求队列、租约、去重和轻量任务状态。账号、设备、策略等
+持久事实应放在 MySQL/PostgreSQL/MongoDB。推荐让队列只携带 `session_id`，再由下载
+Interceptor 在发出请求前从 SQL 读取最新账号与设备记录。这样不会把大体积或已经过期
+的身份信息复制到 Redis，同时所有用户可编辑组件仍可按实际工程需要使用任意 DB/MQ。
+
+Cookie/Client Hints 快照也只有显式开启 `SCHEDULER_PERSIST_SESSIONS` 才会写入 Redis；
+普通 Scheduler 持久化不会创建这些数据。
 
 ```python
 class SavePipeline(Pipeline):
@@ -78,4 +90,3 @@ settings.INFRA_RETRY_DELAY = 1.0
 ```
 
 同一客户端代际的并发失败共享一次 `ResourceSlot` 替换。`asyncio.CancelledError` 必须传播，资源关闭统一由 `ResourceService.close()` 完成。
-

@@ -26,6 +26,30 @@ class ResponseFailure(RequestFailure):
 class DownloadError(RequestFailure):
     pass
 
+
+class RequestTimeoutError(DownloadError):
+    """Describe a request that exhausted its configured timeout attempts."""
+
+    def __init__(
+        self,
+        exception: BaseException,
+        request: Request,
+        timeout: float,
+        attempts: int,
+    ) -> None:
+        """Capture timeout policy alongside the original request and cause."""
+        super().__init__(exception=exception, request=request)
+        self.timeout = timeout
+        self.attempts = attempts
+
+    def __str__(self) -> str:
+        """Return bounded context suitable for user-level request logging."""
+        return (
+            "<RequestTimeoutError request=%s timeout=%ss attempts=%s "
+            "exception=%r>"
+            % (self.request.url, self.timeout, self.attempts, self.exception)
+        )
+
 class IgnoreResponse(ResponseFailure):
     def __str__(self):
         return f"<IgnoreResponse request={self.request.url} non-200 response: response.status_code={self.response.status_code}>"

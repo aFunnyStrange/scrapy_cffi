@@ -37,9 +37,11 @@ class Engine:
         self.pipelines_chain: "ChainManager" = crawler.pipelines_chain
 
         base_req_limit = self.settings.MAX_CONCURRENT_REQ
-        if base_req_limit is None:
-            base_req_limit = 100
-        self.max_inflight_downloader_tasks = max(int(base_req_limit) * 2, 50)
+        self.max_inflight_downloader_tasks = (
+            None
+            if base_req_limit is None
+            else max(int(base_req_limit) * 2, 50)
+        )
         self._work_sequence = 0
         self._pending_work_ids = set()
         self._work_idle_event = asyncio.Event()
@@ -209,6 +211,8 @@ class Engine:
 
     async def _wait_for_downloader_capacity(self) -> None:
         """Suspend until a downloader task completion publishes capacity."""
+        if self.max_inflight_downloader_tasks is None:
+            return
         await self.taskManager.wait_for_object_task_count_below(
             id(self),
             prefixes=("process_downloader",),

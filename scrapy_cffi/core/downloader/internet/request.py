@@ -19,6 +19,8 @@ class Request(object):
         cookies=None,
         proxies=None,
         timeout=30,
+        max_retry_times=None,
+        retry_delay=None,
         allow_redirects=True,
         max_redirects=30,
         verify=None,
@@ -42,6 +44,12 @@ class Request(object):
         self.cookies = cookies
         self.proxies = proxies
         self.timeout=timeout
+        if max_retry_times is not None and max_retry_times < 1:
+            raise ValueError("max_retry_times must be at least 1")
+        if retry_delay is not None and retry_delay < 0:
+            raise ValueError("retry_delay cannot be negative")
+        self.max_retry_times = max_retry_times
+        self.retry_delay = retry_delay
         self.allow_redirects=allow_redirects
         self.max_redirects=max_redirects
         self.verify=verify
@@ -164,6 +172,8 @@ class HttpRequest(Request):
         cookies=None, 
         proxies=None, 
         timeout=30,
+        max_retry_times=None,
+        retry_delay=None,
         allow_redirects=True,
         max_redirects=30,
         verify=None,
@@ -193,6 +203,8 @@ class HttpRequest(Request):
             cookies=cookies, 
             proxies=proxies, 
             timeout=timeout,
+            max_retry_times=max_retry_times,
+            retry_delay=retry_delay,
             allow_redirects=allow_redirects,
             max_redirects=max_redirects,
             verify=verify,
@@ -237,6 +249,8 @@ class MediaRequest(HttpRequest):
         single_part_size=2999999, # The byte size of a segment
         media_size=0,
         timeout=30,
+        max_retry_times=None,
+        retry_delay=None,
         allow_redirects=True,
         max_redirects=30,
         verify=None,
@@ -262,6 +276,8 @@ class MediaRequest(HttpRequest):
             cookies=cookies, 
             proxies=proxies, 
             timeout=timeout,
+            max_retry_times=max_retry_times,
+            retry_delay=retry_delay,
             allow_redirects=allow_redirects,
             max_redirects=max_redirects,
             verify=verify,
@@ -298,6 +314,8 @@ class WebSocketRequest(Request):
         cookies=None,
         proxies=None,
         timeout=30,
+        max_retry_times=None,
+        retry_delay=None,
         allow_redirects=True,
         max_redirects=30,
         verify=None,
@@ -320,6 +338,8 @@ class WebSocketRequest(Request):
             cookies=cookies,
             proxies=proxies,
             timeout=timeout,
+            max_retry_times=max_retry_times,
+            retry_delay=retry_delay,
             allow_redirects=allow_redirects,
             max_redirects=max_redirects,
             verify=verify,

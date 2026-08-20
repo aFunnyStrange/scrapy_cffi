@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
   <title id="title">scrapy-cffi system overview</title>
-  <desc id="desc">Task ingress, crawler runtime, HTTP platform, resources, and output boundaries.</desc>
-  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0L0 6L9 3z" fill="#475569"/></marker><style>.box{stroke:#334155;stroke-width:2;rx:16}.title{font:700 26px system-ui,sans-serif;fill:#0f172a}.label{font:600 20px system-ui,sans-serif;fill:#0f172a}.small{font:16px system-ui,sans-serif;fill:#334155}.arrow{stroke:#475569;stroke-width:3;fill:none;marker-end:url(#a)}</style></defs>
+  <desc id="desc">Task ingress, crawler runtime, editable components, shared resources, and persistence boundaries.</desc>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0L0 6L9 3z" fill="#475569"/></marker>
+    <style>.box{stroke:#334155;stroke-width:2;rx:16}.title{font:700 26px system-ui,sans-serif;fill:#0f172a}.label{font:600 20px system-ui,sans-serif;fill:#0f172a}.small{font:16px system-ui,sans-serif;fill:#334155}.arrow{stroke:#475569;stroke-width:3;fill:none;marker-end:url(#a)}</style>
+  </defs>
   <rect width="1200" height="700" fill="#f8fafc"/>
   <text x="600" y="48" text-anchor="middle" class="title">scrapy-cffi system boundaries</text>
   <rect x="50" y="115" width="210" height="100" class="box" fill="#fef3c7"/><text x="155" y="155" text-anchor="middle" class="label">Task producers</text><text x="155" y="184" text-anchor="middle" class="small">app / API / scheduler</text>
@@ -9,11 +12,11 @@
   <rect x="685" y="95" width="250" height="140" class="box" fill="#dbeafe"/><text x="810" y="145" text-anchor="middle" class="label">Crawler runtime</text><text x="810" y="177" text-anchor="middle" class="small">Crawler → Engines</text><text x="810" y="205" text-anchor="middle" class="small">per-spider Schedulers</text>
   <rect x="1000" y="115" width="155" height="100" class="box" fill="#cffafe"/><text x="1077" y="155" text-anchor="middle" class="label">Targets</text><text x="1077" y="184" text-anchor="middle" class="small">HTTP / WS / SSE</text>
   <path d="M260 165H350M585 165H685M935 165H1000" class="arrow"/>
-  <rect x="130" y="390" width="260" height="120" class="box" fill="#dcfce7"/><text x="260" y="432" text-anchor="middle" class="label">ResourceService</text><text x="260" y="463" text-anchor="middle" class="small">bounded retry + replacement</text><text x="260" y="490" text-anchor="middle" class="small">lifecycle ownership</text>
-  <rect x="470" y="370" width="260" height="160" class="box" fill="#ecfccb"/><text x="600" y="412" text-anchor="middle" class="label">Repositories</text><text x="600" y="444" text-anchor="middle" class="small">dedup / sessions / queues</text><text x="600" y="472" text-anchor="middle" class="small">SQL / Mongo operations</text><text x="600" y="500" text-anchor="middle" class="small">transport-neutral semantics</text>
-  <rect x="810" y="390" width="260" height="120" class="box" fill="#f3e8ff"/><text x="940" y="432" text-anchor="middle" class="label">Infrastructure</text><text x="940" y="463" text-anchor="middle" class="small">one-shot vendor clients</text><text x="940" y="490" text-anchor="middle" class="small">Redis / MQ / DB</text>
-  <path d="M750 235Q700 305 390 420" class="arrow"/><path d="M390 450H470" class="arrow"/><path d="M730 450H810" class="arrow"/>
-  <rect x="470" y="600" width="260" height="70" class="box" fill="#fee2e2"/><text x="600" y="642" text-anchor="middle" class="label">Pipeline outputs</text>
-  <path d="M810 235Q810 570 730 630" class="arrow"/>
-  <text x="600" y="575" text-anchor="middle" class="small">Large durable artifacts belong in an explicit store when the application contract requires it.</text>
+
+  <rect x="75" y="380" width="290" height="150" class="box" fill="#fee2e2"/><text x="220" y="420" text-anchor="middle" class="label">Editable components</text><text x="220" y="452" text-anchor="middle" class="small">Spiders + interceptors</text><text x="220" y="480" text-anchor="middle" class="small">Pipelines + signal extensions</text><text x="220" y="508" text-anchor="middle" class="small">all receive the same resources</text>
+  <rect x="455" y="380" width="290" height="150" class="box" fill="#dcfce7"/><text x="600" y="420" text-anchor="middle" class="label">ResourceService</text><text x="600" y="452" text-anchor="middle" class="small">DB + MQ repositories</text><text x="600" y="480" text-anchor="middle" class="small">bounded retry + replacement</text><text x="600" y="508" text-anchor="middle" class="small">crawler-owned lifecycle</text>
+  <rect x="835" y="360" width="290" height="190" class="box" fill="#f3e8ff"/><text x="980" y="400" text-anchor="middle" class="label">Infrastructure</text><text x="980" y="432" text-anchor="middle" class="small">Redis: task / transient state</text><text x="980" y="460" text-anchor="middle" class="small">SQL / Mongo: durable records</text><text x="980" y="488" text-anchor="middle" class="small">RabbitMQ / Kafka: messages</text><text x="980" y="522" text-anchor="middle" class="small">one-shot vendor clients</text>
+  <path d="M760 235Q660 300 365 410" class="arrow"/><path d="M810 235Q760 320 710 380" class="arrow"/><path d="M365 455H455" class="arrow"/><path d="M745 455H835" class="arrow"/>
+  <text x="600" y="610" text-anchor="middle" class="small">Queue session_id values stay lightweight; account and device facts are loaded from durable databases when needed.</text>
+  <text x="600" y="642" text-anchor="middle" class="small">Session cookies are not copied into Redis unless SCHEDULER_PERSIST_SESSIONS is explicitly enabled.</text>
 </svg>

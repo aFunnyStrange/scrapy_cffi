@@ -10,18 +10,25 @@ if TYPE_CHECKING:
     from ..hooks.interceptors import InterceptorsHooks
     from ..settings import SettingsInfo
     from ..repo.queue import KafkaQueueRepository
+    from ..service import ResourceService
 
 class BaseInterceptor:
     def __init__(
         self, 
         stop_event: asyncio.Event=None, 
         settings: "SettingsInfo"=None, 
+        resources: "ResourceService"=None,
         kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
         self.stop_event = stop_event
         self.settings = settings
-        self.kafka_repository = kafka_repository
+        self.resources = resources
+        self.kafka_repository = (
+            kafka_repository
+            if kafka_repository is not None
+            else getattr(resources, "kafka", None)
+        )
         self.kwargs = kwargs
 
     @classmethod
@@ -29,6 +36,7 @@ class BaseInterceptor:
         return cls(
             stop_event=crawler.stop_event,
             settings=crawler.settings,
+            resources=crawler.resources,
             kafka_repository=crawler.resources.kafka,
         )
 
@@ -63,10 +71,17 @@ class _InnerSpiderInterceptor(SpiderInterceptor):
         settings: "SettingsInfo"=None, 
         hooks: "InterceptorsHooks"=None, 
         sessions_lock: asyncio.Lock=None, 
+        resources: "ResourceService"=None,
         kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, kafka_repository=kafka_repository, **kwargs)
+        super().__init__(
+            stop_event=stop_event,
+            settings=settings,
+            resources=resources,
+            kafka_repository=kafka_repository,
+            **kwargs
+        )
         self.hooks = hooks
         self.sessions_lock = sessions_lock
 
@@ -77,5 +92,6 @@ class _InnerSpiderInterceptor(SpiderInterceptor):
             settings=crawler.settings,
             hooks=interceptors_hooks(crawler),
             sessions_lock=crawler.sessions_lock,
+            resources=crawler.resources,
             kafka_repository=crawler.resources.kafka,
         )

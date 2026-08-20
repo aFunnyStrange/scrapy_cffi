@@ -31,17 +31,18 @@ pip install -e .
 
 ## CLI banner
 
-The root help screen shows a colored `SCRAPY-CFFI` wordmark in interactive
-terminals. Redirected help automatically uses clean, portable plain ASCII.
-You can also preview either form directly:
+The colored `SCRAPY-CFFI` wordmark is intentionally shown only by the exact
+root command `scrapy-cffi -h` and by the explicit `banner` command. Root
+`--help`/`-help` and every subcommand help screen stay compact because the user
+has already entered a workflow.
 
 ```bash
 scrapy-cffi banner
 scrapy-cffi banner --no-color
 ```
 
-The CLI accepts `-h`, `--help`, and `-help`. Set the standard `NO_COLOR`
-variable to disable ANSI colors.
+All three help spellings remain accepted. Set `NO_COLOR` to disable ANSI
+colors when the banner is shown.
 
 # 2.startproject
 ```bash

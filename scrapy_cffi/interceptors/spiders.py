@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ..hooks.interceptors import InterceptorsHooks
     from ..core.sessions import SessionWrapper, WebSocketEntry
     from ..repo.queue import KafkaQueueRepository
+    from ..service import ResourceService
 
 class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
     ResultType = Union[
@@ -33,10 +34,19 @@ class UpdateRequestSpiderInterceptor(_InnerSpiderInterceptor):
         settings: "SettingsInfo"=None, 
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None,
+        resources: "ResourceService"=None,
         kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafka_repository=kafka_repository, **kwargs)
+        super().__init__(
+            stop_event=stop_event,
+            settings=settings,
+            hooks=hooks,
+            sessions_lock=sessions_lock,
+            resources=resources,
+            kafka_repository=kafka_repository,
+            **kwargs
+        )
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
         if self.kafka_repository:
@@ -146,10 +156,19 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
         hooks: "InterceptorsHooks"=None, 
         sessions_lock=None, 
         robot: "RobotsManager"=None,
+        resources: "ResourceService"=None,
         kafka_repository: "KafkaQueueRepository"=None,
         **kwargs
     ):
-        super().__init__(stop_event=stop_event, settings=settings, hooks=hooks, sessions_lock=sessions_lock, kafka_repository=kafka_repository, **kwargs)
+        super().__init__(
+            stop_event=stop_event,
+            settings=settings,
+            hooks=hooks,
+            sessions_lock=sessions_lock,
+            resources=resources,
+            kafka_repository=kafka_repository,
+            **kwargs
+        )
         self.robot = robot
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
@@ -166,6 +185,7 @@ class RobotSpiderInterceptor(_InnerSpiderInterceptor):
             hooks=interceptors_hooks(crawler),
             sessions_lock=crawler.sessions_lock,
             robot=crawler.robot,
+            resources=crawler.resources,
             kafka_repository=crawler.resources.kafka
         )
 

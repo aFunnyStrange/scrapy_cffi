@@ -12,6 +12,8 @@
 | `url`、`params` | URL 与查询参数；参数使用 `urlencode(..., doseq=True)` 合并 |
 | `headers`、`cookies`、`proxies` | 请求 Header、Cookie、代理 |
 | `timeout` | 单次传输超时，默认 30 秒 |
+| `max_retry_times` | 当前请求的总尝试次数；为空时继承 `MAX_REQ_TIMES` |
+| `retry_delay` | 当前请求的重试间隔秒数；为空时继承 `DELAY_REQ_TIME`，允许 0 |
 | `allow_redirects`、`max_redirects` | 重定向策略 |
 | `verify` | TLS 证书校验设置 |
 | `impersonate` | 每请求 curl Profile/别名，必须显式选择 |
@@ -24,6 +26,33 @@
 | `stream` | 启用实时 HTTP Stream |
 
 `to_bytes()` 使用有界状态 Codec 保存类名、回调标识与二进制字段；`from_bytes()` 恢复具体 Request 子类。这一格式用于 Scheduler 持久化，应用不应改写内部标记。
+
+### 超时重试与 Errback
+
+HTTP、Stream 和 WebSocket 的传输超时在重试耗尽后统一转换为
+`RequestTimeoutError`，并进入当前 Request 的 `errback`。异常提供
+`request`、`exception`、`timeout` 和 `attempts`：
+
+```python
+from scrapy_cffi.exceptions import RequestTimeoutError
+
+yield HttpRequest(
+    url=url,
+    timeout=10,
+    max_retry_times=3,
+    retry_delay=0.5,
+    callback=self.parse,
+    errback=self.on_error,
+)
+
+async def on_error(self, failure):
+    if isinstance(failure, RequestTimeoutError):
+        self.logger.warning(
+            "task=%s timeout attempts=%s",
+            failure.request.meta.get("task_id"),
+            failure.attempts,
+        )
+```
 
 ## 2. HttpRequest
 

@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from ..repo.queue import KafkaQueueRepository
     from ..models.api import WebSocketMsg
 
+_INHERIT_SESSION_RATE = object()
+
 class CloseSignal:
     def __init__(
         self, 
@@ -308,6 +310,41 @@ class WebSocketPool:
             await entry.close()
         self._pool.clear()
 
+
+class SessionRequestLimiter:
+    """Space request attempts for one concrete in-memory HTTP session."""
+
+    def __init__(self, requests_per_second: Optional[float] = None) -> None:
+        """Create an unlimited or fixed-rate session admission policy."""
+        self._lock = asyncio.Lock()
+        self._next_start = 0.0
+        self.configure(requests_per_second)
+
+    def configure(self, requests_per_second: Optional[float]) -> None:
+        """Replace the rate used by future request admissions."""
+        if requests_per_second is not None and requests_per_second <= 0:
+            raise ValueError("requests_per_second must be greater than zero")
+        self.requests_per_second = requests_per_second
+        self._interval = (
+            0.0
+            if requests_per_second is None
+            else 1.0 / float(requests_per_second)
+        )
+
+    async def wait(self) -> None:
+        """Wait until the next configured start time for this session."""
+        if self._interval <= 0:
+            return
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            delay = self._next_start - now
+            if delay > 0:
+                await asyncio.sleep(delay)
+                now = loop.time()
+            self._next_start = max(now, self._next_start) + self._interval
+
+
 class SessionWrapper:
     """
     Represents a single HTTP/WS session identified by a session ID.
@@ -321,6 +358,7 @@ class SessionWrapper:
         cookies: Dict = None,
         kafka_repository: "KafkaQueueRepository" = None,
         http_session_factory: HttpSessionFactory = None,
+        requests_per_second: Optional[float] = None,
     ):
         self.stop_event = stop_event
         self.settings = settings
@@ -334,24 +372,30 @@ class SessionWrapper:
         if http_session_factory is None:
             from ..platform.curl_cffi import CurlCffiHttpSession
 
-            native_dir = getattr(self.settings, "CURL_CFFI_NATIVE_DIR", None)
-            http_session_factory = partial(
-                CurlCffiHttpSession,
-                native_dir=native_dir,
-            )
+            http_session_factory = partial(CurlCffiHttpSession)
         self.session: AsyncHttpSessionProtocol = http_session_factory()
         from ..profiles import get_impersonate_resolver
 
         self._impersonate_resolver = get_impersonate_resolver()
         self.client_hints = ClientHintsState()
         self.websocket_pool: WebSocketPool = WebSocketPool(logger=self.logger)
+        self.request_limiter = SessionRequestLimiter(requests_per_second)
         self.default_cookies = cookies or self.settings.DEFAULT_COOKIES
         self.update_session_cookies(self.default_cookies)
         self._lock = asyncio.Lock()
 
-        retry_times = self.settings.MAX_REQ_TIMES
-        retry_delay = self.settings.DELAY_REQ_TIME
-        self.retryer = AsyncRetrying(
+    def _request_retryer(
+        self,
+        request: Union["HttpRequest", "WebSocketRequest"],
+    ) -> AsyncRetrying:
+        """Build the retry policy selected by one request or global settings."""
+        retry_times = request.max_retry_times or self.settings.MAX_REQ_TIMES
+        retry_delay = (
+            request.retry_delay
+            if request.retry_delay is not None
+            else self.settings.DELAY_REQ_TIME
+        )
+        return AsyncRetrying(
             stop=stop_after_attempt(retry_times),
             wait=wait_fixed(retry_delay),
             retry=retry_if_exception_type((HttpTransportError, ConnectionError, TimeoutError, OSError)),
@@ -378,7 +422,7 @@ class SessionWrapper:
         return args
     
     async def do_request(self, request: Union["HttpRequest", "WebSocketRequest"], is_ws: bool = False):
-        async for attempt in self.retryer:
+        async for attempt in self._request_retryer(request):
             with attempt:
                 if is_ws:
                     return await self.ws_connect_once(request)
@@ -399,6 +443,7 @@ class SessionWrapper:
             range_key = request.find_header_key("Range")
             range_key = range_key if range_key else "Range"
             request.headers[range_key] = f"bytes={part_byte_start}-{part_byte_end}"
+            await self.request_limiter.wait()
             single_part_response: HttpResponseProtocol = await self.session.request(
                 method=request.method, 
                 **self._build_request_args(request)
@@ -415,7 +460,8 @@ class SessionWrapper:
     async def do_request_once(self, request: "HttpRequest"):
         if isinstance(request, MediaRequest):
             return await self.media_req(request=request)
-        
+
+        await self.request_limiter.wait()
         method: Literal["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "TRACE", "PATCH"] = request.method
         raw_response = await self.session.request(
             method=method,
@@ -425,12 +471,17 @@ class SessionWrapper:
 
     async def open_stream(self, request: "HttpRequest") -> AsyncHttpStreamProtocol:
         """Open a live HTTP stream through the configured platform session."""
-        return await self.session.open_stream(
-            method=request.method,
-            **self._build_request_args(request),
-        )
+        async for attempt in self._request_retryer(request):
+            with attempt:
+                await self.request_limiter.wait()
+                return await self.session.open_stream(
+                    method=request.method,
+                    **self._build_request_args(request),
+                )
+        raise RuntimeError("HTTP stream retry policy completed without a result")
     
     async def ws_connect_once(self, request: "WebSocketRequest") -> AsyncWebSocketProtocol:
+        await self.request_limiter.wait()
         websocket = await self.session.connect_websocket(url=request.url,
             headers=request.headers, 
             cookies=self.session.cookies.get_dict(),
@@ -550,6 +601,7 @@ class SessionManager:
         # A deduplication set to prevent the same session_id from being added multiple times to the close queue.
         self._pending_close_set: Set[str] = set()
         self._restored_session_fields: Set[tuple[str, str]] = set()
+        self._session_rates: Dict[str, Optional[float]] = {}
         self._frozen = False
         from ..utils.log import init_logger
         self.logger = init_logger(log_info=self.settings.LOG_INFO, logger_name=__name__)
@@ -599,16 +651,33 @@ class SessionManager:
             cookies=cookies,
             kafka_repository=self.kafka_repository,
             http_session_factory=self.http_session_factory,
+            requests_per_second=self._session_rates.get(
+                session_id,
+                self.settings.SESSION_REQUESTS_PER_SECOND,
+            ),
         )
         self._sessions[session_id] = wrapper
         return wrapper
     
-    def register_sessions_batch(self, user_cookies: Dict[str, Dict], group_id: Optional[str] = None) -> str:
+    def register_sessions_batch(
+        self,
+        user_cookies: Dict[str, Dict],
+        group_id: Optional[str] = None,
+        requests_per_second=_INHERIT_SESSION_RATE,
+    ) -> str:
+        """Register a group; omitted rate inherits settings and ``None`` is unlimited."""
         if not user_cookies:
             return
 
         group_id = group_id or create_uniqueId()
         session_ids = []
+        selected_rate = (
+            self.settings.SESSION_REQUESTS_PER_SECOND
+            if requests_per_second is _INHERIT_SESSION_RATE
+            else requests_per_second
+        )
+        if selected_rate is not None and selected_rate <= 0:
+            raise ValueError("requests_per_second must be greater than zero")
 
         for session_id, cookies in user_cookies.items():
             if session_id not in self._sessions:
@@ -618,8 +687,10 @@ class SessionManager:
                     cookies=cookies,
                     kafka_repository=self.kafka_repository,
                     http_session_factory=self.http_session_factory,
+                    requests_per_second=selected_rate,
                 )
                 self._sessions[session_id] = wrapper
+                self._session_rates[session_id] = selected_rate
                 session_ids.append(session_id)
             else:
                 self.logger.info(f"[SessionManager] Session {session_id} already exists, skipped.")
@@ -627,6 +698,24 @@ class SessionManager:
         self._group_sessions[group_id] = session_ids
         self.logger.debug(f"[SessionManager] Registered group '{group_id}' with sessions: {session_ids}")
         return group_id
+
+    def configure_rate_limit(
+        self,
+        session_id: str,
+        requests_per_second: Optional[float],
+    ) -> None:
+        """Configure one session or every member of an existing session group."""
+        if requests_per_second is not None and requests_per_second <= 0:
+            raise ValueError("requests_per_second must be greater than zero")
+        if session_id in self._group_sessions:
+            targets = list(self._group_sessions[session_id])
+        else:
+            targets = [session_id or self._default_session_id]
+        for target in targets:
+            self._session_rates[target] = requests_per_second
+            wrapper = self._sessions.get(target)
+            if wrapper is not None:
+                wrapper.request_limiter.configure(requests_per_second)
     
     async def close_group_sessions(self, group_id: str):
         session_ids = self._group_sessions.pop(group_id, [])
@@ -813,6 +902,7 @@ class SessionManager:
         self._ref_counts.clear()
         self._end_flags.clear()
         self._pending_close_set.clear()
+        self._session_rates.clear()
         while not self._close_queue.empty():
             self._close_queue.get_nowait()
             self._close_queue.task_done()

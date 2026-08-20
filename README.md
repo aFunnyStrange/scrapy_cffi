@@ -112,7 +112,8 @@ out of the box; legacy string import paths remain supported.
 Every generated project contains a `profiles/` reference directory. Place each
 self-built, ABI-specific runtime under `profiles/artifacts/<runtime>/`, copy the
 example manifest there as `scrapy_cffi_profiles.toml`, and point
-`SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR` at that exact runtime directory.
+`CURL_CFFI_RUNTIME_DIR` at that exact runtime directory. The historical
+`SCRAPY_CFFI_CURL_CFFI_NATIVE_DIR` name remains accepted for compatibility.
 
 Streaming chat/SSE endpoints use the same request model:
 
@@ -138,7 +139,7 @@ from scrapy_cffi.settings import SettingsInfo
 
 
 settings = SettingsInfo(
-    CURL_CFFI_NATIVE_DIR=Path("D:/native/my-curl-build"),
+    CURL_CFFI_RUNTIME_DIR=Path("D:/native/my-curl-build"),
 )
 
 yield HttpRequest(
@@ -157,9 +158,9 @@ WebSocket connections are long-lived and event-driven. The initial
 before receiving; callbacks stop listening explicitly with
 `response.stop_listening()`.
 
-See [the 0.4.2 release guide](docs/en/RELEASE-0.4.2.md) for the native artifact
-layout, compatibility rules, official-profile passthrough, and persistence
-behavior.
+See [the 0.4.3 release guide](docs/en/RELEASE-0.4.3.md) for the runtime/profile
+boundary, concurrency defaults, session rate limiting, timeout delivery, and
+resource ownership rules.
 
 Finite completion is event-driven. A naturally returning `Spider.start()` is a
 finite producer; standard Redis/RabbitMQ/Kafka Spiders may set a positive

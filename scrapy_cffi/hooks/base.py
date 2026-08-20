@@ -27,6 +27,7 @@ def spiders_hooks(crawler: "Crawler", scheduler) -> "SpidersHooks":
         session=Hooks(
             register_sessions=crawler.sessions.register_sessions_batch,
             get_session_cookies=crawler.sessions.get_session_cookies,
+            configure_rate_limit=crawler.sessions.configure_rate_limit,
         ),
         scheduler=Hooks(
             get_start_req=getattr(scheduler, "get_start_req", _noop_scheduler_async),
@@ -41,6 +42,7 @@ def _pipelines_hooks(crawler: "Crawler") -> "_PipelinesHooks":
         session=Hooks(
             mark_end=crawler.sessions.mark_end,
             get_session_cookies=crawler.sessions.get_session_cookies,
+            configure_rate_limit=crawler.sessions.configure_rate_limit,
         ),
     )
     return cast(Hooks, hooks_obj)
@@ -49,6 +51,7 @@ def pipelines_hooks(crawler: "Crawler") -> "PipelinesHooks":
     hooks_obj = Hooks(
         session=Hooks(
             get_session_cookies=crawler.sessions.get_session_cookies,
+            configure_rate_limit=crawler.sessions.configure_rate_limit,
         ),
         signals=Hooks(
             send=crawler.signalManager.send
@@ -62,12 +65,16 @@ def interceptors_hooks(crawler: "Crawler") -> "InterceptorsHooks":
             acquire=crawler.sessions.acquire,
             release=crawler.sessions.release,
             get_or_create_session=crawler.sessions.get_or_create_session,
+            configure_rate_limit=crawler.sessions.configure_rate_limit,
         )
     )
     return cast(Hooks, hooks_obj)
 
 def signals_hooks(crawler: "Crawler") -> "SignalsHooks":
     hooks_obj = Hooks(
+        session=Hooks(
+            configure_rate_limit=crawler.sessions.configure_rate_limit,
+        ),
         signals=Hooks(
             connect=crawler.signalManager.connect
         )

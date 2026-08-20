@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from scrapy_cffi.core.downloader.internet import HttpRequest, SSEEvent, StreamResponse
-from scrapy_cffi.core.sessions import SessionWrapper
+from scrapy_cffi.core.sessions import SessionManager, SessionRequestLimiter, SessionWrapper
 from scrapy_cffi.platform.curl_cffi import CurlCffiHttpSession
-from scrapy_cffi.platform import HttpTransportError
+from scrapy_cffi.platform import HttpTimeoutError, HttpTransportError
 from scrapy_cffi.settings import SettingsInfo
 
 
@@ -215,6 +215,82 @@ def test_session_wrapper_accepts_duck_typed_http_factory():
     asyncio.run(run())
 
 
+def test_request_retry_override_retries_transport_timeout() -> None:
+    """A request-level retry policy overrides crawler defaults."""
+
+    class RetrySession(_FakeHttpSession):
+        calls = 0
+
+        async def request(self, method, **kwargs):
+            del method, kwargs
+            type(self).calls += 1
+            if type(self).calls < 3:
+                raise HttpTimeoutError("slow upstream")
+            return SimpleNamespace(
+                status_code=200,
+                content=b"ok",
+                text="ok",
+                headers={},
+            )
+
+    async def run() -> None:
+        RetrySession.calls = 0
+        wrapper = SessionWrapper(
+            stop_event=asyncio.Event(),
+            settings=SettingsInfo(MAX_REQ_TIMES=1, DELAY_REQ_TIME=10),
+            http_session_factory=RetrySession,
+        )
+        response = await wrapper.do_request(
+            HttpRequest(
+                url="https://example.test",
+                max_retry_times=3,
+                retry_delay=0,
+            )
+        )
+        assert response.status_code == 200
+        assert RetrySession.calls == 3
+        await wrapper.session_close()
+
+    asyncio.run(run())
+
+
+def test_session_rate_limiter_spaces_one_session_and_none_is_unlimited() -> None:
+    """Rate admission is per session, while None does not create a hidden cap."""
+
+    async def run() -> None:
+        limited = SessionRequestLimiter(20)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await limited.wait()
+        await limited.wait()
+        assert loop.time() - started >= 0.04
+
+        limited.configure(None)
+        started = loop.time()
+        await limited.wait()
+        await limited.wait()
+        assert loop.time() - started < 0.04
+
+    asyncio.run(run())
+
+
+def test_registered_session_explicit_none_overrides_global_rate() -> None:
+    """Distinguish an omitted inherited rate from explicit unlimited None."""
+    manager = SessionManager(
+        stop_event=asyncio.Event(),
+        settings=SettingsInfo(SESSION_REQUESTS_PER_SECOND=1),
+        http_session_factory=_FakeHttpSession,
+    )
+
+    manager.register_sessions_batch(
+        {"account": {}},
+        requests_per_second=None,
+    )
+
+    wrapper = manager.get_or_create_session("account")
+    assert wrapper.request_limiter.requests_per_second is None
+
+
 def test_stream_response_parses_sse_and_releases_once():
     """SSE parsing must preserve event fields and close capacity idempotently."""
 
@@ -314,6 +390,65 @@ def test_curl_adapter_does_not_retry_programming_errors():
         with pytest.raises(HttpTransportError) as error:
             await failed_transport.request("GET", url="https://example.test")
         assert isinstance(error.value.__cause__, CurlError)
+
+        timed_out = CurlCffiHttpSession(
+            session=_FailingRequestSession(CurlError("operation timed out", 28))
+        )
+        with pytest.raises(HttpTimeoutError) as timeout_error:
+            await timed_out.request("GET", url="https://example.test")
+        assert isinstance(timeout_error.value.__cause__, CurlError)
+
+    asyncio.run(run())
+
+
+def test_downloader_returns_typed_timeout_to_error_path() -> None:
+    """Exhausted request timeouts become inspectable spider-path failures."""
+    from scrapy_cffi.core.downloader.fetch import Downloader
+    from scrapy_cffi.exceptions import RequestTimeoutError
+
+    class TimeoutWrapper:
+        async def do_request(self, request):
+            del request
+            raise HttpTimeoutError("upstream timed out")
+
+    class Sessions:
+        def get_or_create_session(self, session_id, cookies=None):
+            del session_id, cookies
+            return TimeoutWrapper()
+
+        def release(self, session_id):
+            del session_id
+
+    class Signals:
+        def send(self, **kwargs):
+            del kwargs
+
+    async def run() -> None:
+        downloader = Downloader(
+            stop_event=asyncio.Event(),
+            settings=SettingsInfo(MAX_REQ_TIMES=1, DELAY_REQ_TIME=0),
+            sessions=Sessions(),
+            sessions_lock=asyncio.Lock(),
+            signalManager=Signals(),
+        )
+        results = []
+
+        async def callback(response, request):
+            results.append((response, request))
+
+        request = HttpRequest(
+            url="https://timeout.test",
+            timeout=1,
+            max_retry_times=1,
+            retry_delay=0,
+        )
+        await downloader.fetch_http(request, callback)
+        failure, returned_request = results[0]
+        assert isinstance(failure, RequestTimeoutError)
+        assert failure.request is request
+        assert failure.timeout == 1
+        assert failure.attempts == 1
+        assert returned_request is request
 
     asyncio.run(run())
 

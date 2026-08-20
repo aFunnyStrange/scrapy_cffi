@@ -197,6 +197,49 @@ def test_integration_websocket_dispatches_events_without_end_sentinel() -> None:
     asyncio.run(run())
 
 
+def test_websocket_close_frame_is_not_dispatched_as_application_data() -> None:
+    """Treat protocol close payloads as lifecycle events, not UTF-8 messages."""
+
+    class CloseWebSocket(_WebSocket):
+        async def recv(self):
+            return b"\x03\xf3", 8
+
+    async def run() -> None:
+        entry = WebSocketEntry(logger=_Logger(), url="wss://close-frame.test")
+        websocket = CloseWebSocket()
+        wrapper = _Wrapper(entry=entry, websocket=websocket)
+        downloader = Downloader(
+            stop_event=asyncio.Event(),
+            settings=SettingsInfo(),
+            sessions=None,
+            sessions_lock=asyncio.Lock(),
+            signalManager=_SignalManager(),
+        )
+        responses = []
+
+        async def callback(response, request):
+            responses.append((response, request))
+
+        request = WebSocketRequest(url=entry.url)
+        task = asyncio.create_task(
+            downloader._websocket_listener(
+                entry=entry,
+                wrapper=wrapper,
+                request=request,
+                callback=callback,
+            )
+        )
+        entry.set_listener_task(task)
+        await asyncio.wait_for(entry.wait_closed(), timeout=1)
+        await task
+
+        assert responses == []
+        assert entry.stop_event.is_set()
+        assert websocket.closed is True
+
+    asyncio.run(run())
+
+
 def test_total_engine_waits_for_websocket_closed_event() -> None:
     """Run the Engine connection boundary through final session cleanup."""
 

@@ -8,6 +8,10 @@ class HttpTransportError(ConnectionError):
     """Report a request-library failure through a framework-owned exception."""
 
 
+class HttpTimeoutError(HttpTransportError, TimeoutError):
+    """Report a vendor or framework HTTP timeout through stable semantics."""
+
+
 class WebSocketFlag(IntFlag):
     """Define stable WebSocket frame flags independent of the HTTP vendor."""
 
@@ -134,6 +138,7 @@ __all__ = [
     "CookieJarProtocol",
     "HttpResponseProtocol",
     "HttpSessionFactory",
+    "HttpTimeoutError",
     "HttpTransportError",
     "WebSocketFlag",
 ]

@@ -182,7 +182,11 @@ def test_redis_scheduler_persists_before_enqueue_and_restores_after_dequeue():
 
     async def run():
         redis = FakeRedisHash()
-        settings = SettingsInfo(ROBOTSTXT_OBEY=False, SCHEDULER_PERSIST=True)
+        settings = SettingsInfo(
+            ROBOTSTXT_OBEY=False,
+            SCHEDULER_PERSIST=True,
+            SCHEDULER_PERSIST_SESSIONS=True,
+        )
         source_sessions = SessionManager(asyncio.Event(), settings)
         source_sessions.get_or_create_session("account").session.cookies.set("token", "fresh")
         source = RedisScheduler(
@@ -218,5 +222,48 @@ def test_redis_scheduler_persists_before_enqueue_and_restores_after_dequeue():
         assert cookies == {"account": {"token": "fresh"}}
         await source_sessions.close_all()
         await target_sessions.close_all()
+
+    asyncio.run(run())
+
+
+def test_redis_scheduler_does_not_persist_sessions_by_default():
+    """Queue durability must not implicitly copy account state into Redis."""
+    from unittest.mock import MagicMock
+
+    from scrapy_cffi.core.downloader.internet import HttpRequest
+    from scrapy_cffi.core.scheduler.redis import RedisScheduler
+    from scrapy_cffi.core.sessions import SessionManager
+    from scrapy_cffi.settings import SettingsInfo
+
+    class Spider:
+        name = "demo"
+
+    async def run():
+        redis = FakeRedisHash()
+        settings = SettingsInfo(SCHEDULER_PERSIST=True)
+        sessions = SessionManager(asyncio.Event(), settings)
+        sessions.get_or_create_session("account").session.cookies.set(
+            "token",
+            "must-not-be-persisted",
+        )
+        scheduler = RedisScheduler(
+            spiders_name=["demo"],
+            stop_event=asyncio.Event(),
+            settings=settings,
+            sessions=sessions,
+            sessions_lock=asyncio.Lock(),
+            signalManager=MagicMock(),
+            redis_repository=redis,
+        )
+        assert await scheduler.put(
+            HttpRequest(
+                session_id="account",
+                url="https://example.com",
+                dont_filter=True,
+            ),
+            Spider(),
+        )
+        assert "demo_req:sessions" not in redis.data
+        await sessions.close_all()
 
     asyncio.run(run())

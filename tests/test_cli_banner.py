@@ -75,14 +75,9 @@ def test_banner_command_forces_plain_preview(monkeypatch, capsys) -> None:
     assert "async crawler framework" in output
 
 
-@pytest.mark.parametrize("help_option", ["-h", "--help", "-help"])
-def test_root_help_starts_with_plain_banner(
-    monkeypatch,
-    capsys,
-    help_option: str,
-) -> None:
-    """Every supported root-help spelling should include a portable banner."""
-    monkeypatch.setattr(sys, "argv", ["scrapy-cffi", help_option])
+def test_short_root_help_starts_with_plain_banner(monkeypatch, capsys) -> None:
+    """The concise root-help command should include a portable banner."""
+    monkeypatch.setattr(sys, "argv", ["scrapy-cffi", "-h"])
 
     with pytest.raises(SystemExit) as raised:
         main()
@@ -91,6 +86,33 @@ def test_root_help_starts_with_plain_banner(
     assert raised.value.code == 0
     assert "\033[" not in output
     assert "async crawler framework" in output
+    assert "usage: scrapy-cffi" in output
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--help"],
+        ["-help"],
+        ["startproject", "-h"],
+        ["demo", "--help"],
+        ["test", "-help"],
+    ],
+)
+def test_subcommand_help_does_not_render_banner(
+    monkeypatch,
+    capsys,
+    arguments,
+) -> None:
+    """Subcommand help should stay compact after users enter a workflow."""
+    monkeypatch.setattr(sys, "argv", ["scrapy-cffi", *arguments])
+
+    with pytest.raises(SystemExit) as raised:
+        main()
+    output = capsys.readouterr().out
+
+    assert raised.value.code == 0
+    assert "async crawler framework" not in output
     assert "usage: scrapy-cffi" in output
 
 

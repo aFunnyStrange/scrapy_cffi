@@ -2,7 +2,12 @@
 
 [English](../../en/usage/12-cpython.md) | 简体中文
 
-框架按 `SettingsInfo.CPY_EXTENSIONS` 加载自定义 C 扩展。每个模块目录的搜索顺序为：
+`CPY_EXTENSIONS`/`cinstall` 是为应用自有 ctypes 库保留的旧兼容边界，不属于 curl
+impersonate 运行时，也不能选择 TLS/浏览器 Profile。新的可分发原生能力通常应使用标准
+Wheel 与 Optional Extra；curl 运行时由 `scrapy_cffi.platform` 通过
+`CURL_CFFI_RUNTIME_DIR` 激活，而 `impersonate` 始终是 Request 级 Profile 选择。
+
+框架按 `SettingsInfo.CPY_EXTENSIONS` 加载兼容的自定义 C 扩展。每个模块目录的搜索顺序为：
 
 ```text
 项目 cpy_resources/<module>
@@ -57,4 +62,3 @@ CPYExtension(
 )
 # 目录仍是 custom_impl_v1，公共导入名为 custom_native
 ```
-
