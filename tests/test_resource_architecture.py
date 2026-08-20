@@ -110,32 +110,35 @@ def test_all_user_components_share_crawler_resource_service() -> None:
         send = staticmethod(lambda *args, **kwargs: None)
         connect = staticmethod(lambda *args, **kwargs: None)
 
-    resources = SimpleNamespace(
-        redis=object(),
-        mysql=object(),
-        postgres=object(),
-        mongodb=object(),
-        rabbitmq=object(),
-        kafka=None,
-    )
-    scheduler = SimpleNamespace()
-    crawler = SimpleNamespace(
-        settings=SettingsInfo(ROBOTSTXT_OBEY=False),
-        run_py_dir=Path.cwd(),
-        stop_event=asyncio.Event(),
-        resources=resources,
-        sessions=Sessions(),
-        sessions_lock=asyncio.Lock(),
-        signalManager=Signals(),
-        scheduler=scheduler,
-    )
+    async def run() -> None:
+        resources = SimpleNamespace(
+            redis=object(),
+            mysql=object(),
+            postgres=object(),
+            mongodb=object(),
+            rabbitmq=object(),
+            kafka=None,
+        )
+        scheduler = SimpleNamespace()
+        crawler = SimpleNamespace(
+            settings=SettingsInfo(ROBOTSTXT_OBEY=False),
+            run_py_dir=Path.cwd(),
+            stop_event=asyncio.Event(),
+            resources=resources,
+            sessions=Sessions(),
+            sessions_lock=asyncio.Lock(),
+            signalManager=Signals(),
+            scheduler=scheduler,
+        )
 
-    spider = Spider.from_crawler(crawler, scheduler=scheduler)
-    pipeline = Pipeline.from_crawler(crawler)
-    interceptor = DownloadInterceptor.from_crawler(crawler)
-    extension = Extension.from_crawler(hooks=object(), resources=resources)
+        spider = Spider.from_crawler(crawler, scheduler=scheduler)
+        pipeline = Pipeline.from_crawler(crawler)
+        interceptor = DownloadInterceptor.from_crawler(crawler)
+        extension = Extension.from_crawler(hooks=object(), resources=resources)
 
-    assert spider.resources is resources
-    assert pipeline.resources is resources
-    assert interceptor.resources is resources
-    assert extension.resources is resources
+        assert spider.resources is resources
+        assert pipeline.resources is resources
+        assert interceptor.resources is resources
+        assert extension.resources is resources
+
+    asyncio.run(run())

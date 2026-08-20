@@ -276,19 +276,22 @@ def test_session_rate_limiter_spaces_one_session_and_none_is_unlimited() -> None
 
 def test_registered_session_explicit_none_overrides_global_rate() -> None:
     """Distinguish an omitted inherited rate from explicit unlimited None."""
-    manager = SessionManager(
-        stop_event=asyncio.Event(),
-        settings=SettingsInfo(SESSION_REQUESTS_PER_SECOND=1),
-        http_session_factory=_FakeHttpSession,
-    )
+    async def run() -> None:
+        manager = SessionManager(
+            stop_event=asyncio.Event(),
+            settings=SettingsInfo(SESSION_REQUESTS_PER_SECOND=1),
+            http_session_factory=_FakeHttpSession,
+        )
 
-    manager.register_sessions_batch(
-        {"account": {}},
-        requests_per_second=None,
-    )
+        manager.register_sessions_batch(
+            {"account": {}},
+            requests_per_second=None,
+        )
 
-    wrapper = manager.get_or_create_session("account")
-    assert wrapper.request_limiter.requests_per_second is None
+        wrapper = manager.get_or_create_session("account")
+        assert wrapper.request_limiter.requests_per_second is None
+
+    asyncio.run(run())
 
 
 def test_stream_response_parses_sse_and_releases_once():
