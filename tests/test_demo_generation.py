@@ -151,6 +151,8 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     assert "SCRAPY_CFFI_DEMO_CONTINUOUS" in manager
     assert "wait_for_log_text(" in manager
     assert "continuous crawler exited without a stop event" in manager
+    assert "HTTP/3 experimental request unavailable" in manager
+    assert "sys.version_info >= (3, 10)" in manager
     assert "from runner import advance_main_all" in manager
     assert "await asyncio.wait_for(engine_task, timeout=60)" in manager
     assert "await asyncio.sleep(" not in manager

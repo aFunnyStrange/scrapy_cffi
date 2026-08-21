@@ -45,7 +45,11 @@ class CustomSpider(Spider):
     async def open_websocket(self, response: HttpResponse):
         """Record the finite HTTP/3 response before opening WebSocket."""
         print({"quic_demo": response.json()})
-        yield WebSocketRequest(
+        yield self._new_websocket_request()
+
+    def _new_websocket_request(self) -> WebSocketRequest:
+        """Build the socket request shared by HTTP/3 success and fallback."""
+        return WebSocketRequest(
             session_id=self.session_id,
             url=DEMO_WS_URL,
             headers=self.settings.DEFAULT_HEADERS,
@@ -92,6 +96,11 @@ class CustomSpider(Spider):
             yield CloseSignal(session_id=self.session_id, session_end=True)
 
     async def errRet(self, failure: Failure):
-        """Expose Demo request failures."""
+        """Expose failures and keep the Demo usable without experimental HTTP/3."""
         print(f"error output: {failure}")
+        request = getattr(failure, "request", None)
+        if request is not None and request.url == DEMO_QUIC_URL:
+            print({"quic_demo": "HTTP/3 experimental request unavailable"})
+            yield self._new_websocket_request()
+            return
         yield None

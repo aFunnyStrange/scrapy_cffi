@@ -730,8 +730,15 @@ def verify(topology: str, interrupt: bool = False) -> None:
             failures.append("demo.log is missing")
         if not interrupt and '"method":"GET"' not in console:
             failures.append("HTTP callback evidence is missing")
-        if DEMO_MODE == "memory" and not interrupt and "'protocol': 'HTTP/3'" not in console:
-            failures.append("HTTP/3 callback evidence is missing")
+        if DEMO_MODE == "memory" and not interrupt:
+            http3_response = "'protocol': 'HTTP/3'" in console
+            http3_fallback = (
+                "HTTP/3 experimental request unavailable" in console
+            )
+            if sys.version_info >= (3, 10) and not http3_response:
+                failures.append("HTTP/3 callback evidence is missing")
+            elif not http3_response and not http3_fallback:
+                failures.append("HTTP/3 callback or fallback evidence is missing")
         if not interrupt and "received:" not in websocket:
             failures.append("WebSocket incremental request evidence is missing")
         if interrupt and ">>> [signal] Received stop signal" not in console:
