@@ -128,6 +128,22 @@ jobs:
           scrapy-cffi test single
           --mode memory
           --log-dir artifacts/release-verification/media-http3
+      - name: Print generated Memory Demo failure logs
+        if: failure()
+        shell: pwsh
+        run: |
+          $logRoot = "artifacts/release-verification/media-http3/memory"
+          if (-not (Test-Path -LiteralPath $logRoot)) {
+            Write-Host "No generated Memory Demo logs were found."
+            exit 0
+          }
+          Get-ChildItem -LiteralPath $logRoot -Recurse -File |
+            Where-Object { $_.Extension -in ".log", ".txt" } |
+            ForEach-Object {
+              Write-Host "::group::$($_.FullName)"
+              Get-Content -LiteralPath $_.FullName -Tail 160
+              Write-Host "::endgroup::"
+            }
       - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@v6
