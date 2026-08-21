@@ -391,6 +391,18 @@ def available_port(preferred: int) -> int:
     raise RuntimeError("No free local port found from %s" % preferred)
 
 
+def available_udp_port(preferred: int) -> int:
+    """Return one currently bindable local UDP port for the QUIC Demo."""
+    for port in range(preferred, preferred + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
+            try:
+                connection.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError("No free local UDP port found from %s" % preferred)
+
+
 def stop_process(process: subprocess.Popen) -> None:
     if process.poll() is not None:
         return
@@ -578,14 +590,17 @@ def verify(topology: str, interrupt: bool = False) -> None:
     environment = dict(os.environ)
     http_port = available_port(18002)
     websocket_port = available_port(18765)
+    quic_port = available_udp_port(18443)
     environment["SCRAPY_CFFI_DEMO_TOPOLOGY"] = topology
     environment["SCRAPY_CFFI_DEMO_LOG"] = str(log_dir / "demo.log")
     environment["SCRAPY_CFFI_DEMO_HTTP_PORT"] = str(http_port)
     environment["SCRAPY_CFFI_DEMO_WS_PORT"] = str(websocket_port)
+    environment["SCRAPY_CFFI_DEMO_QUIC_PORT"] = str(quic_port)
     server_dir = ROOT / "demo_support" / "server"
     handles = [
         (log_dir / "http_server.log").open("w", encoding="utf-8"),
         (log_dir / "websocket_server.log").open("w", encoding="utf-8"),
+        (log_dir / "quic_server.log").open("w", encoding="utf-8"),
     ]
     processes = []
     try:
@@ -614,9 +629,21 @@ def verify(topology: str, interrupt: bool = False) -> None:
                 stdout=handles[1],
                 stderr=subprocess.STDOUT,
             ),
+            subprocess.Popen(
+                [sys.executable, "-u", "quic_server.py"],
+                cwd=str(server_dir),
+                env=environment,
+                stdout=handles[2],
+                stderr=subprocess.STDOUT,
+            ),
         ]
         wait_for_port(http_port, processes[0])
         wait_for_port(websocket_port, processes[1])
+        wait_for_log_text(
+            log_dir / "quic_server.log",
+            "HTTP/3 demo server started",
+            processes[2],
+        )
         seed_request(
             environment,
             log_dir,
@@ -703,6 +730,8 @@ def verify(topology: str, interrupt: bool = False) -> None:
             failures.append("demo.log is missing")
         if not interrupt and '"method":"GET"' not in console:
             failures.append("HTTP callback evidence is missing")
+        if DEMO_MODE == "memory" and not interrupt and "'protocol': 'HTTP/3'" not in console:
+            failures.append("HTTP/3 callback evidence is missing")
         if not interrupt and "received:" not in websocket:
             failures.append("WebSocket incremental request evidence is missing")
         if interrupt and ">>> [signal] Received stop signal" not in console:

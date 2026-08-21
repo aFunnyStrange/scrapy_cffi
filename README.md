@@ -43,6 +43,14 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 - **Stable CPU platform adapters** with optional Rust acceleration and safe
   Python fallbacks, including Protobuf and Bloom filtering
 
+- **Bounded FFmpeg subprocess utility** for short awaited crawler work or
+  application-owned long-running processes, with explicit state, stop, kill,
+  and cleanup APIs
+
+- **Cross-platform media tools** for lazy MIME/image inspection, audio/video
+  probing, and bounded sequential `MediaRequest` downloads without
+  framework-owned thread/process pools or Crawler-owned media scheduling
+
 - **Redis-compatible scheduler** (optional) for distributed crawling
 
 - **Designed for high-concurrency, high-availability crawling**

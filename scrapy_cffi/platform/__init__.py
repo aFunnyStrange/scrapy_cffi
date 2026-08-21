@@ -9,8 +9,10 @@ from .http import (
     CookieJarProtocol,
     HttpResponseProtocol,
     HttpSessionFactory,
+    HttpCapabilityError,
     HttpTimeoutError,
     HttpTransportError,
+    HttpVersion,
     WebSocketFlag,
 )
 from .protobuf import (
@@ -42,8 +44,10 @@ __all__ = [
     "CurlCffiWebSocket",
     "HttpResponseProtocol",
     "HttpSessionFactory",
+    "HttpCapabilityError",
     "HttpTimeoutError",
     "HttpTransportError",
+    "HttpVersion",
     "ProtobufCodecProtocol",
     "PythonBloomFilter",
     "PythonProtobufCodec",

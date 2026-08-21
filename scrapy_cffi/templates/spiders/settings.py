@@ -51,6 +51,10 @@ def create_settings(
     settings = SettingsInfo()
     settings.ROBOTSTXT_OBEY = False  # Demo server randomizes robots.txt and can introduce noisy nondeterminism.
     settings.TIMEOUT = 30
+    settings.PROCESS_POOL_MAX_WORKERS = 2
+    settings.FFMPEG_MAX_PROCESSES = 2
+    settings.FFMPEG_EXECUTABLE = "ffmpeg"
+    settings.FFPROBE_EXECUTABLE = "ffprobe"
     settings.SPIDERS_PATH = spider_path
     settings.EXTENSIONS_PATH = CustomExtension
     settings.ITEM_PIPELINES_PATH = [CustomPipeline2, CustomPipeline1]

@@ -402,10 +402,15 @@ class SessionWrapper:
             reraise=True
         )
 
-    def _build_request_args(self, request: "HttpRequest") -> Dict:
+    def _build_request_args(
+        self,
+        request: "HttpRequest",
+        headers: Optional[Dict] = None,
+    ) -> Dict:
+        """Build vendor-neutral request arguments with optional headers."""
         args = {
             "url": request.url,
-            "headers": request.headers,
+            "headers": request.headers if headers is None else headers,
             "cookies": request.cookies,
             "proxies": request.proxies,
             "timeout": request.timeout,
@@ -416,6 +421,8 @@ class SessionWrapper:
             "ja3": request.ja3,
             "akamai": request.akamai,
         }
+        if request.http_version is not None:
+            args["http_version"] = request.http_version.value if hasattr(request.http_version, "value") else request.http_version
         if request.data:
             args["data"] = request.data
         args.update({k: v for k, v in request.kwargs.items() if k != "json"})
@@ -430,31 +437,69 @@ class SessionWrapper:
                     return await self.do_request_once(request)
                 
     async def media_req(self, request: MediaRequest):
-        all_file_data = []
+        """Download known-size media in sequential, bounded byte ranges."""
+        if request.media_size == 0:
+            await self.request_limiter.wait()
+            response = await self.session.request(
+                method=request.method,
+                **self._build_request_args(request),
+            )
+            if (
+                request.max_media_size is not None
+                and len(response.content) > request.max_media_size
+            ):
+                raise ValueError("downloaded media exceeds max_media_size")
+            return response
+
+        media_data = bytearray()
         part_byte_start = 0
-        part_byte_end = request.single_part_size
         single_part_response = None
-        while not self.stop_event.is_set():
-            if request.media_size < part_byte_end: # The size of the last segment = total file size - the starting index of the next segment to obtain the file bytes
-                part_byte_end = request.media_size - part_byte_start
-            else:
-                part_byte_end = part_byte_start + request.single_part_size
-            
+        while (
+            part_byte_start < request.media_size
+            and not self.stop_event.is_set()
+        ):
+            part_byte_end = min(
+                part_byte_start + request.single_part_size - 1,
+                request.media_size - 1,
+            )
+            request_headers = dict(request.headers or {})
             range_key = request.find_header_key("Range")
             range_key = range_key if range_key else "Range"
-            request.headers[range_key] = f"bytes={part_byte_start}-{part_byte_end}"
+            request_headers[range_key] = (
+                f"bytes={part_byte_start}-{part_byte_end}"
+            )
             await self.request_limiter.wait()
             single_part_response: HttpResponseProtocol = await self.session.request(
                 method=request.method, 
-                **self._build_request_args(request)
+                **self._build_request_args(request, headers=request_headers)
             )
             single_part_data = single_part_response.content
-            all_file_data.append(single_part_data)
-            part_byte_start = part_byte_end + 1
-            if part_byte_start >= request.media_size:
-                media_data = b''.join(all_file_data)
-                single_part_response.content = media_data
+            media_data.extend(single_part_data)
+            if (
+                part_byte_start == 0
+                and single_part_response.status_code == 200
+                and len(single_part_data) == request.media_size
+            ):
+                part_byte_start = request.media_size
                 break
+            if len(media_data) > request.media_size:
+                raise ValueError(
+                    "downloaded media exceeds declared media_size"
+                )
+            if (
+                request.max_media_size is not None
+                and len(media_data) > request.max_media_size
+            ):
+                raise ValueError("downloaded media exceeds max_media_size")
+            part_byte_start = part_byte_end + 1
+        if part_byte_start < request.media_size:
+            raise asyncio.CancelledError()
+        if len(media_data) != request.media_size:
+            raise ValueError(
+                "downloaded media size does not match declared media_size"
+            )
+        if single_part_response is not None:
+            single_part_response.content = bytes(media_data)
         return single_part_response
     
     async def do_request_once(self, request: "HttpRequest"):

@@ -5,7 +5,7 @@ from pathlib import Path
 from ..core.downloader.internet.request import HttpRequest
 from ..hooks import spiders_hooks
 from ..settings import merge_spider_settings
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..core.downloader.internet.response import Response
     from ..exceptions import Failure
@@ -23,7 +23,7 @@ class BaseSpider(object):
     settings_overlay = {}  # class-level overrides merged into Crawler.settings per spider
     start_request_limit: Optional[int] = None
 
-    def __init__(self, settings=None, run_py_dir="", stop_event=None, resources=None, session_id="", hooks=None, *args, **kwargs):
+    def __init__(self, settings=None, run_py_dir="", stop_event=None, resources=None, session_id="", hooks=None, process_task_manager_factory=None, *args, **kwargs):
         """Bind one spider instance to crawler-owned settings and resources."""
         self.settings: "SettingsInfo" = settings
         self.run_py_dir: Path = run_py_dir
@@ -31,6 +31,7 @@ class BaseSpider(object):
         self.resources: "ResourceService" = resources
         self.session_id = session_id # If not set, all will share the default session
         self.hooks: "SpidersHooks" = hooks
+        self._process_task_manager_factory = process_task_manager_factory
         
         # Whether to load the JS method; place it under the project's root js_path
         self.ctx_dict = {}
@@ -61,7 +62,23 @@ class BaseSpider(object):
             resources=crawler.resources,
             session_id="",
             hooks=spiders_hooks(crawler, sch),
+            process_task_manager_factory=getattr(
+                crawler,
+                "get_process_task_manager",
+                None,
+            ),
         )
+
+    async def run_in_process(
+        self,
+        func: Callable[..., Any],
+        **kwargs: Any,
+    ) -> Any:
+        """Await one short picklable call in the crawler-owned lazy process pool."""
+        if self._process_task_manager_factory is None:
+            raise RuntimeError("spider is not bound to a crawler process pool")
+        manager = self._process_task_manager_factory()
+        return await manager.run(func, **kwargs)
 
     def use_execjs(self, ctx_key: str="", funcname: str="", params: tuple=()) -> str:
         """Execute one named function from a configured JavaScript context."""

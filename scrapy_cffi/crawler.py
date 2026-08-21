@@ -42,6 +42,7 @@ class Crawler:
         self.pipelines_chain = None
         self.sessions = None
         self.http_session_factory = None
+        self._process_task_manager = None
         self.sessions_lock = None
 
         self.resources: "ResourceService" = None
@@ -73,6 +74,16 @@ class Crawler:
         from .composition import build_resource_service
 
         return build_resource_service(self.settings, self.stop_event, logger=self.logger)
+
+    def get_process_task_manager(self):
+        """Return the crawler-owned lazy pool without starting worker processes."""
+        if self._process_task_manager is None:
+            from .utils.process import ProcessTaskManager
+
+            self._process_task_manager = ProcessTaskManager(
+                max_workers=self.settings.PROCESS_POOL_MAX_WORKERS,
+            )
+        return self._process_task_manager
 
     async def do_initialization(self, settings: "SettingsInfo", start_type=0):
         self.stop_event = asyncio.Event()
@@ -291,6 +302,8 @@ class Crawler:
         async with self._runtime_close_lock:
             if self._runtime_closed:
                 return
+            if self._process_task_manager is not None:
+                await self._process_task_manager.close()
             await self.sessions.close_all()
             await self.signalManager.stop()
             self._runtime_closed = True

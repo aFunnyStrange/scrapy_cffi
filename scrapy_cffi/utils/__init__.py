@@ -41,12 +41,12 @@ if TYPE_CHECKING:
     from .concurrency import (
         CallFunction,
         ProcessManager,
-        ProcessTaskManager,
         ThreadFuture,
         run_coroutine_in_new_loop,
         run_coroutine_in_thread,
         safe_call,
     )
+    from .process import ProcessTaskError, ProcessTaskManager
     from .email import Email
     from .envConfig import (
         env_to_settings,
@@ -54,6 +54,15 @@ if TYPE_CHECKING:
         settings_to_env,
     )
     from .fd import FDUtil
+    from .ffmpeg import (
+        FFmpegProcess,
+        FFmpegProcessError,
+        FFmpegProcessManager,
+        FFmpegProcessState,
+        FFmpegProcessTimeoutError,
+        FFmpegResult,
+        StreamCallback,
+    )
     from .jsonLoad import JSONExtractor, JSONScanner, extract_json_chain, extract_nested_objects
     from .log import (
         KafkaLoggingHandler,
@@ -61,6 +70,25 @@ if TYPE_CHECKING:
         init_logger,
         init_logger_multiprocessing,
         start_multiprocess_log_listener,
+    )
+    from .media import (
+        MediaDependencyError,
+        MediaInspectionError,
+        MediaProbe,
+        MediaProbeError,
+        MediaProbeResult,
+        MediaStreamInfo,
+        get_audio_info_from_bytes_async,
+        get_image_info_from_bytes,
+        get_image_info_from_tempfile,
+        get_video_info_from_bytes,
+        get_video_info_from_bytes_async,
+        get_video_info_from_tempfile,
+        guess_content_type,
+        inspect_image_bytes,
+        inspect_image_bytes_async,
+        inspect_video_bytes_async,
+        probe_media_bytes,
     )
     from .protobuf import ProtobufFactory
     from .robot import RobotsManager, RobotsTxtRules, parse_robots_txt

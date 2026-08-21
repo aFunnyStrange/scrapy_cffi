@@ -12,6 +12,7 @@ from .http import (
     AsyncWebSocketProtocol,
     CookieJarProtocol,
     HttpResponseProtocol,
+    HttpCapabilityError,
     HttpTimeoutError,
     HttpTransportError,
 )
@@ -52,6 +53,38 @@ def _load_vendor() -> _CurlVendor:
             error=getattr(vendor_root, "CurlError"),
         )
     return _vendor
+
+
+def _normalize_http_version(kwargs: Any) -> Any:
+    """Translate framework HTTP version strings into installed curl constants."""
+    value = kwargs.get("http_version")
+    if value is None or not isinstance(value, str):
+        return kwargs
+    constant_name = {
+        "v1": "V1_1",
+        "v2": "V2_0",
+        "v2tls": "V2TLS",
+        "v2_prior_knowledge": "V2_PRIOR_KNOWLEDGE",
+        "v3": "V3",
+        "v3only": "V3ONLY",
+    }.get(value)
+    if constant_name is None:
+        raise HttpCapabilityError("unsupported HTTP version preference: %s" % value)
+    constants = _load_vendor().constants
+    version_type = getattr(constants, "CurlHttpVersion", None)
+    version_value = getattr(version_type, constant_name, None)
+    if version_value is None:
+        raise HttpCapabilityError(
+            "installed curl_cffi does not expose HTTP version %s" % value
+        )
+    normalized = dict(kwargs)
+    normalized["http_version"] = version_value
+    if value in {"v3", "v3only"} and normalized.get("extra_fp") is None:
+        ssl_version_type = getattr(constants, "CurlSslVersion", None)
+        tls_v1_3 = getattr(ssl_version_type, "TLSv1_3", None)
+        if tls_v1_3 is not None:
+            normalized["extra_fp"] = {"tls_min_version": tls_v1_3}
+    return normalized
 
 
 async def _call_websocket_method(method: Any, *args: Any, **kwargs: Any) -> Any:
@@ -217,7 +250,10 @@ class CurlCffiHttpSession:
     async def request(self, method: str, **kwargs: Any) -> HttpResponseProtocol:
         """Perform an HTTP request and normalize vendor exceptions."""
         try:
-            return await self.raw_session.request(method=method, **kwargs)
+            return await self.raw_session.request(
+                method=method,
+                **_normalize_http_version(kwargs),
+            )
         except asyncio.CancelledError:
             raise
         except self._curl_error as exc:
@@ -237,7 +273,10 @@ class CurlCffiHttpSession:
     async def open_stream(self, method: str, **kwargs: Any) -> AsyncHttpStreamProtocol:
         """Enter the curl_cffi stream context and transfer ownership to a wrapper."""
         try:
-            context = self.raw_session.stream(method=method, **kwargs)
+            context = self.raw_session.stream(
+                method=method,
+                **_normalize_http_version(kwargs),
+            )
             response = await context.__aenter__()
             return CurlCffiHttpStream(response=response, context=context)
         except asyncio.CancelledError:

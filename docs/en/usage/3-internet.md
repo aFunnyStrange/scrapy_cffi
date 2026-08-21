@@ -171,7 +171,7 @@ extra_fp: Optional[Union[ExtraFingerprints, ExtraFpDict]] = None,
 default_headers: Optional[bool] = None,
 default_encoding: Union[str, Callable[[bytes], str]] = "utf-8",
 quote: Union[str, Literal[False]] = "",
-http_version: Optional[CurlHttpVersion] = None,
+http_version: Optional[Union[HttpVersion, str]] = None,
 interface: Optional[str] = None,
 cert: Optional[Union[str, Tuple[str, str]]] = None,
 max_recv_speed: int = 0,
@@ -179,6 +179,30 @@ multipart: Optional[CurlMime] = None,
 ```
 
 **Note**: Any unsupported keyword arguments will raise an error.
+
+### HTTP/3 / QUIC (experimental request support)
+
+HTTP/3 is a per-request transport preference, not a WebSocket-style listener:
+
+```python
+from scrapy_cffi.internet import HttpRequest
+from scrapy_cffi.platform import HttpVersion
+
+yield HttpRequest(
+    url="https://example.com/",
+    http_version=HttpVersion.HTTP_3_ONLY,
+    callback=self.parse,
+)
+```
+
+`HTTP_3` permits curl's earlier-version fallback; `HTTP_3_ONLY` fails when the
+active curl build, UDP path, server, or proxy cannot establish QUIC. The
+generated Demo contains a minimal `aioquic` HTTP/3 server and request example.
+Server Push, QUIC unidirectional-stream callbacks, datagrams, WebTransport, and
+MASQUE proxy control are not exposed by the framework yet. No background QUIC
+listener Task is created. Traditional HTTP proxies generally cannot tunnel
+UDP; proxy-preserved HTTP/3 requires explicit CONNECT-UDP/MASQUE support in the
+proxy and curl build.
 
 ## 2.2 HttpRequest
 ### 2.2.1 Attributes
@@ -436,15 +460,21 @@ connection lifecycle at the callback that owns the decision.
 
 
 ## 2.4 MediaRequest
-`MediaRequest` is a subclass of `HttpRequest` designed for segmented downloading of video files.
-In some cases, downloading the entire video in a single request may fail. By splitting the download into multiple segments, the process becomes more reliable.
-Essentially, `MediaRequest` wraps the use of the Range header in HTTP requests, so you don’t need to manually construct multiple `HttpRequest` objects for each segment in your spider code.
+`MediaRequest` is a subclass of `HttpRequest` for sequential ranged downloads
+of image, audio, or video bodies. It runs on the existing crawler event loop and
+does not create worker tasks, threads, or parallel range requests.
+
+When `media_size > 0`, the downloader requests inclusive byte ranges in order
+and combines them into the ordinary buffered response. When `media_size == 0`,
+it performs one normal request because it cannot safely invent range bounds.
+The original request headers are never mutated.
 
 ### 2.4.1 Attributes
 | Attribute | Description |
 | --------- | ----------- |
-| **single_part_size** | The size (in **bytes**) of each video segment to download. |
-| **media_size** | The total size (in **bytes**) of the video file, required in order to determine the final segment to request. |
+| **single_part_size** | Positive size in bytes of each sequential range. |
+| **media_size** | Known total byte size, or `0` for one ordinary request. |
+| **max_media_size** | Optional positive in-memory download bound. |
 
 
 ---

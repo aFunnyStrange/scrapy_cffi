@@ -54,17 +54,23 @@ print(result)  # output: 20
 ```
 
 ## 2.3 ProcessTaskManager
-Run asynchronous functions inside **synchronous process environments**, supporting both result-returning and background execution.
-**Main methods:**
-- `await manager.run(func, return_result=True, **kwargs)`
-    - Run a task and return the result
-- `manager.terminate_all()`
-    - Terminate all spawned child processes
+`ProcessTaskManager(max_workers=2)` is a bounded `ProcessPoolExecutor` owner for
+short, awaited work. Construction starts neither an executor nor a child
+process; the first `await manager.run(func, **kwargs)` submission starts the
+pool. Functions and arguments must be picklable, so define worker functions at
+module scope and never pass a parent-process connection or session.
 
-**Features:**
-- Automatically registers `atexit` cleanup
-- Cross-process signal handling support on Linux/macOS
-- On Windows, Ctrl+C may cause hangs (use with caution)
+Spiders normally use the crawler-owned convenience API:
+
+```python
+result = await self.run_in_process(parse_archive, payload=response.content)
+```
+
+The Crawler creates this manager only after the first call and closes it during
+shutdown. `PROCESS_POOL_MAX_WORKERS` controls its process bound. Cancellation
+cancels queued work but cannot safely preempt Python already running inside a
+worker, which is why this API is intentionally limited to short tasks. Build
+long-lived process supervision in `runner.py`.
 
 ## 2.4 ProcessManager
 Implements a native Python **multiprocessing RPC** model: server registers, client calls.
@@ -87,6 +93,65 @@ Comparison Table:
 
 > Combination of **ProcessManager + ProcessTaskManager**: Best for small to mid-sized projects, fast development, single-machine or LAN.
 > **MQ/Redis**: For large-scale distributed systems, heavy workloads, or frequent cross-machine calls.
+
+## 2.5 FFmpegProcessManager
+
+`FFmpegProcessManager` is a standalone utility, not a Crawler service. It has
+no worker loop and starts no process until `create()` or `run()` is called.
+Use it directly inside a Spider for short awaited work:
+
+```python
+from scrapy_cffi.utils.ffmpeg import FFmpegProcessManager
+
+manager = FFmpegProcessManager(max_processes=2)
+result = await manager.run(
+    "-i", input_path,
+    "-frames:v", "1",
+    output_path,
+    timeout=30,
+)
+assert result.succeeded
+await manager.close()
+```
+
+`FFmpegProcessManager.from_settings(settings)` reads
+`FFMPEG_MAX_PROCESSES` and `FFMPEG_EXECUTABLE`; `MediaProbe.from_settings`
+uses the same bound plus `FFPROBE_EXECUTABLE`. These constructors remain lazy.
+
+Commands are always launched with `asyncio.create_subprocess_exec()` and a
+structured argument sequence; no shell parses or expands the arguments. This
+prevents shell injection, but it does not make arbitrary FFmpeg options safe.
+Treat the executable, input/output paths, URLs, protocols, and options as
+trusted application configuration. Never forward a raw HTTP, queue, or scraped
+value as a command. Applications accepting untrusted media references must
+validate their allowed protocols and paths themselves; the framework does not
+inject an incomplete FFmpeg option whitelist or `protocol_whitelist` that
+could silently change legitimate jobs.
+
+Use `create()` when the application needs a retained handle:
+
+```python
+process = manager.create("-i", input_path, output_path)
+await process.wait_started()
+print(process.task_id, process.pid, process.state)
+
+# Prefer FFmpeg's `q` command, then terminate/kill after bounded grace periods.
+result = await process.stop()
+```
+
+The manager limits live operating-system processes with an asyncio Semaphore.
+`max_processes=None` means unlimited. Handles expose `QUEUED`, `STARTING`,
+`RUNNING`, `STOPPING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, and `KILLED` states.
+Finished handles retain their result, while the manager does not persist
+history.
+
+For long-running pulls or recording, create and close the manager in the
+generated project's `runner.py`; the Crawler does not own or restart those
+processes. On Windows, asyncio subprocesses require `ProactorEventLoop`.
+Generated projects intentionally keep `WindowsSelectorEventLoopPolicy` by
+default for curl_cffi development, so projects selecting FFmpeg subprocesses
+must explicitly choose `WindowsProactorEventLoopPolicy` before creating their
+event loop. The framework does not change this policy automatically.
 
 
 ---
@@ -177,6 +242,31 @@ Import from `scrapy_cffi.utils.media` (requires `pip install scrapy_cffi[media]`
 
 All functions operate directly on byte streams provided as input.
 
+The media module loads each optional library only when its corresponding tool
+is called. Importing it does not require Pillow, filetype, or hachoir.
+Synchronous cross-platform parsers remain plain functions; inside a Spider use
+`inspect_image_bytes_async()` or `inspect_video_bytes_async()` so blocking
+library work runs through `asyncio.to_thread()`.
+
+For audio/video probing, prefer `MediaProbe`. It owns only short asynchronous
+ffprobe subprocesses, limits them with `max_processes`, and never registers a
+Crawler service, `TaskManager` task, or worker loop.
+
+```python
+from scrapy_cffi.utils.media import MediaProbe
+
+# Construct this in runner.py for repeated work and inject it into user code.
+probe = MediaProbe(max_processes=2)
+audio = await probe.probe_bytes(response.content, input_format="wav")
+print(audio.duration, audio.audio_streams[0].sample_rate)
+await probe.close()
+```
+
+For a one-shot task, `probe_media_bytes()` and
+`get_audio_info_from_bytes_async()` create and close a one-process owner.
+Long-running FFmpeg streams still belong in `runner.py`, using
+`FFmpegProcessManager.create()` with application-owned monitoring and shutdown.
+
 ## 4.1 guess_content_type
 **Purpose**: Detect the MIME type from raw byte content.
 
@@ -227,10 +317,12 @@ else:
 ```
 
 ## 4.3 get_video_info_from_bytes
-**Purpose**: Extract video metadata directly from a byte stream (no temporary files).
+**Purpose**: Preserve synchronous video inspection through hachoir.
 
 **Requirements**:
-- System-installed `ffprobe` (part of FFmpeg).
+- `hachoir`. Async callers should prefer
+  `get_video_info_from_bytes_async()`, which uses ffprobe without blocking the
+  crawler loop.
 
 **Parameters**:
 - `video_bytes: bytes` – video data in bytes.
@@ -258,8 +350,8 @@ else:
 ```
 
 ## 4.4 get_image_info_from_tempfile
-**Purpose**: Extract image metadata using a temporary file.
-Useful for cross-platform packaging or restricted environments.
+**Purpose**: Preserve the historical name. It now delegates to Pillow's
+in-memory parser and does not create a temporary file.
 
 **Parameters**:
 - `image_bytes: bytes` – image data.
@@ -269,7 +361,7 @@ Useful for cross-platform packaging or restricted environments.
 - `str` with error message if failed.
 
 **Notes**:
-- Creates and automatically deletes a temporary file.
+- New code should use `inspect_image_bytes()` or its async facade.
 
 **Example Usage**:
 ```python

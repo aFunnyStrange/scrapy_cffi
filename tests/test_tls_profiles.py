@@ -88,7 +88,28 @@ class _CaptureSession:
     async def request(self, method, **kwargs):
         """Record one request and return a minimal response."""
         self.calls.append((method, kwargs))
-        return SimpleNamespace(status_code=200, content=b"ok", text="ok", headers={})
+        headers = kwargs.get("headers") or {}
+        range_value = next(
+            (
+                value
+                for key, value in headers.items()
+                if key.lower() == "range"
+            ),
+            None,
+        )
+        if range_value is not None:
+            start_text, end_text = range_value.removeprefix("bytes=").split("-")
+            content = b"x" * (int(end_text) - int(start_text) + 1)
+            status_code = 206
+        else:
+            content = b"ok"
+            status_code = 200
+        return SimpleNamespace(
+            status_code=status_code,
+            content=content,
+            text=content.decode(),
+            headers={},
+        )
 
     async def connect_websocket(self, **kwargs):
         """Record one WebSocket connection request."""

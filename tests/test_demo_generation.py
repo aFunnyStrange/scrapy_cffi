@@ -35,6 +35,7 @@ def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
 
     assert "from spiders.customSpider import CustomSpider" in runner
     assert "DEFAULT_SPIDER: Type[BaseSpider] = CustomSpider" in runner
+    assert "asyncio.WindowsSelectorEventLoopPolicy()" in runner
     assert 'spider_path="spiders.CustomSpider"' not in runner
     assert 'settings.EXTENSIONS_PATH = "' not in settings
     assert '"interceptors.CustomDownloadInterceptor' not in settings
@@ -191,9 +192,20 @@ def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypa
             if mode == "rabbit"
             else "scrapy_cffi[kafka]"
         )
-        assert (project / "requirements.txt").read_text(
+        requirements = (project / "requirements.txt").read_text(
             encoding="utf-8"
-        ).strip() == requirement
+        ).splitlines()
+        assert requirements[0] == requirement
+        assert "fastapi>=0.115" in requirements
+        assert "websockets>=15.0,<16" in requirements
+        assert (
+            "aioquic>=1.0,<1.3; python_version < '3.10'"
+            in requirements
+        )
+        assert (
+            "aioquic>=1.3,<2; python_version >= '3.10'"
+            in requirements
+        )
         kafka_publisher = project / "scripts" / "push_kafka_demo.py"
         rabbit_publisher = project / "scripts" / "push_rabbitmq_demo.py"
         if mode == "kafka":
@@ -240,8 +252,11 @@ def test_demo_verifier_uses_environment_endpoints_and_retained_logs(
     manager = (project / "scripts" / "demo_docker.py").read_text(encoding="utf-8")
     assert "SCRAPY_CFFI_DEMO_LOG" in manager
     assert "artifacts\" / \"demo-verification" in manager
-    assert "DEMO_HTTP_URL" in spider
+    assert "DEMO_PROCESS_URL" in spider
     assert "DEMO_WS_URL" in spider
+    assert "run_in_process" in spider
+    assert "PROCESS_POOL_MAX_WORKERS = 2" in settings
+    assert "FFMPEG_EXECUTABLE = \"ffmpeg\"" in settings
     assert "SCRAPY_CFFI_DEMO_HTTP_PORT" in endpoints
     assert "SCRAPY_CFFI_DEMO_WS_PORT" in endpoints
     assert "SCRAPY_CFFI_DEMO_WS_PORT" in websocket_server

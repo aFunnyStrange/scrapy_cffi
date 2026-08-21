@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.3** release: [docs/RELEASE-0.4.3.md](docs/RELEASE-0.4.3.md) · **0.4.2** release: [docs/RELEASE-0.4.2.md](docs/RELEASE-0.4.2.md)
 
+## [Unreleased]
+
+### Added
+
+- Cross-platform media utilities now cover image, video, and audio metadata.
+  Optional libraries load only when selected, synchronous Pillow/hachoir work
+  has explicit `asyncio.to_thread()` facades, and reusable `MediaProbe` owners
+  limit short asynchronous ffprobe subprocesses without Crawler integration.
+- `MediaRequest` supports unknown-size single requests, correct inclusive
+  sequential ranges, immutable caller headers, and an optional in-memory size
+  bound. Media models add the backward-compatible numeric audio kind `2`.
+- A standalone `FFmpegProcessManager` utility provides shell-free asyncio
+  subprocess creation, bounded process concurrency, observable in-memory
+  states, bounded stdout/stderr tails, graceful stop, force kill, and explicit
+  cleanup. It is not registered as a Crawler service: short Spider tasks may
+  await it directly, while long-running streams remain owned by application
+  entrypoints such as generated `runner.py` files.
+- `BaseSpider.run_in_process()` exposes a crawler-owned, bounded process pool
+  for short awaited work. The executor and workers start only on first use and
+  close with the crawler; settings also select pool size and FFmpeg/ffprobe
+  executable paths.
+- `HttpVersion.HTTP_3` and `HTTP_3_ONLY` provide vendor-neutral HTTP/3 request
+  preferences. The generated Demo includes an optional minimal aioquic server,
+  while Server Push, datagrams, WebTransport, and QUIC proxy control remain
+  explicitly outside the current request-only contract.
+
 ## [0.4.3] - 2026-08-20
 
 ### Added
@@ -44,8 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server APIs.
 - Downloader stream and WebSocket paths no longer introduce a hidden local
   concurrency cap when `MAX_CONCURRENT_REQ=None`.
-
-FFmpeg multiprocessing is intentionally outside the 0.4.3 scope.
 
 ## [0.4.2] - 2026-08-16
 

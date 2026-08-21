@@ -5,8 +5,8 @@ try:
     from websockets.exceptions import ConnectionClosed
 except ImportError as e:
     raise ImportError(
-        "Missing websockets dependencies. (dev env websockets==15.0.1)"
-        "Please install: pip install websockets"
+        "Missing websockets dependency. "
+        "Please install: pip install 'websockets>=15.0,<16'"
     ) from e
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:

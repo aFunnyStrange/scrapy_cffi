@@ -1,12 +1,12 @@
 # just a simple server for the demo project, without using the static dir.
 try:
-    import uvicorn, random, time, string
+    import asyncio, uvicorn, random, time, string
     from fastapi import FastAPI, Request, HTTPException, Response
     from fastapi.responses import PlainTextResponse, JSONResponse
 except ImportError as e:
     raise ImportError(
         "Missing fastapi dependencies. "
-        "Please install: pip install fastapi uvicorn"
+        "Please install: pip install 'fastapi>=0.115' 'uvicorn>=0.30'"
     ) from e
 
 app = FastAPI()
@@ -31,6 +31,14 @@ async def get_root(request: Request, response: Response):
     query_params = dict(request.query_params)
     response.set_cookie(key="demo_cookie", value=random_cookie(), httponly=True, path="/")
     return {"method": "GET", "params": query_params}
+
+@app.get("/process-task")
+async def process_task(delay: float = 0.05, value: int = 21):
+    """Return after an asynchronous delay for the generated process demo."""
+    if delay < 0 or delay > 2:
+        raise HTTPException(status_code=400, detail="delay must be between 0 and 2")
+    await asyncio.sleep(delay)
+    return {"method": "GET", "value": value}
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robot_url(request: Request):

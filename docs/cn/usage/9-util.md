@@ -16,11 +16,68 @@
 
 ### `ProcessTaskManager`
 
-管理有界子进程任务、结果队列与回收。提交函数和参数必须可序列化；调用者仍负责业务幂等性和外部资源连接，不能把父进程连接池传入子进程。
+`ProcessTaskManager(max_workers=2)` 为短时、可等待任务提供有界进程池。构造时
+不会创建 Executor 或子进程，第一次 `await manager.run(...)` 才懒启动。Spider
+可直接使用 `await self.run_in_process(func, **kwargs)`；Crawler 只在首次调用后
+持有 Manager，并在 shutdown 时关闭。`PROCESS_POOL_MAX_WORKERS` 控制上限。
+函数与参数必须可 Pickle，Worker 函数应定义在模块顶层，不能传入父进程的连接池。
+取消只能阻止排队任务，不能安全抢占 Worker 中已经执行的 Python，因此这里只适合
+短任务；常驻多进程调度仍应放在 `runner.py`。
 
 ### `ProcessManager`
 
 提供更高层的多进程生命周期管理。多进程日志应通过集中 Listener 汇聚，多个进程不得直接写同一个文件。
+
+### `FFmpegProcessManager`
+
+`FFmpegProcessManager` 是独立工具，不是 Crawler 内置服务。它没有常驻
+Worker 循环，只有调用 `create()` 或 `run()` 时才会创建子进程。短任务可以
+直接在 Spider 内等待：
+
+```python
+from scrapy_cffi.utils.ffmpeg import FFmpegProcessManager
+
+manager = FFmpegProcessManager(max_processes=2)
+result = await manager.run(
+    "-i", input_path,
+    "-frames:v", "1",
+    output_path,
+    timeout=30,
+)
+assert result.succeeded
+await manager.close()
+```
+
+`FFmpegProcessManager.from_settings(settings)` 读取 `FFMPEG_MAX_PROCESSES`
+和 `FFMPEG_EXECUTABLE`；`MediaProbe.from_settings(settings)` 另外读取
+`FFPROBE_EXECUTABLE`。这些构造方法同样不会立即启动子进程。
+
+命令始终通过 `asyncio.create_subprocess_exec()` 和结构化参数序列启动，不会
+交给 shell 解析或展开。这样可以阻止 shell 注入，但不代表任意 FFmpeg 参数都
+是安全的。可执行文件、输入输出路径、URL、协议和选项都应属于可信的应用配置；
+不要把 HTTP、消息队列或抓取结果中的原始值直接作为命令。接收不可信媒体引用的
+应用应自行校验允许的协议和路径。框架不会注入一份不完整的 FFmpeg 参数白名单或
+`protocol_whitelist`，以免悄悄改变合法任务的行为。
+
+需要自行持有进程时使用 `create()`：
+
+```python
+process = manager.create("-i", input_path, output_path)
+await process.wait_started()
+print(process.task_id, process.pid, process.state)
+result = await process.stop()
+```
+
+Manager 使用 asyncio Semaphore 限制实际存活的操作系统进程数，
+`max_processes=None` 表示不限量。Handle 可识别 `QUEUED`、`STARTING`、
+`RUNNING`、`STOPPING`、`SUCCEEDED`、`FAILED`、`CANCELLED`、`KILLED`
+状态。Handle 会保留自己的终态结果，但 Manager 不持久化历史。
+
+长期拉流或录制应在生成项目的 `runner.py` 中自行创建、监控和关闭，Crawler
+不会接管或重启这些进程。Windows 的 asyncio 子进程要求 Proactor loop；生成
+项目为了默认 curl_cffi 开发体验仍保留 `WindowsSelectorEventLoopPolicy`，使用
+FFmpeg 子进程的项目需要在创建事件循环前显式切换为
+`WindowsProactorEventLoopPolicy`，框架不会自动修改该策略。
 
 ## 2. 日志
 
@@ -62,8 +119,31 @@ pip install "scrapy_cffi[media]"
 | `guess_content_type(byte_data)` | 基于内容推断 MIME，优先使用 `filetype` |
 | `get_image_info_from_bytes(image_bytes)` | 直接从 bytes 获取图片格式、尺寸等信息 |
 | `get_video_info_from_bytes(video_bytes)` | 从视频 bytes 获取元数据，依赖可用解析后端 |
-| `get_image_info_from_tempfile(image_bytes)` | 必须走文件接口时使用受控临时文件 |
-| `get_video_info_from_tempfile(video_bytes)` | 通过临时文件与 ffprobe/解析器读取视频信息 |
+| `get_image_info_from_tempfile(image_bytes)` | 兼容旧名称，当前直接使用 Pillow 内存解析 |
+| `get_video_info_from_tempfile(video_bytes)` | 兼容旧名称，通过受控临时文件与 hachoir 解析 |
+
+媒体模块按函数懒加载 `filetype`、Pillow 和 hachoir；导入框架或媒体模块本身
+不会强制安装全部可选库。在 Spider 内调用同步解析库时，使用
+`inspect_image_bytes_async()` 或 `inspect_video_bytes_async()`，它们通过
+`asyncio.to_thread()` 避免阻塞当前 loop。
+
+音视频统一推荐异步 `MediaProbe`。它只拥有短时 ffprobe 子进程，通过
+`max_processes` 限制同时存活数量，不注册为 Crawler 服务或 `TaskManager`
+任务，也没有 Worker 循环：
+
+```python
+from scrapy_cffi.utils.media import MediaProbe
+
+# 重复使用时由 runner.py 创建并注入用户代码。
+probe = MediaProbe(max_processes=2)
+audio = await probe.probe_bytes(response.content, input_format="wav")
+print(audio.duration, audio.audio_streams[0].sample_rate)
+await probe.close()
+```
+
+一次性任务可直接调用 `probe_media_bytes()` 或
+`get_audio_info_from_bytes_async()`。长时间拉流仍应在 `runner.py` 使用
+`FFmpegProcessManager.create()`，由用户入口负责监控、重启和关闭。
 
 临时文件版本会清理自己创建的文件。大体积媒体不应通过 MQ 传递，应存储到对象存储或其他持久 Blob Store，并在队列里只传引用。
 

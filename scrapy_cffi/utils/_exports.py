@@ -45,12 +45,12 @@ _reg(
     "concurrency",
     "run_coroutine_in_new_loop",
     "run_coroutine_in_thread",
-    "ProcessTaskManager",
     "ProcessManager",
     "ThreadFuture",
     "CallFunction",
     "safe_call",
 )
+_reg("process", "ProcessTaskError", "ProcessTaskManager")
 _reg(
     "jsonLoad",
     "extract_nested_objects",
@@ -76,8 +76,40 @@ _reg(
     "settings_to_env",
 )
 _reg("fd", "FDUtil")
+_reg(
+    "media",
+    "MediaDependencyError",
+    "MediaInspectionError",
+    "MediaProbe",
+    "MediaProbeError",
+    "MediaProbeResult",
+    "MediaStreamInfo",
+    "get_audio_info_from_bytes_async",
+    "get_image_info_from_bytes",
+    "get_image_info_from_tempfile",
+    "get_video_info_from_bytes",
+    "get_video_info_from_bytes_async",
+    "get_video_info_from_tempfile",
+    "guess_content_type",
+    "inspect_image_bytes",
+    "inspect_image_bytes_async",
+    "inspect_video_bytes_async",
+    "probe_media_bytes",
+)
+_reg(
+    "ffmpeg",
+    "FFmpegProcess",
+    "FFmpegProcessError",
+    "FFmpegProcessManager",
+    "FFmpegProcessState",
+    "FFmpegProcessTimeoutError",
+    "FFmpegResult",
+    "StreamCallback",
+)
 
-_SUBMODULES = frozenset({"media", "envConfig", "fd", "scrapyRunner", "blackboxprotobuf"})
+_SUBMODULES = frozenset(
+    {"media", "envConfig", "fd", "ffmpeg", "process", "scrapyRunner", "blackboxprotobuf"}
+)
 
 __all__ = sorted(set(_EXPORTS) | set(_SUBMODULES))
 

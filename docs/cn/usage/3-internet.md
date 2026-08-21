@@ -56,6 +56,28 @@ async def on_error(self, failure):
 
 ## 2. HttpRequest
 
+### HTTP/3 / QUIC（实验性请求支持）
+
+HTTP/3 是单次请求的传输偏好，不会创建类似 WebSocket 的后台监听任务：
+
+```python
+from scrapy_cffi.internet import HttpRequest
+from scrapy_cffi.platform import HttpVersion
+
+yield HttpRequest(
+    url="https://example.com/",
+    http_version=HttpVersion.HTTP_3_ONLY,
+    callback=self.parse,
+)
+```
+
+`HTTP_3` 允许 curl 回退到较早 HTTP 版本；`HTTP_3_ONLY` 在 curl 构建、UDP
+路径、服务器或代理无法建立 QUIC 时明确失败。生成 Demo 提供最小 `aioquic`
+HTTP/3 Server 与爬虫请求示例。当前框架尚未暴露 Server Push、QUIC 单向流
+回调、Datagram、WebTransport 或 MASQUE 代理控制，也不会伪造全局监听 Task。
+传统 HTTP 代理通常不能隧道 UDP；经代理保持 HTTP/3 需要代理与 curl 构建同时
+支持 CONNECT-UDP/MASQUE。
+
 在公共字段外增加 `method`、`data` 与 `json`。传 `json` 时框架紧凑序列化并补充 `Content-Type: application/json`；显式 Header 不应被无条件覆盖。
 
 ```python
@@ -134,7 +156,11 @@ yield WebSocketRequest(
 
 ## 4. MediaRequest
 
-继承 `HttpRequest`，增加 `single_part_size`（默认 2,999,999 bytes）和 `media_size`，用于媒体分段下载信息。它同样支持显式 `impersonate`、Session、回调与 Scheduler 持久化。
+继承 `HttpRequest`，用于图片、音频和视频的顺序 Range 下载。它只在现有
+asyncio loop 内逐段请求，不创建并发任务、线程或进程。`media_size > 0` 时按
+inclusive byte range 顺序合并内容；`media_size == 0` 时退化为一次普通请求。
+`max_media_size` 可选地限制内存中允许保存的媒体大小，原始 Headers 不会被修改。
+它同样支持显式 `impersonate`、Session、回调与 Scheduler 持久化。
 
 ## 5. Response 公共字段
 

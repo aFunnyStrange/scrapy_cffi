@@ -1,6 +1,6 @@
 """Define HTTP and WebSocket capabilities consumed by the crawler core."""
 
-from enum import IntFlag
+from enum import Enum, IntFlag
 from typing import Any, AsyncIterator, Callable, Dict, Iterable, Optional, Protocol
 
 
@@ -8,8 +8,23 @@ class HttpTransportError(ConnectionError):
     """Report a request-library failure through a framework-owned exception."""
 
 
+class HttpCapabilityError(HttpTransportError):
+    """Report a requested HTTP capability absent from the active transport."""
+
+
 class HttpTimeoutError(HttpTransportError, TimeoutError):
     """Report a vendor or framework HTTP timeout through stable semantics."""
+
+
+class HttpVersion(str, Enum):
+    """Select a stable HTTP wire-version preference for one request."""
+
+    HTTP_1 = "v1"
+    HTTP_2 = "v2"
+    HTTP_2_TLS = "v2tls"
+    HTTP_2_PRIOR_KNOWLEDGE = "v2_prior_knowledge"
+    HTTP_3 = "v3"
+    HTTP_3_ONLY = "v3only"
 
 
 class WebSocketFlag(IntFlag):
@@ -138,7 +153,9 @@ __all__ = [
     "CookieJarProtocol",
     "HttpResponseProtocol",
     "HttpSessionFactory",
+    "HttpCapabilityError",
     "HttpTimeoutError",
     "HttpTransportError",
+    "HttpVersion",
     "WebSocketFlag",
 ]

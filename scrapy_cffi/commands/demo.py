@@ -43,7 +43,15 @@ def run(
         if use_rabbitmq
         else "scrapy_cffi"
     )
-    write_utf8_file(target / "requirements.txt", requirement + "\n")
+    write_utf8_file(
+        target / "requirements.txt",
+        requirement
+        + "\nfastapi>=0.115\n"
+        + "uvicorn>=0.30\n"
+        + "websockets>=15.0,<16\n"
+        + "aioquic>=1.0,<1.3; python_version < '3.10'\n"
+        + "aioquic>=1.3,<2; python_version >= '3.10'\n",
+    )
 
     if use_tls:
         spider_dir = target / "spiders"

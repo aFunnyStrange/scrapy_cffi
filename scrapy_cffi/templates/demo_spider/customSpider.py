@@ -1,6 +1,7 @@
-"""In-memory Demo spider covering HTTP and event-driven WebSocket flows."""
+"""In-memory Demo spider covering process, HTTP, and WebSocket flows."""
 
-from demo_support.endpoints import DEMO_HTTP_URL, DEMO_WS_URL
+from demo_support.endpoints import DEMO_PROCESS_URL, DEMO_QUIC_URL, DEMO_WS_URL
+from demo_support.process_tasks import double_in_worker
 from items.item import CustomItem
 from scrapy_cffi.exceptions import Failure
 from scrapy_cffi.internet import (
@@ -9,8 +10,9 @@ from scrapy_cffi.internet import (
     WebSocketMsg,
     WebSocketRequest,
     WebSocketResponse,
+    HttpRequest,
 )
-from scrapy_cffi.platform import WebSocketFlag
+from scrapy_cffi.platform import HttpVersion, WebSocketFlag
 from scrapy_cffi.spiders import Spider
 from scrapy_cffi.utils import create_uniqueId
 
@@ -21,11 +23,28 @@ class CustomSpider(Spider):
     name = "customSpider"
     robot_scheme = "http"
     allowed_domains = ["api.ipify.org", "127.0.0.1", "localhost"]
-    start_urls = [DEMO_HTTP_URL]
+    start_urls = [DEMO_PROCESS_URL]
     async def parse(self, response: HttpResponse):
-        """Open one socket and send its first frame immediately."""
+        """Await short process work, then open the event-driven socket."""
         self.session_id = create_uniqueId()
-        print(response.session_id, response.text)
+        print(response.text)
+        process_result = await self.run_in_process(
+            double_in_worker,
+            value=response.json()["value"],
+        )
+        print({"short_process_result": process_result})
+        yield HttpRequest(
+            session_id=self.session_id,
+            url=DEMO_QUIC_URL,
+            http_version=HttpVersion.HTTP_3_ONLY,
+            verify=False,
+            callback=self.open_websocket,
+            errback=self.errRet,
+        )
+
+    async def open_websocket(self, response: HttpResponse):
+        """Record the finite HTTP/3 response before opening WebSocket."""
+        print({"quic_demo": response.json()})
         yield WebSocketRequest(
             session_id=self.session_id,
             url=DEMO_WS_URL,

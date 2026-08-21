@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from typing import Optional, Union, Dict, Tuple, List
 from ....models.api import WebSocketMsg
 from ....platform import WebSocketFlag
+from ....platform import HttpVersion
 from ....utils import ProtobufFactory
 from ....utils.state_codec import decode_state, encode_state
 from .registry import register_request_class, get_request_class
@@ -34,6 +35,7 @@ class Request(object):
         desc_text="",
         no_proxy=False,
         stream=False,
+        http_version: Optional[Union[HttpVersion, str]] = None,
         **kwargs
     ) -> None:
         meta = meta or {}
@@ -63,6 +65,7 @@ class Request(object):
         self.desc_text = desc_text
         self.no_proxy = no_proxy
         self.stream = stream
+        self.http_version = http_version
         self.kwargs = kwargs
 
     def is_protobuf(self):
@@ -187,6 +190,7 @@ class HttpRequest(Request):
         desc_text="",
         no_proxy=False,
         stream=False,
+        http_version: Optional[Union[HttpVersion, str]] = None,
         **kwargs
     ):
         self.method = method.upper()
@@ -218,6 +222,7 @@ class HttpRequest(Request):
             desc_text=desc_text,
             no_proxy=no_proxy,
             stream=stream,
+            http_version=http_version,
             **kwargs
         )
         if self.is_protobuf() and not isinstance(data, bytes):
@@ -236,6 +241,12 @@ class HttpRequest(Request):
     
 @register_request_class
 class MediaRequest(HttpRequest):
+    """Download a known-size media body through sequential byte ranges.
+
+    The request never creates threads, tasks, or parallel range requests. A
+    zero ``media_size`` falls back to one ordinary buffered HTTP request.
+    """
+
     def __init__(self, 
         session_id="",
         url="", 
@@ -248,6 +259,7 @@ class MediaRequest(HttpRequest):
         proxies=None, 
         single_part_size=2999999, # The byte size of a segment
         media_size=0,
+        max_media_size=None,
         timeout=30,
         max_retry_times=None,
         retry_delay=None,
@@ -265,6 +277,18 @@ class MediaRequest(HttpRequest):
         no_proxy=False,
         **kwargs
     ):
+        """Configure sequential media download bounds and HTTP options."""
+        if single_part_size <= 0:
+            raise ValueError("single_part_size must be positive")
+        if media_size < 0:
+            raise ValueError("media_size must be non-negative")
+        if max_media_size is not None and max_media_size <= 0:
+            raise ValueError("max_media_size must be positive or None")
+        if (
+            max_media_size is not None
+            and media_size > max_media_size
+        ):
+            raise ValueError("media_size exceeds max_media_size")
         super().__init__(
             session_id=session_id,
             url=url, 
@@ -294,6 +318,7 @@ class MediaRequest(HttpRequest):
         )
         self.single_part_size = single_part_size
         self.media_size = media_size
+        self.max_media_size = max_media_size
     
 @register_request_class
 class WebSocketRequest(Request):

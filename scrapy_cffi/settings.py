@@ -77,6 +77,10 @@ class SettingsInfo(BaseValidatedModel):
     CURL_CFFI_RUNTIME_DIR: Optional[Path] = None
     # Deprecated alias retained for generated projects from <=0.4.2.
     CURL_CFFI_NATIVE_DIR: Optional[Path] = None
+    PROCESS_POOL_MAX_WORKERS: int = Field(default=2, ge=1)
+    FFMPEG_MAX_PROCESSES: int = Field(default=2, ge=1)
+    FFMPEG_EXECUTABLE: Union[str, Path] = "ffmpeg"
+    FFPROBE_EXECUTABLE: Union[str, Path] = "ffprobe"
     INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
     INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
     

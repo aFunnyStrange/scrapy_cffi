@@ -80,3 +80,58 @@ jobs:
         run: |
           python -c "import curl_cffi; assert curl_cffi.__version__ == '${{ matrix.curl-version }}'"
           python -m pytest tests/test_http_platform.py tests/test_scheduler_persistence.py -q
+
+  media-http3-compatibility:
+    name: Media and HTTP/3 (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install FFmpeg on Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+      - name: Install FFmpeg on Windows
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --yes --no-progress
+      - name: Install verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[verification]"
+          python -m pip check
+      - name: Report native and Python dependency versions
+        run: |
+          ffmpeg -version
+          ffprobe -version
+          python -c "import aioquic, curl_cffi, sys; print(sys.version); print('aioquic', aioquic.__version__); print('curl_cffi', curl_cffi.__version__)"
+      - name: Verify shell-free media and HTTP/3 APIs
+        run: >-
+          python -m pytest
+          tests/test_ffmpeg_process.py
+          tests/test_media_tools.py
+          tests/test_process_tasks.py
+          tests/test_http_platform.py
+          -q
+      - name: Verify the real generated Memory Demo
+        run: >-
+          scrapy-cffi test single
+          --mode memory
+          --log-dir artifacts/release-verification/media-http3
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-http3-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: artifacts/release-verification
+          if-no-files-found: ignore

@@ -101,7 +101,7 @@ def process_entrypoint(func: Callable, kwargs: Dict, queue: Optional[multiproces
         else:
             print(f"[Detached Child Process Exception]: {e}")
 
-class ProcessTaskManager:
+class LegacyProcessTaskManager:
     def __init__(self):
         import atexit
         self._procs: List[multiprocessing.Process] = []
@@ -158,6 +158,10 @@ class ProcessTaskManager:
                 except Exception as e:
                     print(f"[Main Process] Failed to terminate child process: {e}")
         self._procs.clear()
+
+# Direct legacy imports now resolve to the same bounded lazy implementation as
+# the public utility barrel. Long-lived process ownership remains in runner.py.
+from .process import ProcessTaskManager
 
 class ProcessManager:
     """
