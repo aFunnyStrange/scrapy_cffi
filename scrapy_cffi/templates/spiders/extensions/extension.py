@@ -32,7 +32,7 @@ class CustomExtension(Extension):
         print(f'CustomExtension -> scheduler empty: {data.signal_time}')
 
     async def task_error(self, data: "SignalInfo"):
-        print(f'CustomExtension -> task error: {data.reason}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> task error: {data.reason}, signal_time: {data.signal_time}')
 
     async def spider_opened(self, data: "SignalInfo"):
         print(f'CustomExtension -> spider opened: {data.spider.name}, start_time: {data.signal_time}')
@@ -41,19 +41,19 @@ class CustomExtension(Extension):
         print(f'CustomExtension -> spider closed: {data.spider.name}, end_time: {data.signal_time}')
 
     async def spider_error(self, data: "SignalInfo"):
-        print(f'CustomExtension -> spider error: {data.spider.name}, exception: {data.exception}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> spider error: {data.spider.name}, exception: {data.exception}, signal_time: {data.signal_time}')
 
     async def request_scheduled(self, data: "SignalInfo"):
-        print(f'CustomExtension -> request scheduled: {data.request.url}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> request scheduled: {data.request.url}, signal_time: {data.signal_time}')
 
     async def request_dropped(self, data: "SignalInfo"):
-        print(f'CustomExtension -> request dropped: {data.request.url}, reason: {data.reason}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> request dropped: {data.request.url}, reason: {data.reason}, signal_time: {data.signal_time}')
 
     async def request_reached_downloader(self, data: "SignalInfo"):
-        print(f'CustomExtension -> request reached downloader: {data.request.url}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> request reached downloader: {data.request.url}, signal_time: {data.signal_time}')
 
     async def response_received(self, data: "SignalInfo"):
-        print(f'CustomExtension -> response received: {data.response}, request: {data.request.url}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> response received: {data.response}, request: {data.request.url}, signal_time: {data.signal_time}')
 
     async def item_scraped(self, data: "SignalInfo"):
-        print(f'CustomExtension -> item scraped: {data.item}, spider_name: {data.spider.name}, signal_time：{data.signal_time}')
+        print(f'CustomExtension -> item scraped: {data.item}, spider_name: {data.spider.name}, signal_time: {data.signal_time}')

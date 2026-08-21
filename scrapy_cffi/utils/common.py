@@ -236,7 +236,7 @@ def get_all_spiders_cls(spiders_dir: str):
 # Get all spider names
 def get_all_spiders_name(logger: "Logger"=None, spiders_cls_list=None):
     spiders_name = [spider.name for spider in spiders_cls_list]
-    logger.debug(f"all_spiders：{spiders_name}")
+    logger.debug(f"all_spiders: {spiders_name}")
     return spiders_name
     
 async def run_with_timeout(

@@ -64,7 +64,7 @@ class TaskManager:
             task_id = id(asyncio.current_task())
             async with self.global_lock():
                 try:
-                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}：{callfunc_name}')
+                    self.logger.debug(f'add task {task_id} -> {self.active_tasks}: {callfunc_name}')
                     result = await callfunc.to_coro()
                     if callback:
                         await safe_call(callback, result, **callback_kwargs)
@@ -85,7 +85,7 @@ class TaskManager:
                         self.active_task_names[callfunc_name] = self.active_task_names.get(callfunc_name, 1) - 1
                         if self.active_task_names[callfunc_name] <= 0:
                             self.active_task_names.pop(callfunc_name, None)
-                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}：{callfunc_name}')
+                        self.logger.debug(f'end task {task_id} -> {self.active_tasks}: {callfunc_name}')
                         if self.active_tasks <= 0:
                             self.tasks_done_event.set()
                         if obj_id is not None:

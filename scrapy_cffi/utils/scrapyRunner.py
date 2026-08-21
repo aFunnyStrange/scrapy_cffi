@@ -32,7 +32,7 @@ class ScrapyRunner:
         for spider_name in spiders:
             p = multiprocessing.Process(target=self.run_spider, args=(spider_name,), daemon=True)
             p.start()
-            print(f"Start spider：{spider_name}，pid={p.pid}")
+            print(f"Start spider: {spider_name}, pid={p.pid}")
 
     def run_spider(self, spider_name: str) -> None:
         os.environ.setdefault('SCRAPY_SETTINGS_MODULE', 'ins_collect.settings')

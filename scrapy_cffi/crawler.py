@@ -162,7 +162,7 @@ class Crawler:
         # spider start type
         if not self.settings.SPIDERS_PATH:
             self.settings.SPIDERS_PATH = str(self.run_py_dir / "spiders")
-            self.logger.warning(f"not provided self.settings.SPIDERS_PATH，guessed to load -> {self.settings.SPIDERS_PATH}")
+            self.logger.warning(f"not provided self.settings.SPIDERS_PATH, guessed to load -> {self.settings.SPIDERS_PATH}")
             start_type = 0
         if start_type:
             spider_target = self.settings.SPIDERS_PATH

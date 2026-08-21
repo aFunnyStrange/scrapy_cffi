@@ -10,6 +10,7 @@ from scrapy_cffi.core.sessions import CloseSignal, SessionManager
 from scrapy_cffi.core.tasks import TaskManager
 from scrapy_cffi.interceptors import ChainNextEnum, ChainResult
 from scrapy_cffi.settings import SettingsInfo
+from scrapy_cffi.utils.concurrency import CallFunction
 
 
 class _SignalManager:
@@ -69,6 +70,45 @@ class _ContinuousIngressSpider:
 async def _global_lock():
     """Provide TaskManager's configured concurrency context."""
     yield
+
+
+class _Cp1252Logger:
+    """Reject task log messages that a default Windows console cannot encode."""
+
+    def __init__(self) -> None:
+        """Collect messages after validating the Windows-compatible encoding."""
+        self.messages = []
+
+    def debug(self, message: str) -> None:
+        """Model the cp1252 stream used by a GitHub-hosted Windows runner."""
+        message.encode("cp1252")
+        self.messages.append(message)
+
+
+def test_task_manager_debug_logs_are_windows_console_safe() -> None:
+    """Task lifecycle logging must not manufacture a Windows traceback."""
+
+    async def run() -> None:
+        """Execute one managed task through its add/end debug messages."""
+        manager = TaskManager(
+            stop_event=asyncio.Event(),
+            global_lock=_global_lock,
+            signalManager=_SignalManager(),
+            settings=SettingsInfo(),
+        )
+        logger = _Cp1252Logger()
+        manager.logger = logger
+
+        async def noop() -> None:
+            """Complete normally so both lifecycle messages are emitted."""
+
+        task = await manager.create(CallFunction(noop))
+        await task
+
+        assert len(logger.messages) == 2
+        assert all(":" in message for message in logger.messages)
+
+    asyncio.run(run())
 
 
 def test_integration_finite_distributed_engine_cancels_its_ingress_producer() -> None:
