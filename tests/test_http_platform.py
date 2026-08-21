@@ -10,7 +10,12 @@ import pytest
 from scrapy_cffi.core.downloader.internet import HttpRequest, SSEEvent, StreamResponse
 from scrapy_cffi.core.sessions import SessionManager, SessionRequestLimiter, SessionWrapper
 from scrapy_cffi.platform.curl_cffi import CurlCffiHttpSession
-from scrapy_cffi.platform import HttpTimeoutError, HttpTransportError, HttpVersion
+from scrapy_cffi.platform import (
+    HttpCapabilityError,
+    HttpTimeoutError,
+    HttpTransportError,
+    HttpVersion,
+)
 from scrapy_cffi.settings import SettingsInfo
 
 
@@ -34,18 +39,23 @@ def test_utils_typed_lazy_exports_cover_runtime_symbols():
 
 def test_http3_version_is_serializable_and_forwarded_without_vendor_types():
     """Treat HTTP/3 as a normal request preference, not a listener lifecycle."""
-    wrapper = SessionWrapper(
-        stop_event=asyncio.Event(),
-        settings=SettingsInfo(),
-        http_session_factory=_FakeHttpSession,
-    )
-    request = HttpRequest(
-        url="https://example.com",
-        http_version=HttpVersion.HTTP_3_ONLY,
-    )
-    restored = HttpRequest.from_bytes(request.to_bytes())
-    assert restored.http_version == "v3only"
-    assert wrapper._build_request_args(restored)["http_version"] == "v3only"
+
+    async def scenario() -> None:
+        """Own the Event lifecycle explicitly on every supported Python."""
+        wrapper = SessionWrapper(
+            stop_event=asyncio.Event(),
+            settings=SettingsInfo(),
+            http_session_factory=_FakeHttpSession,
+        )
+        request = HttpRequest(
+            url="https://example.com",
+            http_version=HttpVersion.HTTP_3_ONLY,
+        )
+        restored = HttpRequest.from_bytes(request.to_bytes())
+        assert restored.http_version == "v3only"
+        assert wrapper._build_request_args(restored)["http_version"] == "v3only"
+
+    asyncio.run(scenario())
 
 
 def test_curl_adapter_translates_http3_to_the_installed_vendor_constant():
@@ -65,12 +75,21 @@ def test_curl_adapter_translates_http3_to_the_installed_vendor_constant():
         """Exercise adapter normalization without a network request."""
         raw_session = RecordingSession()
         adapter = CurlCffiHttpSession(session=raw_session)
+        expected_version = getattr(CurlHttpVersion, "V3ONLY", None)
+        if expected_version is None:
+            with pytest.raises(HttpCapabilityError):
+                await adapter.request(
+                    "GET",
+                    url="https://example.com",
+                    http_version="v3only",
+                )
+            return
         await adapter.request(
             "GET",
             url="https://example.com",
             http_version="v3only",
         )
-        assert raw_session.request_kwargs["http_version"] == CurlHttpVersion.V3ONLY
+        assert raw_session.request_kwargs["http_version"] == expected_version
         assert raw_session.request_kwargs["extra_fp"] == {
             "tls_min_version": CurlSslVersion.TLSv1_3,
         }
