@@ -8,7 +8,9 @@ from .models.api import (
 )
 from .config import (
     KafkaInfo,
+    EmailInfo,
     MongodbInfo,
+    MonitorInfo,
     MysqlInfo,
     PostgresInfo,
     RabbitMQInfo,
@@ -91,6 +93,8 @@ class SettingsInfo(BaseValidatedModel):
     FFMPEG_MAX_PROCESSES: int = Field(default=2, ge=1)
     FFMPEG_EXECUTABLE: Union[str, Path] = "ffmpeg"
     FFPROBE_EXECUTABLE: Union[str, Path] = "ffprobe"
+    EMAIL_INFO: EmailInfo = Field(default_factory=EmailInfo)
+    MONITOR_INFO: MonitorInfo = Field(default_factory=MonitorInfo)
     INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
     INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
     RESOURCES_PATH: List[ResourceTarget] = Field(default_factory=list)

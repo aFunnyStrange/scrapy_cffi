@@ -1,5 +1,9 @@
 # Architecture roadmap
 
+`scrapy_cffi` is a lightweight asynchronous Worker kernel. Crawler is its first
+and currently most complete specialized Worker adapter; generic resource,
+thread, subprocess, and server capabilities remain independently composable.
+
 ## Current 0.4 layer model
 
 ```text

@@ -220,6 +220,28 @@ settings = env_to_settings(SettingsInfo, ".env")
 
 不要记录密码、Cookie、Token、Authorization Header 或完整私有载荷。
 
+## 10. 异步友好的邮件工具
+
+`Email` 构造时只保存 SMTP 配置，不会立即联网。`send_async()` 与 `send_text_async()` 通过 `asyncio.to_thread()` 隔离不可避免的同步 `smtplib` 调用，并在一次发送后关闭连接。
+
+```python
+from scrapy_cffi.utils.email import Email
+
+sender = Email(
+    "smtp.example.com",
+    465,
+    "crawler@example.com",
+    "authorization-code",
+)
+await sender.send_text_async(
+    "Crawler finished",
+    "The run completed.",
+    ["ops@example.com"],
+)
+```
+
+需要根据信号发送汇总时，显式注册 `EmailNotificationExtension`；仅导入工具不会自动启用 Extension。
+
 ## 9. 其他常用工具
 
 - `do_sha1(data)`：SHA1 Hex Digest；

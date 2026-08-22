@@ -3,12 +3,12 @@
 from pathlib import Path
 from typing import Optional, Type, Union
 
-from extensions.extension import CustomExtension
 from interceptors.interceptors import (
     CustomDownloadInterceptor1,
     CustomDownloadInterceptor2,
 )
 from pipelines.pipeline import CustomPipeline1, CustomPipeline2
+from project_support.topology import apply_project_topology
 from scrapy_cffi.scheduler import (
     KafkaScheduler,
     RabbitMqScheduler,
@@ -56,12 +56,22 @@ def create_settings(
     settings.FFMPEG_EXECUTABLE = "ffmpeg"
     settings.FFPROBE_EXECUTABLE = "ffprobe"
     settings.SPIDERS_PATH = spider_path
-    settings.EXTENSIONS_PATH = CustomExtension
+    # Extensions are opt-in so normal workers do not pay observation overhead.
+    # from extensions.extension import CustomExtension
+    # settings.EXTENSIONS_PATH = CustomExtension
     settings.ITEM_PIPELINES_PATH = [CustomPipeline2, CustomPipeline1]
     # Application infrastructure can inherit scrapy_cffi.Resource and register
     # here. Resources start in list order and close in reverse order.
     # from resources import ProjectObjectStorage
     # settings.RESOURCES_PATH = [ProjectObjectStorage]
+    # Optional crawler observation. The extension is never enabled implicitly.
+    # from scrapy_cffi.extensions import CrawlerMonitorExtension
+    # settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+    # settings.EXTENSIONS_PATH = CrawlerMonitorExtension
+    # Optional email summaries. Configure EMAIL_INFO through .env in production.
+    # from scrapy_cffi.extensions import EmailNotificationExtension
+    # settings.EMAIL_INFO.TO_ADDRESSES = ["ops@example.com"]
+    # settings.EXTENSIONS_PATH = EmailNotificationExtension
     settings.DOWNLOAD_INTERCEPTORS_PATH = {
         CustomDownloadInterceptor1: 300,
         CustomDownloadInterceptor2: 200,
@@ -118,12 +128,7 @@ def create_settings(
     # ] # After load: import custom_native
 
     # settings.LOG_INFO.LOG_ENABLED = False # Disable logging entirely
-    try:
-        from demo_support.topology import apply_demo_topology
-    except ImportError:
-        pass
-    else:
-        apply_demo_topology(settings)
+    apply_project_topology(settings)
     project_root = get_run_py_dir()
     env_file = Path(env_path) if env_path else project_root / ".env"
     return load_env_settings(

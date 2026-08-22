@@ -798,3 +798,29 @@ print(config.TEST_DATA)
 
 Use `load_env_settings(existing_settings, env_path=".env")` when Python has
 already assembled developer defaults that the operational file should overlay.
+
+# 10. Async-friendly email
+
+`Email` stores SMTP settings without connecting at construction time.
+`send_async()` and `send_text_async()` offload the unavoidable synchronous
+`smtplib` operation through `asyncio.to_thread()` and close their one-shot
+connection after delivery.
+
+```python
+from scrapy_cffi.utils.email import Email
+
+sender = Email(
+    "smtp.example.com",
+    465,
+    "crawler@example.com",
+    "authorization-code",
+)
+await sender.send_text_async(
+    "Crawler finished",
+    "The run completed.",
+    ["ops@example.com"],
+)
+```
+
+For signal-driven summaries, explicitly register
+`EmailNotificationExtension`; it is never enabled by importing the utility.

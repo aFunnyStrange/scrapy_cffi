@@ -4,7 +4,16 @@ import argparse
 import sys
 from typing import Optional
 
-from . import banner, cinstall, demo, genspider, infra, startproject, verification
+from . import (
+    banner,
+    cinstall,
+    demo,
+    genspider,
+    infra,
+    server,
+    startproject,
+    verification,
+)
 
 
 def main() -> Optional[int]:
@@ -27,6 +36,28 @@ def main() -> Optional[int]:
 
     sp = subparsers.add_parser("startproject", help="Create a new project")
     sp.add_argument("name", help="Project name")
+
+    server_p = subparsers.add_parser(
+        "server",
+        help="Run the optional crawler monitoring console",
+    )
+    server_bind = server_p.add_mutually_exclusive_group()
+    server_bind.add_argument(
+        "--host",
+        default=None,
+        help="Explicit bind host; defaults to 127.0.0.1.",
+    )
+    server_p.add_argument(
+        "--port",
+        type=int,
+        default=6800,
+        help="Bind port (default: 6800).",
+    )
+    server_bind.add_argument(
+        "--hub",
+        action="store_true",
+        help="Bind 0.0.0.0 so trusted remote crawlers can register.",
+    )
 
     infra_p = subparsers.add_parser(
         "infra",
@@ -200,6 +231,11 @@ def main() -> Optional[int]:
 
     if args.command == "startproject":
         startproject.run(args.name)
+    elif args.command == "server":
+        server.run(
+            host=args.host or ("0.0.0.0" if args.hub else "127.0.0.1"),
+            port=args.port,
+        )
     elif args.command == "infra":
         infra.run(
             action=args.action,

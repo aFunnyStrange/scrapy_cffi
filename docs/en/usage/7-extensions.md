@@ -92,3 +92,37 @@ To see a working example, you can explore the built-in demo:
 ```python
 scrapy_cffi demo
 ```
+
+# 4. Built-in opt-in extensions
+
+Generated projects do not enable any Extension by default. Signals with no
+listeners are discarded, so ordinary crawlers do not pay for monitoring or
+SMTP I/O.
+
+`CrawlerMonitorExtension` publishes lifecycle and error events to the optional
+monitoring Hub. High-frequency request, response, drop, and item signals are
+counted locally and published only after `MONITOR_INFO.EVENT_BATCH_SIZE`
+observations. It owns no heartbeat task and never controls crawler completion.
+
+```python
+from scrapy_cffi.extensions import CrawlerMonitorExtension
+
+settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+settings.EXTENSIONS_PATH = CrawlerMonitorExtension
+```
+
+`EmailNotificationExtension` uses lazy SMTP connections and
+`asyncio.to_thread()`. By default it sends an aggregated engine-stop summary;
+immediate error messages require `EMAIL_INFO.SEND_ON_ERROR = True`.
+
+```python
+from scrapy_cffi.extensions import EmailNotificationExtension
+
+settings.EMAIL_INFO.HOST = "smtp.example.com"
+settings.EMAIL_INFO.USERNAME = "crawler@example.com"
+settings.EMAIL_INFO.TO_ADDRESSES = ["ops@example.com"]
+settings.EXTENSIONS_PATH = EmailNotificationExtension
+```
+
+Keep `EMAIL_INFO__PASSWORD` in the ignored project `.env`. See
+[the monitoring console](17-monitoring.md) for server and Hub modes.

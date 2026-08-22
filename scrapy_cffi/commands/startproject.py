@@ -25,6 +25,10 @@ def run(project_name, is_demo=False):
     )
     copytree_merge_text_safe(template_dir / "js_path", target / "js_path")
     copytree_merge_text_safe(template_dir / "profiles", target / "profiles")
+    copytree_merge_text_safe(
+        template_dir / "project_support",
+        target / "project_support",
+    )
     for docker_file in [
         "Dockerfile",
         "Dockerfile.dockerignore",

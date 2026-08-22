@@ -1,6 +1,7 @@
 """Verify generated crawler projects preserve supported public contracts."""
 
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -38,6 +39,9 @@ def test_memory_demo_binds_runner_to_real_spider_class(tmp_path, monkeypatch):
     assert "asyncio.WindowsSelectorEventLoopPolicy()" in runner
     assert 'spider_path="spiders.CustomSpider"' not in runner
     assert 'settings.EXTENSIONS_PATH = "' not in settings
+    assert "\n    settings.EXTENSIONS_PATH = CustomExtension" not in settings
+    assert "settings.EXTENSIONS_PATH = CrawlerMonitorExtension" in settings
+    assert "Extensions are opt-in" in settings
     assert '"interceptors.CustomDownloadInterceptor' not in settings
     assert '    settings.JS_PATH = str(' not in settings
     assert "self.use_execjs(" not in (
@@ -157,8 +161,9 @@ def test_redis_demo_uses_class_scheduler_and_existing_spider(tmp_path, monkeypat
     assert "await asyncio.wait_for(engine_task, timeout=60)" in manager
     assert "await asyncio.sleep(" not in manager
     assert 'DEMO_MODE = "redis"' in (
-        project / "demo_support" / "topology.py"
+        project / "demo_support" / "config.py"
     ).read_text(encoding="utf-8")
+    assert (project / "project_support" / "topology.py").is_file()
     if sys.platform.startswith("win"):
         batch = subprocess.run(
             ["cmd.exe", "/c", "docker-demo.bat", "plan", "sentinel"],
@@ -184,11 +189,11 @@ def test_broker_demos_keep_redis_dedup_and_default_to_cleanup(tmp_path, monkeypa
         settings = (project / "settings.py").read_text(encoding="utf-8")
         assert 'settings.REDIS_INFO.URL = "redis://127.0.0.1:6379"' in settings
         assert "settings.SCHEDULER_PERSIST = False" in settings
-        topology = (
-            project / "demo_support" / "topology.py"
+        demo_config = (
+            project / "demo_support" / "config.py"
         ).read_text(encoding="utf-8")
         expected = "rabbitmq" if mode == "rabbit" else "kafka"
-        assert 'DEMO_MODE = "%s"' % expected in topology
+        assert 'DEMO_MODE = "%s"' % expected in demo_config
         requirement = (
             "scrapy_cffi[rabbitmq]"
             if mode == "rabbit"
@@ -252,7 +257,7 @@ def test_demo_verifier_uses_environment_endpoints_and_retained_logs(
         project / "demo_support" / "server" / "ws_server.py"
     ).read_text(encoding="utf-8")
     manager = (project / "scripts" / "demo_docker.py").read_text(encoding="utf-8")
-    assert "SCRAPY_CFFI_DEMO_LOG" in manager
+    assert "SCRAPY_CFFI_LOG" in manager
     assert "artifacts\" / \"demo-verification" in manager
     assert "DEMO_PROCESS_URL" in spider
     assert "DEMO_WS_URL" in spider
@@ -304,6 +309,9 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert not (project / "docker-compose.yml").exists()
     assert not (project / "__pycache__").exists()
     assert not (project / "cpy_resources").exists()
+    assert (project / "project_support" / "__init__.py").is_file()
+    assert (project / "project_support" / "topology.py").is_file()
+    assert not (project / "demo_support").exists()
     assert (project / "profiles" / "README.md").is_file()
     assert (
         project / "profiles" / "scrapy_cffi_profiles.example.toml"
@@ -318,7 +326,41 @@ def test_startproject_groups_application_docker_files(tmp_path, monkeypatch):
     assert "CURL_CFFI_RUNTIME_DIR" in (
         project / ".env.example"
     ).read_text(encoding="utf-8")
+    settings = (project / "settings.py").read_text(encoding="utf-8")
+    assert "from project_support.topology import apply_project_topology" in settings
+    assert "apply_project_topology(settings)" in settings
+    assert "except ImportError" not in settings
     assert not (project / "settings.example.toml").exists()
+
+
+def test_startproject_project_support_applies_cluster_topology(tmp_path, monkeypatch):
+    """Load the formal project topology helper through generated settings."""
+    monkeypatch.chdir(tmp_path)
+    startproject.run("sample")
+    project = tmp_path / "sample"
+    environment = dict(os.environ)
+    environment["SCRAPY_CFFI_TOPOLOGY"] = "cluster"
+    environment["SCRAPY_CFFI_LOG"] = "worker.log"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from settings import create_settings; "
+                "from scrapy_cffi.scheduler import RedisScheduler; "
+                "settings = create_settings('spiders', used_redis=True); "
+                "assert settings.SCHEDULER is RedisScheduler; "
+                "assert len(settings.REDIS_INFO.CLUSTER_NODES) == 6; "
+                "assert settings.LOG_INFO.LOG_FILE == 'worker.log'"
+            ),
+        ],
+        cwd=project,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_demo_manager_reports_fixed_port_conflicts(tmp_path, monkeypatch):

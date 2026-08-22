@@ -72,6 +72,8 @@ def interceptors_hooks(crawler: "Crawler") -> "InterceptorsHooks":
 
 def signals_hooks(crawler: "Crawler") -> "SignalsHooks":
     hooks_obj = Hooks(
+        settings=crawler.settings,
+        logger=crawler.logger,
         session=Hooks(
             configure_rate_limit=crawler.sessions.configure_rate_limit,
         ),

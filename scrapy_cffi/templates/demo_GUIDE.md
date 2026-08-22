@@ -91,7 +91,8 @@ Production does not use these Compose stacks. Only the crawler application is co
 
 ## Run
 
-The generated test helpers are under `demo_support/`; management and publisher
+Project topology settings are under `project_support/`. Generated mock-server
+and verification helpers are under `demo_support/`; management and publisher
 entry points are under `scripts/`. To run the crawler against manually started
 mock servers:
 

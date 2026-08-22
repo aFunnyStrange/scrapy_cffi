@@ -1,19 +1,20 @@
+"""Apply optional single-machine or clustered infrastructure endpoints."""
+
 import os
 
 from scrapy_cffi.config.database import RedisInfo
 from scrapy_cffi.config.queue import KafkaInfo, RabbitMQInfo
+from scrapy_cffi.scheduler import KafkaScheduler, RabbitMqScheduler
 
 
-DEMO_MODE = "__SCRAPY_CFFI_DEMO_MODE__"
-
-
-def apply_demo_topology(settings) -> None:
-    topology = os.environ.get("SCRAPY_CFFI_DEMO_TOPOLOGY", "single").lower()
-    log_file = os.environ.get("SCRAPY_CFFI_DEMO_LOG")
+def apply_project_topology(settings) -> None:
+    """Apply project topology overrides selected through the environment."""
+    topology = os.environ.get("SCRAPY_CFFI_TOPOLOGY", "single").lower()
+    log_file = os.environ.get("SCRAPY_CFFI_LOG")
     if log_file:
         settings.LOG_INFO.LOG_FILE = log_file
 
-    if DEMO_MODE == "memory" or topology == "single":
+    if topology == "single":
         return
 
     if topology == "sentinel":
@@ -29,9 +30,7 @@ def apply_demo_topology(settings) -> None:
         return
 
     if topology != "cluster":
-        raise ValueError(
-            "SCRAPY_CFFI_DEMO_TOPOLOGY must be single, sentinel or cluster"
-        )
+        raise ValueError("SCRAPY_CFFI_TOPOLOGY must be single, sentinel or cluster")
 
     settings.REDIS_INFO = RedisInfo(
         CLUSTER_NODES=[
@@ -48,7 +47,7 @@ def apply_demo_topology(settings) -> None:
             "redis-node6": "127.0.0.1",
         },
     )
-    if DEMO_MODE == "rabbitmq":
+    if settings.SCHEDULER is RabbitMqScheduler:
         settings.RABBITMQ_INFO = RabbitMQInfo(
             CLUSTER_NODES=[
                 "amqp://guest:guest@127.0.0.1:5672/",
@@ -56,7 +55,7 @@ def apply_demo_topology(settings) -> None:
                 "amqp://guest:guest@127.0.0.1:5674/",
             ]
         )
-    elif DEMO_MODE == "kafka":
+    elif settings.SCHEDULER is KafkaScheduler:
         settings.KAFKA_INFO = KafkaInfo(
             CLUSTER_NODES=[
                 "127.0.0.1:9094",

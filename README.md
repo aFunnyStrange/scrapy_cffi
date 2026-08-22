@@ -1,14 +1,17 @@
 ## scrapy_cffi
 
-> An asyncio-style web scraping framework inspired by Scrapy, powered by `curl_cffi`.
+> A lightweight asyncio Worker kernel with a specialized Scrapy-style crawler runtime powered by `curl_cffi`.
 
 Requires Python 3.9 or newer. The framework uses `asyncio.to_thread` directly;
 type annotations remain compatible with Python 3.9 and avoid the Python
 3.10-only `X | Y` union syntax.
 
-`scrapy_cffi` is a lightweight Python crawler framework that mimics the Scrapy architecture while replacing Twisted with `curl_cffi` as the underlying HTTP/WebSocket client. 
-
-It is designed to be efficient, modular, and suitable for both simple tasks and large-scale distributed crawlers.
+`scrapy_cffi` is evolving into a general asynchronous Worker kernel. Its
+Crawler is the first mature specialized Worker: it keeps Scrapy-style spiders,
+pipelines, interceptors, extensions, and signals while replacing Twisted with
+`asyncio` and `curl_cffi`. Generic resources and bounded thread/process tools
+can also be composed by application-owned runners without turning every
+capability into crawler-core behavior.
 
 ---
 
@@ -44,6 +47,10 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Lightweight middleware & interceptor system** for easy extensions
 
+- **Opt-in crawler observability**: an optional FastAPI monitoring console,
+  batched Extension reporting, and lazy asynchronous SMTP notifications; none
+  are enabled by default
+
 - **Stable CPU platform adapters** with optional Rust acceleration and safe
   Python fallbacks, including Protobuf and Bloom filtering
 
@@ -57,7 +64,7 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
 
 - **Redis-compatible scheduler** (optional) for distributed crawling
 
-- **Designed for high-concurrency, high-availability crawling**
+- **Crawler-specialized today, general asynchronous Worker lifecycle over time**
 
 ---
 
@@ -78,6 +85,9 @@ pip install "scrapy_cffi[protobuf]"
 
 # Optional Rust-accelerated Bloom filter with identical Python fallback semantics
 pip install "scrapy_cffi[bloom]"
+
+# Optional crawler monitoring console
+pip install "scrapy_cffi[server]"
 ```
 
 #### From GitHub (latest main)
@@ -301,4 +311,7 @@ Inspired by the challenges of async Python crawling:
 
 - Need for fully concurrent HTTP & WebSocket requests
 
-`scrapy_cffi` addresses these with a modular, high-performance framework that is **async-first**, **extensible**, and **deployment-ready**.
+`scrapy_cffi` addresses these with an **async-first**, extensible Worker kernel.
+The crawler adapter remains its most complete runtime, while server, media,
+process, and infrastructure capabilities stay explicit and independently
+composable.

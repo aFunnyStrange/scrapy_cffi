@@ -1,7 +1,10 @@
-import asyncio, inspect
+"""Dispatch optional observation signals with explicit async ownership."""
+
+import asyncio
+import inspect
 from collections import defaultdict
-# from ..utils import run_with_timeout
-from typing import Set, TYPE_CHECKING, Callable, Any, TypeVar, Union, Awaitable
+from typing import Any, Awaitable, Callable, Optional, Set, TYPE_CHECKING, TypeVar, Union
+
 if TYPE_CHECKING:
     from ..crawler import Crawler
     from ..extensions import SignalInfo
@@ -11,43 +14,57 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 class SignalManager:
+    """Own signal buffering, callback tasks, and event-driven shutdown."""
+
     SignalCallback = Union[Callable[[T], Any], Callable[[T], Awaitable[Any]]]
 
-    def __init__(self, stop_event=None, settings: "SettingsInfo"=None, maxsize=1000, kafka_repository: "KafkaQueueRepository"=None):
+    def __init__(
+        self,
+        stop_event: Optional[asyncio.Event] = None,
+        settings: Optional["SettingsInfo"] = None,
+        maxsize: int = 1000,
+        kafka_repository: Optional["KafkaQueueRepository"] = None,
+    ) -> None:
+        """Initialize one bounded signal queue without starting its task."""
         self._listeners = defaultdict(list)
         self._queue = asyncio.Queue(maxsize=maxsize)
-        self.stop_event: asyncio.Event = stop_event
+        self.stop_event = stop_event or asyncio.Event()
         self._run_task = None
         self._put_tasks: Set[asyncio.Task] = set()
         self._pending_tasks: Set[asyncio.Task] = set()
         from ..utils.log import init_logger
-        self.logger = init_logger(log_info=settings.LOG_INFO, logger_name=__name__)
+        log_info = settings.LOG_INFO if settings is not None else None
+        self.logger = init_logger(log_info=log_info, logger_name=__name__)
         if kafka_repository:
             from ..utils.log import KafkaLoggingHandler
             kafka_handler = KafkaLoggingHandler(kafka=kafka_repository, stop_event=self.stop_event).create_fmt(settings)
             self.logger.addHandler(kafka_handler)
 
     @classmethod
-    def from_crawler(cls, crawler: "Crawler"):
+    def from_crawler(cls, crawler: "Crawler") -> "SignalManager":
+        """Construct a manager from crawler-owned runtime dependencies."""
         return cls(
             stop_event=crawler.stop_event, 
             settings=crawler.settings,
             kafka_repository=crawler.resources.kafka,
         )
 
-    def connect(self, signal: object, callback: SignalCallback):
+    def connect(self, signal: object, callback: SignalCallback) -> None:
+        """Subscribe a callable to one signal identity."""
         if not callable(callback):
             raise TypeError(f"Signal callback must be callable: got {type(callback)}")
         self._listeners[signal].append(callback)
 
-    def send(self, signal: object, data: "SignalInfo"):
+    def send(self, signal: object, data: "SignalInfo") -> None:
+        """Schedule a non-blocking enqueue while the runtime accepts events."""
         if self.stop_event.is_set() or (not self._listeners[signal]):
             return
         task = asyncio.create_task(self._safe_put(signal, data))
         self._put_tasks.add(task)
         task.add_done_callback(self._put_tasks.discard)
 
-    async def _safe_put(self, signal, data):
+    async def _safe_put(self, signal: object, data: "SignalInfo") -> None:
+        """Enqueue with bounded overload waiting and explicit drop logging."""
         if not self._listeners[signal]:
             return
         try:
@@ -56,73 +73,74 @@ class SignalManager:
             try:
                 await asyncio.wait_for(self._queue.put((signal, data)), timeout=0.1)
             except asyncio.TimeoutError:
-                self.logger.warning(f"[SignalManager] Signal queue full, dropped signal: {signal}")
+                if self.logger is not None:
+                    self.logger.warning(
+                        "[SignalManager] Signal queue full, dropped signal: %r",
+                        signal,
+                    )
 
-    async def _dispatch(self, signal, data):
+    async def _run_callback(self, callback: SignalCallback, data: "SignalInfo") -> None:
+        """Run one async callback while containing observation failures."""
+        try:
+            await callback(data)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if self.logger is not None:
+                self.logger.exception("[SignalManager] Signal callback failed")
+
+    async def _dispatch(self, signal: object, data: "SignalInfo") -> None:
+        """Dispatch one queued signal to all current subscribers."""
         for callback in self._listeners[signal]:
             try:
                 if inspect.iscoroutinefunction(callback):
-                    task = asyncio.create_task(callback(data))
+                    task = asyncio.create_task(self._run_callback(callback, data))
                     self._pending_tasks.add(task)
-                    task.add_done_callback(lambda t: self._pending_tasks.discard(t))
+                    task.add_done_callback(self._pending_tasks.discard)
                 else:
                     callback(data)
-            except Exception as e:
-                self.logger.error(f"[SignalManager] Signal callback error: {e}")
+            except Exception:
+                if self.logger is not None:
+                    self.logger.exception("[SignalManager] Signal callback failed")
 
-    async def run(self):
+    async def run(self) -> None:
+        """Consume until the owner enqueues the explicit stop sentinel."""
         try:
-            while not self.stop_event.is_set():
-                # signal, data = await run_with_timeout(self._queue.get, stop_event=self.stop_event, timeout=0.2)
+            while True:
                 signal, data = await self._queue.get()
-                if signal is not None:
-                    await self._dispatch(signal, data)
-
-                # try:
-                #     signal, data = await asyncio.wait_for(self._queue.get(), timeout=3.0)
-                #     if signal is not None:
-                #         await self._dispatch(signal, data)
-                # except asyncio.TimeoutError:
-                #     pass
+                if signal is None:
+                    return
+                await self._dispatch(signal, data)
         except asyncio.CancelledError:
-            self.logger.warning("[SignalManager] run task cancelled, waiting for pending callbacks...")
+            if self.logger is not None:
+                self.logger.warning(
+                    "[SignalManager] run task cancelled; cancelling callbacks"
+                )
             for task in self._pending_tasks:
                 task.cancel()
-            await asyncio.sleep(0)
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            raise
 
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*self._pending_tasks, return_exceptions=True),
-                    timeout=3.0
-                )
-            except asyncio.TimeoutError:
-                self.logger.warning("[SignalManager] Pending signal callbacks did not finish in time, force exit.")
-            finally:
-                raise
-
-    def start(self):
+    def start(self) -> None:
+        """Start the single owned consumer task when it is not running."""
         if not self._run_task or self._run_task.done():
             self._run_task = asyncio.create_task(self.run())
 
-    async def stop(self):
-        try:
-            self._queue.put_nowait((None, None))
-        except asyncio.QueueFull:
-            pass
-
-        if self._run_task:
-            try:
-                await asyncio.wait_for(self._run_task, timeout=3.0)
-            except asyncio.TimeoutError:
-                self._run_task.cancel()
-                try:
-                    await self._run_task
-                except asyncio.CancelledError:
-                    pass
-
+    async def stop(self) -> None:
+        """Drain owned enqueues, consume the sentinel, and await callbacks."""
         if self._put_tasks:
             await asyncio.gather(*self._put_tasks, return_exceptions=True)
 
+        if self._run_task:
+            if not self._run_task.done():
+                await self._queue.put((None, None))
+            await self._run_task
+            self._run_task = None
+
         if self._pending_tasks:
-            self.logger.info(f"[SignalManager] Waiting for {len(self._pending_tasks)} pending signal callback tasks to finish")
+            if self.logger is not None:
+                self.logger.info(
+                    "[SignalManager] Waiting for %s pending callbacks",
+                    len(self._pending_tasks),
+                )
             await asyncio.gather(*self._pending_tasks, return_exceptions=True)

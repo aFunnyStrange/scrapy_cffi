@@ -9,13 +9,16 @@ from .database import (
     RedisMode,
     SqlAlchemyEngineInfo,
 )
+from .notifications import EmailInfo, MonitorInfo
 from .queue import KafkaInfo, QueueConnectionInfo, QueueTopology, RabbitMQInfo
 from .redis_stream import RedisIngressMode, RedisStreamConsumerInfo
 
 __all__ = [
     "BaseDBInfo",
+    "EmailInfo",
     "KafkaInfo",
     "MongodbInfo",
+    "MonitorInfo",
     "QueueConnectionInfo",
     "QueueTopology",
     "MysqlInfo",

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Type, TypeVar, Union
 
 from dotenv import dotenv_values
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 try:
     from ..models.api import ComponentInfo
@@ -48,6 +48,8 @@ def _structured_value(value: Any) -> Any:
         return [_structured_value(item) for item in value]
     if isinstance(value, BaseModel):
         return _structured_value(value.model_dump(mode="python"))
+    if isinstance(value, SecretStr):
+        return value.get_secret_value()
     enum_value = getattr(value, "value", value)
     if enum_value is not value:
         return _structured_value(enum_value)

@@ -73,12 +73,12 @@ def run(
     _infra_templates.run(output_dir=str(target / "infra"), generate_all=True)
     management_dir = template_dir / "demo_management"
     copytree_merge(management_dir, target)
-    topology_module = target / "demo_support" / "topology.py"
-    topology_code = read_text_template(topology_module).replace(
+    demo_config = target / "demo_support" / "config.py"
+    demo_config_code = read_text_template(demo_config).replace(
         "__SCRAPY_CFFI_DEMO_MODE__",
         demo_mode,
     )
-    write_utf8_file(topology_module, topology_code)
+    write_utf8_file(demo_config, demo_config_code)
     shell_manager = target / "scripts" / "docker-demo.sh"
     if shell_manager.exists():
         shell_manager.chmod(0o755)

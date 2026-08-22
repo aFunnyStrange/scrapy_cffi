@@ -18,7 +18,7 @@ ROOT = SCRIPT_DIR.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from demo_support.topology import DEMO_MODE
+from demo_support.config import DEMO_MODE
 
 
 INFRA = ROOT / "infra"
@@ -326,8 +326,8 @@ def run_demo(topology: str) -> int:
     log_dir = ROOT / "artifacts" / "demo-verification" / topology
     log_dir.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
-    environment["SCRAPY_CFFI_DEMO_TOPOLOGY"] = topology
-    environment["SCRAPY_CFFI_DEMO_LOG"] = str(log_dir / "demo.log")
+    environment["SCRAPY_CFFI_TOPOLOGY"] = topology
+    environment["SCRAPY_CFFI_LOG"] = str(log_dir / "demo.log")
     console_log = log_dir / "console.log"
     print("Crawler log: %s" % console_log)
     try:
@@ -424,7 +424,7 @@ def seed_request(
     if DEMO_MODE == "kafka":
         publisher_environment = dict(environment)
         publisher_environment["SCRAPY_CFFI_START_URL"] = start_url
-        if environment.get("SCRAPY_CFFI_DEMO_TOPOLOGY") == "cluster":
+        if environment.get("SCRAPY_CFFI_TOPOLOGY") == "cluster":
             publisher_environment["SCRAPY_CFFI_KAFKA_BOOTSTRAP_SERVERS"] = (
                 "127.0.0.1:9094,127.0.0.1:9095,127.0.0.1:9096"
             )
@@ -591,8 +591,8 @@ def verify(topology: str, interrupt: bool = False) -> None:
     http_port = available_port(18002)
     websocket_port = available_port(18765)
     quic_port = available_udp_port(18443)
-    environment["SCRAPY_CFFI_DEMO_TOPOLOGY"] = topology
-    environment["SCRAPY_CFFI_DEMO_LOG"] = str(log_dir / "demo.log")
+    environment["SCRAPY_CFFI_TOPOLOGY"] = topology
+    environment["SCRAPY_CFFI_LOG"] = str(log_dir / "demo.log")
     environment["SCRAPY_CFFI_DEMO_HTTP_PORT"] = str(http_port)
     environment["SCRAPY_CFFI_DEMO_WS_PORT"] = str(websocket_port)
     environment["SCRAPY_CFFI_DEMO_QUIC_PORT"] = str(quic_port)

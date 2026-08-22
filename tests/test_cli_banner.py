@@ -27,7 +27,7 @@ def test_render_banner_plain_has_fixed_ascii_wordmark() -> None:
     output = banner.render_banner(use_color=False, version="1.2.3")
 
     assert "\033[" not in output
-    assert "async crawler framework" in output
+    assert "async worker kernel" in output
     assert "v1.2.3" in output
     assert len(output.splitlines()) == 7
 
@@ -72,7 +72,7 @@ def test_banner_command_forces_plain_preview(monkeypatch, capsys) -> None:
 
     assert result == 0
     assert "\033[" not in output
-    assert "async crawler framework" in output
+    assert "async worker kernel" in output
 
 
 def test_short_root_help_starts_with_plain_banner(monkeypatch, capsys) -> None:
@@ -85,7 +85,7 @@ def test_short_root_help_starts_with_plain_banner(monkeypatch, capsys) -> None:
 
     assert raised.value.code == 0
     assert "\033[" not in output
-    assert "async crawler framework" in output
+    assert "async worker kernel" in output
     assert "usage: scrapy-cffi" in output
 
 
@@ -112,7 +112,7 @@ def test_subcommand_help_does_not_render_banner(
     output = capsys.readouterr().out
 
     assert raised.value.code == 0
-    assert "async crawler framework" not in output
+    assert "async worker kernel" not in output
     assert "usage: scrapy-cffi" in output
 
 

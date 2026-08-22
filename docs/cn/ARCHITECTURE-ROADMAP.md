@@ -1,5 +1,7 @@
 # 架构路线图
 
+`scrapy_cffi` 的长期定位是轻量异步 Worker 内核。Crawler 是当前第一种、也是能力最完整的专项 Worker 适配；通用资源、线程、子进程与 Server 能力保持独立组合，不会默认塞入 Crawler 热路径。
+
 [English](../en/ARCHITECTURE-ROADMAP.md) | 简体中文
 
 ## 当前 0.4 分层模型

@@ -180,6 +180,16 @@ continue to expose their normal ports, and crawler settings connect to their
 ordinary addresses through `REDIS_INFO`, database info, `RABBITMQ_INFO`, and
 `KAFKA_INFO`.
 
+Both `startproject` and `demo` generate `project_support/topology.py`. The
+generated `settings.py` imports this project-owned module directly, so formal
+projects have the same editable single/Sentinel/cluster endpoint helper as the
+Demo. Set `SCRAPY_CFFI_TOPOLOGY` to `single`, `sentinel`, or `cluster`; an
+optional `SCRAPY_CFFI_LOG` overrides the crawler log path. The helper selects
+RabbitMQ or Kafka cluster endpoints from the scheduler configured by the
+project, rather than from Demo-only state. `demo_support/` remains reserved for
+mock endpoints, servers, and verification utilities generated only by
+`scrapy-cffi demo`.
+
 For `single`, omitting `--services` starts every service still defined in
 `infra/docker-compose.yml`. The generated file initially contains all six
 services. You may comment out or remove unneeded service blocks, and may pin or

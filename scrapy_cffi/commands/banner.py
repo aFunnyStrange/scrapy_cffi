@@ -41,7 +41,7 @@ def render_banner(use_color: bool = True, version: str = __version__) -> str:
         )
         accent = "\033[38;5;45m"
         muted = "\033[38;5;244m"
-        detail = "%s[ async crawler framework ]%s  %sv%s%s" % (
+        detail = "%s[ async worker kernel ]%s  %sv%s%s" % (
             accent,
             _RESET,
             muted,
@@ -49,7 +49,7 @@ def render_banner(use_color: bool = True, version: str = __version__) -> str:
             _RESET,
         )
     else:
-        detail = "[ async crawler framework ]  v%s" % version
+        detail = "[ async worker kernel ]  v%s" % version
     return "\n".join(rows + ("", "  " + detail))
 
 

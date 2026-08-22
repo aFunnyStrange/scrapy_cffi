@@ -139,3 +139,20 @@ def test_optional_curl_native_directory_round_trips_as_path(
     settings = env_to_settings(env_path, SettingsInfo, environ={})
 
     assert settings.CURL_CFFI_RUNTIME_DIR == native_dir
+
+
+def test_email_secret_round_trips_only_through_explicit_env_file(
+    tmp_path: Path,
+) -> None:
+    """Preserve an SMTP secret in the operator-owned dotenv representation."""
+    settings = SettingsInfo()
+    settings.EMAIL_INFO.PASSWORD = "local-secret"
+    env_path = tmp_path / ".env"
+
+    settings_to_env(settings, env_path)
+    restored = env_to_settings(env_path, SettingsInfo, environ={})
+
+    assert "EMAIL_INFO__PASSWORD='local-secret'" in env_path.read_text(
+        encoding="utf-8"
+    )
+    assert restored.EMAIL_INFO.PASSWORD.get_secret_value() == "local-secret"

@@ -38,3 +38,28 @@ class CustomExtension(Extension):
 scrapy-cffi demo
 ```
 
+## 4. 框架内置但默认关闭的 Extension
+
+新生成的项目默认不启用任何 Extension。没有监听者时 Signal 会立即丢弃，因此普通 Worker 不承担监控网络请求或 SMTP 开销。
+
+`CrawlerMonitorExtension` 向可选 Hub 上报生命周期与错误事件。请求、响应、丢弃和 Item 等高频 Signal 只在本地计数，累计到 `MONITOR_INFO.EVENT_BATCH_SIZE` 后才上报。它不创建心跳后台任务，也不参与 Crawler 完成判断。
+
+```python
+from scrapy_cffi.extensions import CrawlerMonitorExtension
+
+settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+settings.EXTENSIONS_PATH = CrawlerMonitorExtension
+```
+
+`EmailNotificationExtension` 使用惰性 SMTP 连接和 `asyncio.to_thread()`。默认在 Engine 停止时发送汇总；只有设置 `EMAIL_INFO.SEND_ON_ERROR = True` 才会即时发送错误邮件。
+
+```python
+from scrapy_cffi.extensions import EmailNotificationExtension
+
+settings.EMAIL_INFO.HOST = "smtp.example.com"
+settings.EMAIL_INFO.USERNAME = "crawler@example.com"
+settings.EMAIL_INFO.TO_ADDRESSES = ["ops@example.com"]
+settings.EXTENSIONS_PATH = EmailNotificationExtension
+```
+
+密码应通过被 Git 忽略的 `.env` 中的 `EMAIL_INFO__PASSWORD` 提供。Server 与 Hub 模式见[可选爬虫监控控制台](17-monitoring.md)。
