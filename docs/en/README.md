@@ -21,7 +21,7 @@
 15. [Multi-spider resource ownership](usage/14-multi-spider-resources.md)
 16. [Deduplication](usage/15-deduplication.md)
 17. [Custom runtime resources](usage/16-custom-resources.md)
-18. [Optional crawler monitoring console](usage/17-monitoring.md)
+18. [Optional worker monitoring console](usage/17-monitoring.md)
 
 ## Maintainer and release documentation
 

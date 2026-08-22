@@ -67,6 +67,7 @@ def create_settings(
     # Optional crawler observation. The extension is never enabled implicitly.
     # from scrapy_cffi.extensions import CrawlerMonitorExtension
     # settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+    # settings.MONITOR_INFO.HEARTBEAT_INTERVAL = 15.0
     # settings.EXTENSIONS_PATH = CrawlerMonitorExtension
     # Optional email summaries. Configure EMAIL_INFO through .env in production.
     # from scrapy_cffi.extensions import EmailNotificationExtension

@@ -37,6 +37,7 @@ class MonitorInfo(StrictValidatedModel):
     HUB_URL: str = "http://127.0.0.1:6800"
     WORKER_ID: Optional[str] = None
     EVENT_BATCH_SIZE: int = Field(default=100, ge=1)
+    HEARTBEAT_INTERVAL: float = Field(default=15.0, gt=0)
     TIMEOUT: float = Field(default=3.0, gt=0)
 
 

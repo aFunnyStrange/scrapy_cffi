@@ -1,3 +1,5 @@
+"""Construct narrow capability objects passed to user components."""
+
 from typing import TYPE_CHECKING, cast
 
 
@@ -7,6 +9,7 @@ async def _noop_scheduler_async(*args, **kwargs):
 
 
 def _noop_scheduler_sync(*args, **kwargs):
+    """Ignore one missing optional synchronous scheduler capability."""
     return None
 
 
@@ -18,11 +21,15 @@ if TYPE_CHECKING:
     from .signals import SignalsHooks
 
 class Hooks:
+    """Hold a deliberately small dynamic capability surface."""
+
     def __init__(self, **funcs):
+        """Attach explicitly selected capabilities by name."""
         for name, func in funcs.items():
             setattr(self, name, func)
 
 def spiders_hooks(crawler: "Crawler", scheduler) -> "SpidersHooks":
+    """Expose session and scheduler capabilities to one Spider."""
     hooks_obj = Hooks(
         session=Hooks(
             register_sessions=crawler.sessions.register_sessions_batch,
@@ -38,6 +45,7 @@ def spiders_hooks(crawler: "Crawler", scheduler) -> "SpidersHooks":
     return cast(Hooks, hooks_obj)
 
 def _pipelines_hooks(crawler: "Crawler") -> "_PipelinesHooks":
+    """Expose internal pipeline session capabilities."""
     hooks_obj = Hooks(
         session=Hooks(
             mark_end=crawler.sessions.mark_end,
@@ -48,6 +56,7 @@ def _pipelines_hooks(crawler: "Crawler") -> "_PipelinesHooks":
     return cast(Hooks, hooks_obj)
 
 def pipelines_hooks(crawler: "Crawler") -> "PipelinesHooks":
+    """Expose public pipeline session and signal capabilities."""
     hooks_obj = Hooks(
         session=Hooks(
             get_session_cookies=crawler.sessions.get_session_cookies,
@@ -60,6 +69,7 @@ def pipelines_hooks(crawler: "Crawler") -> "PipelinesHooks":
     return cast(Hooks, hooks_obj)
 
 def interceptors_hooks(crawler: "Crawler") -> "InterceptorsHooks":
+    """Expose session leasing capabilities to interceptors."""
     hooks_obj = Hooks(
         session=Hooks(
             acquire=crawler.sessions.acquire,
@@ -71,9 +81,12 @@ def interceptors_hooks(crawler: "Crawler") -> "InterceptorsHooks":
     return cast(Hooks, hooks_obj)
 
 def signals_hooks(crawler: "Crawler") -> "SignalsHooks":
+    """Expose observation context and subscriptions to extensions."""
     hooks_obj = Hooks(
         settings=crawler.settings,
         logger=crawler.logger,
+        run_context=crawler.run_context,
+        stop_event=crawler.stop_event,
         session=Hooks(
             configure_rate_limit=crawler.sessions.configure_rate_limit,
         ),

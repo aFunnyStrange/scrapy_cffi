@@ -42,12 +42,13 @@ scrapy-cffi demo
 
 新生成的项目默认不启用任何 Extension。没有监听者时 Signal 会立即丢弃，因此普通 Worker 不承担监控网络请求或 SMTP 开销。
 
-`CrawlerMonitorExtension` 向可选 Hub 上报生命周期与错误事件。请求、响应、丢弃和 Item 等高频 Signal 只在本地计数，累计到 `MONITOR_INFO.EVENT_BATCH_SIZE` 后才上报。它不创建心跳后台任务，也不参与 Crawler 完成判断。
+`CrawlerMonitorExtension` 向可选 Hub 上报生命周期与错误事件。请求、响应、丢弃和 Item 等高频 Signal 只在本地计数，累计到 `MONITOR_INFO.EVENT_BATCH_SIZE` 后才上报。显式启用后，它会从第一个 Engine 启动到明确关闭期间持有一个低频心跳任务；心跳只影响 Hub 可用性，绝不参与 Crawler 完成判断。
 
 ```python
 from scrapy_cffi.extensions import CrawlerMonitorExtension
 
 settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+settings.MONITOR_INFO.HEARTBEAT_INTERVAL = 15.0
 settings.EXTENSIONS_PATH = CrawlerMonitorExtension
 ```
 

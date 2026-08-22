@@ -1,6 +1,11 @@
+"""Declare stable signal identities emitted by crawler runtime components."""
+
 # Core Component Signals
 engine_started = object() # Engine started          SignalInfo(signal_time=time.time())
 engine_stopped = object() # Engine stopped          SignalInfo(signal_time=time.time())
+run_completed = object() # Crawler invocation completed normally
+run_failed = object() # Crawler invocation raised an unhandled exception
+run_cancelled = object() # Crawler invocation was explicitly cancelled
 scheduler_empty = object() # Scheduler is empty     SignalInfo(signal_time=time.time())
 task_error = object() # Task failed                 SignalInfo(signal_time=time.time(), reason=result)
 

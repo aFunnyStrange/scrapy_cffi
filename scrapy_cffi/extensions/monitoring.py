@@ -1,7 +1,5 @@
 """Publish opt-in batched crawler observations to a monitoring Hub."""
 
-import os
-import socket
 import time
 import asyncio
 from typing import TYPE_CHECKING, Dict, Optional
@@ -9,6 +7,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 from . import signals
 from .base import Extension
 from ..monitoring import MonitorClient, MonitorEvent
+from ..runtime import EventCategory, RunContext, RunState, WorkerState
 
 if TYPE_CHECKING:
     from ..config import MonitorInfo
@@ -30,12 +29,17 @@ class CrawlerMonitorExtension(Extension):
         if self.logger is None:
             self.logger = hooks.logger
         self.info: "MonitorInfo" = settings.MONITOR_INFO
-        self.worker_id = self.info.WORKER_ID or "%s:%s" % (
-            socket.gethostname(),
-            os.getpid(),
+        self.run_context = getattr(hooks, "run_context", None) or RunContext.create()
+        self.worker_id = (
+            self.info.WORKER_ID
+            or self.run_context.worker_id
+            or self.run_context.resolved_worker_id()
         )
         self.client = MonitorClient(self.info.HUB_URL, timeout=self.info.TIMEOUT)
         self._publish_lock = asyncio.Lock()
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._active_engines = 0
+        self._sequence = 0
         self.counters: Dict[str, int] = {
             "request_scheduled": 0,
             "request_dropped": 0,
@@ -52,6 +56,9 @@ class CrawlerMonitorExtension(Extension):
         extension = cls(hooks, **kwargs)
         hooks.signals.connect(signals.engine_started, extension.engine_started)
         hooks.signals.connect(signals.engine_stopped, extension.engine_stopped)
+        hooks.signals.connect(signals.run_completed, extension.run_completed)
+        hooks.signals.connect(signals.run_failed, extension.run_failed)
+        hooks.signals.connect(signals.run_cancelled, extension.run_cancelled)
         hooks.signals.connect(signals.spider_opened, extension.spider_opened)
         hooks.signals.connect(signals.spider_closed, extension.spider_closed)
         hooks.signals.connect(signals.task_error, extension.task_error)
@@ -68,18 +75,29 @@ class CrawlerMonitorExtension(Extension):
         *,
         spider_name: Optional[str] = None,
         detail: Optional[str] = None,
+        category: EventCategory = EventCategory.LIFECYCLE,
+        worker_state: Optional[WorkerState] = None,
+        run_state: Optional[RunState] = None,
     ) -> None:
         """Publish one bounded event while isolating Hub availability."""
-        observation = MonitorEvent(
-            worker_id=self.worker_id,
-            event=event,
-            timestamp=time.time(),
-            spider_name=spider_name,
-            counters=dict(self.counters),
-            detail=detail,
-        )
         try:
             async with self._publish_lock:
+                self._sequence += 1
+                observation = MonitorEvent(
+                    sequence=self._sequence,
+                    worker_id=self.worker_id,
+                    instance_id=self.run_context.instance_id,
+                    run_id=self.run_context.run_id,
+                    task_id=self.run_context.task_id,
+                    event=event,
+                    category=category,
+                    timestamp=time.time(),
+                    worker_state=worker_state,
+                    run_state=run_state,
+                    spider_name=spider_name,
+                    counters=dict(self.counters),
+                    detail=detail,
+                )
                 await self.client.publish(observation)
         except Exception as exc:
             self.logger.warning(
@@ -94,15 +112,98 @@ class CrawlerMonitorExtension(Extension):
         self._batched_events += 1
         if self._batched_events >= self.info.EVENT_BATCH_SIZE:
             self._batched_events = 0
-            await self._publish("counters_updated")
+            await self._publish(
+                "counters_updated",
+                category=EventCategory.COUNTERS,
+            )
+
+    async def _heartbeat_loop(self) -> None:
+        """Publish availability observations until explicitly cancelled."""
+        try:
+            while True:
+                await asyncio.sleep(self.info.HEARTBEAT_INTERVAL)
+                await self._publish(
+                    "heartbeat",
+                    category=EventCategory.HEARTBEAT,
+                    worker_state=WorkerState.RUNNING,
+                    run_state=RunState.RUNNING,
+                )
+        except asyncio.CancelledError:
+            raise
+
+    def _start_heartbeat(self) -> None:
+        """Start the one extension-owned heartbeat task after first use."""
+        if self._heartbeat_task is None:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _stop_heartbeat(self) -> None:
+        """Cancel and await the retained heartbeat task."""
+        task = self._heartbeat_task
+        self._heartbeat_task = None
+        if task is None:
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
     async def engine_started(self, data: "SignalInfo") -> None:
         """Register a running crawler engine with the Hub."""
-        await self._publish("engine_started")
+        self._active_engines += 1
+        await self._publish(
+            "engine_started",
+            worker_state=WorkerState.RUNNING,
+            run_state=RunState.RUNNING,
+        )
+        self._start_heartbeat()
 
     async def engine_stopped(self, data: "SignalInfo") -> None:
         """Flush counters and mark one crawler engine stopped."""
-        await self._publish("engine_stopped")
+        self._active_engines = max(0, self._active_engines - 1)
+        if not self._active_engines:
+            await self._stop_heartbeat()
+        await self._publish(
+            "engine_stopped",
+            worker_state=(
+                WorkerState.RUNNING
+                if self._active_engines
+                else WorkerState.STOPPED
+            ),
+            run_state=(
+                RunState.RUNNING
+                if self._active_engines
+                else RunState.COMPLETED
+            ),
+        )
+
+    async def run_completed(self, data: "SignalInfo") -> None:
+        """Report explicit normal completion for the whole crawler run."""
+        await self._stop_heartbeat()
+        await self._publish(
+            "run_completed",
+            worker_state=WorkerState.STOPPED,
+            run_state=RunState.COMPLETED,
+        )
+
+    async def run_failed(self, data: "SignalInfo") -> None:
+        """Report an unhandled run failure without changing durable tasks."""
+        await self._stop_heartbeat()
+        detail = str(data.reason or data.exception)[:1000]
+        await self._publish(
+            "run_failed",
+            detail=detail,
+            category=EventCategory.ERROR,
+            worker_state=WorkerState.STOPPED,
+            run_state=RunState.FAILED,
+        )
+
+    async def run_cancelled(self, data: "SignalInfo") -> None:
+        """Report explicit cancellation as distinct from a failed run."""
+        await self._stop_heartbeat()
+        await self._publish(
+            "run_cancelled",
+            detail=str(data.reason)[:1000],
+            worker_state=WorkerState.STOPPED,
+            run_state=RunState.CANCELLED,
+        )
 
     async def spider_opened(self, data: "SignalInfo") -> None:
         """Register one opened spider name."""
@@ -121,7 +222,11 @@ class CrawlerMonitorExtension(Extension):
     async def task_error(self, data: "SignalInfo") -> None:
         """Record and immediately publish a task failure."""
         self.counters["task_error"] += 1
-        await self._publish("task_error", detail=str(data.reason)[:1000])
+        await self._publish(
+            "task_error",
+            detail=str(data.reason)[:1000],
+            category=EventCategory.ERROR,
+        )
 
     async def spider_error(self, data: "SignalInfo") -> None:
         """Record and immediately publish a spider failure."""
@@ -130,6 +235,7 @@ class CrawlerMonitorExtension(Extension):
             "spider_error",
             spider_name=getattr(data.spider, "name", None),
             detail=str(data.exception)[:1000],
+            category=EventCategory.ERROR,
         )
 
     async def request_scheduled(self, data: "SignalInfo") -> None:
@@ -147,6 +253,10 @@ class CrawlerMonitorExtension(Extension):
     async def item_scraped(self, data: "SignalInfo") -> None:
         """Aggregate a scraped-item observation."""
         await self._count_batched("item_scraped")
+
+    async def close(self) -> None:
+        """Stop the optional heartbeat without inventing a terminal state."""
+        await self._stop_heartbeat()
 
 
 __all__ = ["CrawlerMonitorExtension"]

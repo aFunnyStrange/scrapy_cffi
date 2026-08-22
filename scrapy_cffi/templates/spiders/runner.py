@@ -5,12 +5,15 @@ from settings import create_settings
 from typing import Optional, Tuple, Type
 
 from scrapy_cffi.crawler import Crawler
+from scrapy_cffi.runtime import RunContext
 from scrapy_cffi.runner import (
+    CrawlerRunHandle,
     cleanup_loop,
     run_all_spiders,
     run_all_spiders_sync,
     run_spider,
     run_spider_sync,
+    start_spider_run,
 )
 from scrapy_cffi.spiders import BaseSpider
 
@@ -83,6 +86,24 @@ async def advance_main_all(*args, **kwargs) -> Tuple[Crawler, asyncio.Task]:
 
     crawler, engine_task = await run_all_spiders(settings=settings, new_loop=False, *args, **kwargs)
     return crawler, engine_task
+
+async def managed_main(
+    task_id: str,
+    spider_cls: Optional[Type[BaseSpider]] = DEFAULT_SPIDER,
+    *args,
+    **kwargs,
+) -> CrawlerRunHandle:
+    """Expose one correlated run for Celery or an application manager."""
+    if spider_cls is None:
+        raise RuntimeError("No default spider is configured.")
+    settings = create_settings(spider_path=spider_cls)
+    context = RunContext.create(task_id=task_id)
+    return await start_spider_run(
+        settings,
+        *args,
+        run_context=context,
+        **kwargs,
+    )
 
 # ————————————————————————————————————————————————————————————————————————
 def setup_signal_handlers(loop: asyncio.AbstractEventLoop, shutdown_event: asyncio.Event):

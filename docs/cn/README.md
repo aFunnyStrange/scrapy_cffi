@@ -21,7 +21,7 @@
 15. [多 Spider 资源归属](usage/14-multi-spider-resources.md)
 16. [请求去重](usage/15-deduplication.md)
 17. [自定义 Runtime 资源](usage/16-custom-resources.md)
-18. [可选爬虫监控控制台](usage/17-monitoring.md)
+18. [可选 Worker 监控控制台](usage/17-monitoring.md)
 
 ## 维护与版本文档
 

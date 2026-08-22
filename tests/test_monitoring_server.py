@@ -13,6 +13,8 @@ from scrapy_cffi.extensions.monitoring import CrawlerMonitorExtension
 from scrapy_cffi.extensions.signal_manager import SignalManager
 from scrapy_cffi.extensions.singal_info import SignalInfo
 from scrapy_cffi.monitoring import MonitorEvent, MonitorStore, create_monitor_app
+from scrapy_cffi.monitoring import TaskSnapshot
+from scrapy_cffi.runtime import RunContext, RunState, WorkerAvailability, WorkerState
 from scrapy_cffi.settings import SettingsInfo
 
 
@@ -94,10 +96,12 @@ def test_monitor_app_registers_and_lists_crawlers() -> None:
             )
         )
         workers = await endpoints["/api/v1/workers"]()
+        runs = await endpoints["/api/v1/runs"]()
 
         assert snapshot.status == "running"
         assert workers[0].worker_id == "crawler-a"
         assert workers[0].spiders == ["orders"]
+        assert runs == []
         assert await endpoints["/health"]() == {"status": "ok"}
         assert "Experimental" in await endpoints["/"]()
 
@@ -122,8 +126,8 @@ def test_monitor_app_reports_optional_dependency_install_command(
         create_monitor_app()
 
 
-def test_monitor_extension_batches_hot_signals_without_background_task() -> None:
-    """Publish lifecycle immediately while batching high-frequency counters."""
+def test_monitor_extension_batches_and_owns_heartbeat_task() -> None:
+    """Publish lifecycle immediately and explicitly close the heartbeat."""
 
     async def exercise() -> None:
         """Drive lifecycle and hot callbacks directly."""
@@ -139,6 +143,14 @@ def test_monitor_extension_batches_hot_signals_without_background_task() -> None
         settings = SettingsInfo()
         settings.MONITOR_INFO.WORKER_ID = "worker-test"
         settings.MONITOR_INFO.EVENT_BATCH_SIZE = 2
+        settings.MONITOR_INFO.HEARTBEAT_INTERVAL = 60.0
+        run_context = RunContext(
+            worker_id="context-worker",
+            instance_id="instance-1",
+            run_id="run-1",
+            task_id="task-1",
+        )
+        hooks.run_context = run_context
         extension = CrawlerMonitorExtension.from_crawler(
             hooks,
             settings=settings,
@@ -160,7 +172,172 @@ def test_monitor_extension_batches_hot_signals_without_background_task() -> None
             "counters_updated",
         ]
         assert published[-1].counters["response_received"] == 2
-        assert not hasattr(extension, "_heartbeat_task")
+        assert published[0].instance_id == "instance-1"
+        assert published[0].run_id == "run-1"
+        assert published[0].task_id == "task-1"
+        assert extension._heartbeat_task is not None
+        await extension.engine_stopped(SignalInfo(signal_time=4.0))
+        assert extension._heartbeat_task is None
+        assert published[-1].run_state == RunState.COMPLETED
+
+    asyncio.run(exercise())
+
+
+def test_monitor_store_separates_errors_lifecycle_and_event_order() -> None:
+    """Keep item errors observable without declaring the worker failed."""
+
+    async def exercise() -> None:
+        """Record ordered, stale, and terminal run facts."""
+        store = MonitorStore()
+        common = {
+            "worker_id": "worker-1",
+            "instance_id": "instance-1",
+            "run_id": "run-1",
+            "task_id": "task-1",
+        }
+        await store.record(
+            MonitorEvent(
+                **common,
+                sequence=1,
+                event="engine_started",
+                timestamp=10.0,
+                worker_state=WorkerState.RUNNING,
+                run_state=RunState.RUNNING,
+            )
+        )
+        error_snapshot = await store.record(
+            MonitorEvent(
+                **common,
+                sequence=2,
+                event="task_error",
+                timestamp=11.0,
+                detail="one request failed",
+            )
+        )
+        stale_snapshot = await store.record(
+            MonitorEvent(
+                **common,
+                sequence=1,
+                event="run_failed",
+                timestamp=9.0,
+                run_state=RunState.FAILED,
+            )
+        )
+        await store.record(
+            MonitorEvent(
+                **common,
+                sequence=3,
+                event="run_completed",
+                timestamp=12.0,
+                worker_state=WorkerState.STOPPED,
+                run_state=RunState.COMPLETED,
+            )
+        )
+        runs = await store.list_runs()
+
+        assert error_snapshot.status == WorkerState.RUNNING
+        assert stale_snapshot.last_event == "task_error"
+        assert runs[0].state == RunState.COMPLETED
+        assert runs[0].task_id == "task-1"
+
+    asyncio.run(exercise())
+
+
+def test_monitor_store_marks_only_availability_unreachable(monkeypatch) -> None:
+    """A stale heartbeat must not invent stopped or failed lifecycle state."""
+
+    async def exercise() -> None:
+        """Advance observation time while retaining explicit run state."""
+        clock = [10.0]
+        monkeypatch.setattr(
+            "scrapy_cffi.monitoring.store.time.time",
+            lambda: clock[0],
+        )
+        store = MonitorStore(stale_after=5.0)
+        await store.record(
+            MonitorEvent(
+                worker_id="worker-1",
+                instance_id="instance-1",
+                run_id="run-1",
+                sequence=1,
+                event="heartbeat",
+                timestamp=10.0,
+                worker_state=WorkerState.RUNNING,
+                run_state=RunState.RUNNING,
+            )
+        )
+        clock[0] = 20.0
+        workers = await store.list_workers()
+        runs = await store.list_runs()
+
+        assert workers[0].availability == WorkerAvailability.UNREACHABLE
+        assert workers[0].status == WorkerState.RUNNING
+        assert runs[0].state == RunState.RUNNING
+
+    asyncio.run(exercise())
+
+
+def test_monitor_store_bounds_in_memory_history() -> None:
+    """Evict old terminal observations without growing process memory forever."""
+
+    async def exercise() -> None:
+        """Record more terminal runs and workers than the configured bounds."""
+        store = MonitorStore(max_workers=1, max_runs=1)
+        for index in range(2):
+            await store.record(
+                MonitorEvent(
+                    worker_id="worker-%s" % index,
+                    instance_id="instance-%s" % index,
+                    run_id="run-%s" % index,
+                    sequence=1,
+                    event="run_completed",
+                    timestamp=float(index + 1),
+                    worker_state=WorkerState.STOPPED,
+                    run_state=RunState.COMPLETED,
+                )
+            )
+
+        workers = await store.list_workers()
+        runs = await store.list_runs()
+
+        assert [worker.worker_id for worker in workers] == ["worker-1"]
+        assert [run.run_id for run in runs] == ["run-1"]
+
+    asyncio.run(exercise())
+
+
+def test_monitor_app_uses_read_only_task_state_provider() -> None:
+    """Display durable task facts without allowing the Hub to mutate them."""
+
+    class Provider:
+        """Return application-owned task snapshots for the test Hub."""
+
+        async def list_tasks(self):
+            """Return the bounded task list."""
+            return [
+                TaskSnapshot(
+                    task_id="task-1",
+                    state="retry",
+                    updated_at=5.0,
+                    run_id="run-1",
+                )
+            ]
+
+        async def get_task(self, task_id):
+            """Return the requested task when it matches."""
+            tasks = await self.list_tasks()
+            return tasks[0] if task_id == "task-1" else None
+
+    async def exercise() -> None:
+        """Call the provider-backed routes directly."""
+        app = create_monitor_app(task_state_provider=Provider())
+        endpoints = {route.path: route.endpoint for route in app.routes}
+
+        tasks = await endpoints["/api/v1/tasks"]()
+        task = await endpoints["/api/v1/tasks/{task_id}"]("task-1")
+
+        assert tasks[0].state == "retry"
+        assert task.task_id == "task-1"
 
     asyncio.run(exercise())
 

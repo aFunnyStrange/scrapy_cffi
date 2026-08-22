@@ -13,6 +13,8 @@ from typing import (
 
 if TYPE_CHECKING:
     from logging import Logger
+    from asyncio import Event
+    from ..runtime import RunContext
     from ..settings import SettingsInfo
 
 T = TypeVar("T")
@@ -31,6 +33,8 @@ class SignalsHooks(Protocol):
 
     settings: "SettingsInfo"
     logger: "Logger"
+    run_context: "RunContext"
+    stop_event: "Event"
     session: "SessionHooks"
     signals: SignalHooks
 

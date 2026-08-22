@@ -102,12 +102,15 @@ SMTP I/O.
 `CrawlerMonitorExtension` publishes lifecycle and error events to the optional
 monitoring Hub. High-frequency request, response, drop, and item signals are
 counted locally and published only after `MONITOR_INFO.EVENT_BATCH_SIZE`
-observations. It owns no heartbeat task and never controls crawler completion.
+observations. Once enabled, it owns one low-frequency heartbeat task from the
+first Engine start through explicit shutdown. Heartbeats affect Hub
+availability only and never control crawler completion.
 
 ```python
 from scrapy_cffi.extensions import CrawlerMonitorExtension
 
 settings.MONITOR_INFO.HUB_URL = "http://127.0.0.1:6800"
+settings.MONITOR_INFO.HEARTBEAT_INTERVAL = 15.0
 settings.EXTENSIONS_PATH = CrawlerMonitorExtension
 ```
 

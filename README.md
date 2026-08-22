@@ -47,7 +47,7 @@ capability into crawler-core behavior.
 
 - **Lightweight middleware & interceptor system** for easy extensions
 
-- **Opt-in crawler observability**: an optional FastAPI monitoring console,
+- **Opt-in worker observability**: an optional FastAPI monitoring console,
   batched Extension reporting, and lazy asynchronous SMTP notifications; none
   are enabled by default
 
@@ -86,7 +86,7 @@ pip install "scrapy_cffi[protobuf]"
 # Optional Rust-accelerated Bloom filter with identical Python fallback semantics
 pip install "scrapy_cffi[bloom]"
 
-# Optional crawler monitoring console
+# Optional worker monitoring console
 pip install "scrapy_cffi[server]"
 ```
 

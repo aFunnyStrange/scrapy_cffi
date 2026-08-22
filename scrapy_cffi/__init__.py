@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .composition import build_resource_service
     from .crawler import Crawler
     from .runner import (
+        CrawlerRunHandle,
         SpiderRunConfig,
         cleanup_loop,
         run_all_spiders,
@@ -15,9 +16,20 @@ if TYPE_CHECKING:
         run_spider_sync,
         run_spiders,
         run_spiders_sync,
+        start_all_spiders_run,
+        start_spider_run,
     )
     from .settings import SettingsInfo, merge_spider_settings
-    from .runtime import Resource, ResourceContext, ResourceService
+    from .runtime import (
+        Resource,
+        ResourceContext,
+        ResourceService,
+        RunContext,
+        RunEvent,
+        RunOutcome,
+        RunState,
+        WorkerState,
+    )
     from .utils.common import load_settings_with_path
     from .utils.log import init_logger
 
@@ -29,7 +41,10 @@ __all__ = [
     "run_all_spiders_sync",
     "run_spiders",
     "run_spiders_sync",
+    "start_all_spiders_run",
+    "start_spider_run",
     "SpiderRunConfig",
+    "CrawlerRunHandle",
     "Crawler",
     "cleanup_loop",
     "load_settings_with_path",
@@ -40,6 +55,11 @@ __all__ = [
     "Resource",
     "ResourceContext",
     "ResourceService",
+    "RunContext",
+    "RunEvent",
+    "RunOutcome",
+    "RunState",
+    "WorkerState",
 ]
 
 _LAZY_RUNNER = {
@@ -50,8 +70,11 @@ _LAZY_RUNNER = {
     "run_spiders",
     "run_spiders_sync",
     "SpiderRunConfig",
+    "CrawlerRunHandle",
     "Crawler",
     "cleanup_loop",
+    "start_all_spiders_run",
+    "start_spider_run",
 }
 
 _LAZY_UTILS = {
@@ -66,7 +89,16 @@ _LAZY_SETTINGS = {
 
 _LAZY_COMPOSITION = {"build_resource_service"}
 
-_LAZY_RUNTIME = {"Resource", "ResourceContext", "ResourceService"}
+_LAZY_RUNTIME = {
+    "Resource",
+    "ResourceContext",
+    "ResourceService",
+    "RunContext",
+    "RunEvent",
+    "RunOutcome",
+    "RunState",
+    "WorkerState",
+}
 
 _LAZY_SUBMODULES = {
     "crawler",

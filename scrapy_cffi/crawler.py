@@ -1,4 +1,6 @@
-import json, asyncio, sys
+"""Own one crawler runtime, its resources, Engines, and graceful shutdown."""
+
+import json, asyncio, sys, time
 from functools import partial
 from pathlib import Path
 from .core.api import *
@@ -10,7 +12,7 @@ from .interceptors.api import (
     UpdateRequestSpiderInterceptor,
 )
 from .pipelines import Pipeline
-from .extensions import SignalManager
+from .extensions import SignalInfo, SignalManager, signals
 from .utils.common import (
     load_object,
     get_class_name,
@@ -21,15 +23,22 @@ from .utils.common import (
 )
 from .utils.robot import RobotsManager
 from .settings import merge_spider_settings
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 if TYPE_CHECKING:
     from .settings import SettingsInfo
     from logging import Logger
     from .service import ResourceService
+    from .runtime import RunContext
 
 class Crawler:
-    def __init__(self):
+    """Coordinate one correlated crawler run on the caller's event loop."""
+
+    def __init__(self, run_context: Optional["RunContext"] = None):
+        """Create one crawler run without starting external resources."""
+        from .runtime import RunContext
+
         self.run_py_dir = get_run_py_dir()
+        self.run_context = run_context or RunContext.create()
         self.stop_event = None
         self.global_lock = None
 
@@ -67,6 +76,7 @@ class Crawler:
         return None
 
     def init_output(self, class_list):
+        """Return component class names for bounded startup diagnostics."""
         return [get_class_name(it) for it in class_list] if isinstance(class_list, list) else [get_class_name(class_list)]
 
     def _build_resources(self) -> "ResourceService":
@@ -86,6 +96,7 @@ class Crawler:
         return self._process_task_manager
 
     async def do_initialization(self, settings: "SettingsInfo", start_type=0):
+        """Build resources and crawler components without starting Engines."""
         self.stop_event = asyncio.Event()
         self._shutdown_lock = asyncio.Lock()
         self._runtime_close_lock = asyncio.Lock()
@@ -271,14 +282,46 @@ class Crawler:
         return robot_task
     
     async def start_engines(self, robot_task, *args, **kwargs):
+        """Run every mounted Engine and emit one explicit terminal run event."""
         self.signalManager.start()
         self.sessions.start()
-        if robot_task:
-            await robot_task
-        # All spiders share this thread's asyncio loop; engines run concurrently via gather.
-        await asyncio.gather(*[engine.start(*args, **kwargs) for engine in self.engines])
-        await self._prepare_shutdown()
-        await self._close_runtime_state()
+        terminal_signal = signals.run_completed
+        terminal_data = SignalInfo(signal_time=time.time())
+        run_error = None
+        try:
+            if robot_task:
+                await robot_task
+            # All spiders share one asyncio loop and run concurrently.
+            await asyncio.gather(
+                *(engine.start(*args, **kwargs) for engine in self.engines)
+            )
+        except asyncio.CancelledError as exc:
+            terminal_signal = signals.run_cancelled
+            terminal_data = SignalInfo(
+                signal_time=time.time(),
+                reason="crawler run cancelled",
+            )
+            run_error = exc
+        except BaseException as exc:
+            terminal_signal = signals.run_failed
+            terminal_data = SignalInfo(
+                signal_time=time.time(),
+                exception=exc,
+                reason=str(exc),
+            )
+            run_error = exc
+        try:
+            safe_put = getattr(self.signalManager, "_safe_put", None)
+            if safe_put is not None:
+                await safe_put(terminal_signal, terminal_data)
+            await self._prepare_shutdown()
+            await self._close_runtime_state()
+        except BaseException as cleanup_error:
+            if run_error is not None:
+                raise run_error.with_traceback(run_error.__traceback__) from cleanup_error
+            raise
+        if run_error is not None:
+            raise run_error.with_traceback(run_error.__traceback__)
 
     async def _prepare_shutdown(self):
         """Run the broker-writable shutdown phase exactly once."""
@@ -297,6 +340,7 @@ class Crawler:
             self._shutdown_prepared = True
 
     async def _close_runtime_state(self):
+        """Close process tools, sessions, signals, and extensions exactly once."""
         if self._runtime_close_lock is None:
             self._runtime_close_lock = asyncio.Lock()
         async with self._runtime_close_lock:
@@ -306,9 +350,28 @@ class Crawler:
                 await self._process_task_manager.close()
             await self.sessions.close_all()
             await self.signalManager.stop()
+            await self._close_extensions()
             self._runtime_closed = True
 
+    async def _close_extensions(self):
+        """Close extension-owned tasks without requiring third-party changes."""
+        results = await asyncio.gather(
+            *(
+                close()
+                for extension in self.extensions_list
+                for close in (getattr(extension, "close", None),)
+                if close is not None
+            ),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, BaseException):
+                self.logger.error("Failed to close extension: %r", result)
+
     async def _persist_scheduler_sessions(self):
+        """Persist configured scheduler sessions before transports close."""
         if (
             not self.settings.SCHEDULER_PERSIST
             or not self.settings.SCHEDULER_PERSIST_SESSIONS
@@ -322,6 +385,7 @@ class Crawler:
                 await persist(spider)
 
     async def _requeue_scheduler_inflight(self):
+        """Return in-flight deliveries before broker transports close."""
         for spider in self.spiders or []:
             scheduler = self.schedulers.get(spider.name)
             requeue = getattr(scheduler, "requeue_inflight", None)
@@ -329,6 +393,7 @@ class Crawler:
                 await requeue(spider)
 
     async def _cleanup_scheduler_state(self):
+        """Clean framework-owned transient scheduler state when configured."""
         if self.settings.SCHEDULER_PERSIST:
             return
         cleaned = getattr(self, "_cleaned_scheduler_state", set())
@@ -366,6 +431,7 @@ class Crawler:
         self._cleaned_scheduler_state = cleaned
 
     async def shutdown(self):
+        """Stop accepting work and close every crawler-owned resource."""
         # Stop managed work while broker writes are still allowed. This method
         # can race with start_engines() after Ctrl+C or an external shutdown,
         # so the writable phase is locked and idempotent.
