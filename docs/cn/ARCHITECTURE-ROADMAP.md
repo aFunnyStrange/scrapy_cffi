@@ -53,3 +53,13 @@ Redis 不归入单一“数据库”或“Broker”类别，因为它同时可�
 - 只有在大体积爬虫产物需要持久化并从队列载荷中分离时，才增加对象存储 Repository。
 - 只有在业务需要跨阶段权威状态时，才增加数据库任务状态；不能用 Scheduler 持久化代替业务状态。
 
+## 通用异步 Worker 内核方向
+
+- `runtime.ResourceService` 现在允许通过 `settings.RESOURCES_PATH` 注册用户
+  自定义的 `Resource` 子类。
+- Resource 按配置顺序启动、反向关闭，并被 Spider、Pipeline、Interceptor
+  和 Extension 全局共享。
+- 框架不适配对象存储厂商的账号字段和不统一 API；项目 Resource 自己持有
+  SDK、配置和领域方法。
+- Crawler 是当前已经完整适配的 Worker 类型。只有第二种非爬虫 Worker
+  出现真实生命周期需求后，才继续抽象通用 Run Scope 和任务执行协议。

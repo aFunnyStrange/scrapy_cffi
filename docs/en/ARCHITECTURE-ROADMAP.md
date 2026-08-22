@@ -6,7 +6,8 @@
 runner
   -> Crawler composition root
   -> core services / schedulers / spiders / pipelines
-  -> service (resource lifecycle and bounded resilience)
+  -> runtime (generic shared-resource lifecycle and worker context)
+  -> service (bounded resilience)
   -> repo (storage and request-queue semantics)
   -> infra (one-shot external-system clients)
   -> platform (reusable HTTP and codec capabilities)
@@ -34,6 +35,8 @@ Redis is not placed under a database-only or broker-only category because it can
 - [x] `composition.build_resource_service` is shared by Crawler, direct use, and functional tests.
 - [x] Schedulers consume Protocols instead of concrete Redis/RabbitMQ/Kafka clients.
 - [x] Pipelines, spiders, and extensions receive one typed resource service.
+- [x] Application `Resource` classes are loaded from `RESOURCES_PATH`, started
+      in order, injected globally, and closed in reverse order.
 - [x] Old `databases`, `mq`, and `utils.reconnect` implementation modules removed.
 - [x] Typed lazy exports retain optional-dependency isolation and IDE navigation.
 - [x] Memory, Redis, RabbitMQ, Kafka, persistence, Ctrl+C cleanup, stream, and SSE flows covered by tests.
@@ -48,5 +51,8 @@ Redis is not placed under a database-only or broker-only category because it can
 
 ## Future work
 
-- Add object-storage repositories when large crawler artifacts need durable off-queue storage.
+- Add only project-specific object-storage adapters through `Resource`; keep
+  vendor credentials and non-uniform APIs outside the framework core.
+- Introduce generic run scopes only after a second non-crawler Worker needs the
+  same lifecycle; Crawler remains the currently specialized Worker adapter.
 - Add database-backed authoritative task state only when a workflow needs cross-stage business status beyond scheduler persistence.

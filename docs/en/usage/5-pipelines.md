@@ -45,4 +45,11 @@ Receives every item yielded by callbacks and may validate, transform, persist, o
 
 Called when the spider closes. Shared infrastructure is closed centrally after all engines stop; do not close `self.resources` from an individual pipeline.
 
-When `run_all_spiders` hosts multiple spiders in one crawler, they share one resource service and close together after all scheduled work completes.
+When `run_all_spiders` hosts multiple spiders in one crawler, they share one
+resource service and close together after all scheduled work completes. Pipeline
+instances are shared as well, so `open_spider` and `close_spider` are per-Spider
+notifications rather than global Pipeline switches. Keep buffers and other
+mutable run state keyed by Spider identity.
+
+Application-owned shared clients belong in a configured
+[`Resource`](16-custom-resources.md), not in these hooks.

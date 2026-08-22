@@ -65,6 +65,7 @@ settings = SettingsInfo(
 | `SPIDER_INTERCEPTORS_PATH` | Spider Interceptor 配置 |
 | `DOWNLOAD_INTERCEPTORS_PATH` | Download Interceptor 配置 |
 | `ITEM_PIPELINES_PATH` | Pipeline 配置 |
+| `RESOURCES_PATH` | 按依赖顺序注册的 `Resource` 子类或点分导入路径；Runtime 启动时顺序打开，关闭时反向释放 |
 | `EXTENSIONS_PATH` | Extension 配置 |
 
 组件配置可使用 `ComponentInfo`、`{组件: 优先级}`、列表、类或导入路径。优先级用于确定链顺序；推荐传类对象以保留 IDE 跳转。

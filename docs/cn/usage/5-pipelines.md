@@ -38,3 +38,7 @@ class SavePipeline(Pipeline):
 
 `run_all_spiders` 中多个 Spider 共用一个 ResourceService，所有计划工作完成后一起关闭共享资源。
 
+Pipeline 实例同样会被多个 Engine 共享，因此 `open_spider` 和
+`close_spider` 是每个 Spider 的通知，而不是 Pipeline 的全局开关。缓冲和其他
+可变运行状态必须按照 Spider 标识隔离。应用级共享客户端应通过
+[`Resource`](16-custom-resources.md) 注册，不能在这些 Hook 中创建或关闭。

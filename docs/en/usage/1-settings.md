@@ -450,6 +450,16 @@ The priority number follows the same convention as Scrapy: the **lower** the num
 4. String/list/dict string paths
 Still accepted for environment-driven or backwards-compatible configuration, but generated Python settings no longer use them.
 
+### 2.4.3 RESOURCES_PATH
+
+- **Type**: `List[Union[str, Type[Resource]]]`
+- **Default**: `[]`
+- **Description**: User-owned runtime resources in dependency order. Direct
+  `Resource` subclasses are preferred; dotted class paths remain supported.
+  Resources start before spiders, pipelines, interceptors, and extensions are
+  constructed, then close in reverse order during crawler shutdown. See
+  [Custom runtime resources](16-custom-resources.md).
+
 5. None
 If not specified, only the framework's built-in components will be loaded.  
 

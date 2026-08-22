@@ -58,6 +58,10 @@ def create_settings(
     settings.SPIDERS_PATH = spider_path
     settings.EXTENSIONS_PATH = CustomExtension
     settings.ITEM_PIPELINES_PATH = [CustomPipeline2, CustomPipeline1]
+    # Application infrastructure can inherit scrapy_cffi.Resource and register
+    # here. Resources start in list order and close in reverse order.
+    # from resources import ProjectObjectStorage
+    # settings.RESOURCES_PATH = [ProjectObjectStorage]
     settings.DOWNLOAD_INTERCEPTORS_PATH = {
         CustomDownloadInterceptor1: 300,
         CustomDownloadInterceptor2: 200,

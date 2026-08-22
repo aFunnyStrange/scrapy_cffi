@@ -1,3 +1,5 @@
+"""Expose the stable lazy public API for scrapy_cffi."""
+
 from ._version import __version__
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +17,7 @@ if TYPE_CHECKING:
         run_spiders_sync,
     )
     from .settings import SettingsInfo, merge_spider_settings
+    from .runtime import Resource, ResourceContext, ResourceService
     from .utils.common import load_settings_with_path
     from .utils.log import init_logger
 
@@ -34,6 +37,9 @@ __all__ = [
     "merge_spider_settings",
     "SettingsInfo",
     "build_resource_service",
+    "Resource",
+    "ResourceContext",
+    "ResourceService",
 ]
 
 _LAZY_RUNNER = {
@@ -59,6 +65,8 @@ _LAZY_SETTINGS = {
 }
 
 _LAZY_COMPOSITION = {"build_resource_service"}
+
+_LAZY_RUNTIME = {"Resource", "ResourceContext", "ResourceService"}
 
 _LAZY_SUBMODULES = {
     "crawler",
@@ -86,6 +94,10 @@ def __getattr__(name: str) -> Any:
         from .composition import build_resource_service
 
         return build_resource_service
+    if name in _LAZY_RUNTIME:
+        from . import runtime as _runtime
+
+        return getattr(_runtime, name)
     if name in _LAZY_SUBMODULES:
         import importlib
 

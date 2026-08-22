@@ -20,6 +20,7 @@
 14. [Standalone tools](usage/13-standalone-tools.md)
 15. [Multi-spider resource ownership](usage/14-multi-spider-resources.md)
 16. [Deduplication](usage/15-deduplication.md)
+17. [Custom runtime resources](usage/16-custom-resources.md)
 
 ## Maintainer and release documentation
 

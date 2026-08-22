@@ -28,7 +28,11 @@ def build_resource_service(
     logger: Optional["Logger"] = None,
 ) -> ResourceService:
     """Build an unstarted typed resource service from validated settings."""
-    resources = ResourceService(logger=logger)
+    resources = ResourceService(
+        settings=settings,
+        stop_event=stop_event,
+        logger=logger,
+    )
     attempts = settings.INFRA_RETRY_ATTEMPTS
     delay = settings.INFRA_RETRY_DELAY
 
@@ -152,6 +156,7 @@ def build_resource_service(
         )
         resources.register("kafka", slot, KafkaQueueRepository(slot, policy))
 
+    resources.register_classes(settings.RESOURCES_PATH)
     return resources
 
 

@@ -8,8 +8,16 @@ from types import SimpleNamespace
 
 import toml
 
+from scrapy_cffi import Resource
+
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class CompatibilityResource(Resource):
+    """Provide an importable Resource for settings serialization tests."""
+
+    name = "compatibility"
 
 
 def _annotation_nodes(tree):
@@ -142,6 +150,7 @@ def test_class_based_settings_export_to_recoverable_env_paths():
         SCHEDULER=RedisScheduler,
         ITEM_PIPELINES_PATH=[Pipeline],
         HTTP_SESSION_FACTORY=CurlCffiHttpSession,
+        RESOURCES_PATH=[CompatibilityResource],
     )
     with tempfile.TemporaryDirectory() as directory:
         env_path = Path(directory) / ".env"
@@ -152,6 +161,10 @@ def test_class_based_settings_export_to_recoverable_env_paths():
     assert "<class" not in env_text
     assert "scrapy_cffi.core.scheduler.redis.RedisScheduler" in env_text
     assert "scrapy_cffi.platform.curl_cffi.CurlCffiHttpSession" in env_text
+    assert "test_python39_compatibility.CompatibilityResource" in env_text
     assert restored.SCHEDULER == "scrapy_cffi.core.scheduler.redis.RedisScheduler"
     assert restored.HTTP_SESSION_FACTORY == "scrapy_cffi.platform.curl_cffi.CurlCffiHttpSession"
     assert restored.ITEM_PIPELINES_PATH.value == [Pipeline]
+    assert restored.RESOURCES_PATH == [
+        "test_python39_compatibility.CompatibilityResource"
+    ]

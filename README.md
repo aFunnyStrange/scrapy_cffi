@@ -29,6 +29,10 @@ It is designed to be efficient, modular, and suitable for both simple tasks and 
   SQLAlchemy, and MongoDB infra clients; stable repositories; and one typed
   service that owns lifecycle and bounded client replacement
 
+- **Generic async worker resource kernel**: register application-owned
+  `Resource` classes through settings, share them across spiders, pipelines,
+  interceptors, and extensions, and close them in deterministic reverse order
+
 - **Message queue scheduling**: Redis, RabbitMQ, and Kafka capabilities behind
   repository Protocols (separate Kafka start/work topics with manual acknowledgement)
 

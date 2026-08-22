@@ -1,3 +1,5 @@
+"""Define validated framework and worker runtime settings."""
+
 from .models import BaseValidatedModel, StrictValidatedModel
 from pathlib import Path
 from .models.api import (
@@ -16,6 +18,7 @@ from .config import (
 from pydantic import field_validator, model_validator, ValidationInfo, PrivateAttr, Field
 from typing import Optional, List, Dict, Union, Any, ClassVar, Literal, Type
 from .platform.http import HttpSessionFactory
+from .runtime import ResourceTarget
 
 ComponentTarget = Union[str, Type[Any]]
 ComponentConfig = Union[
@@ -26,12 +29,16 @@ ComponentConfig = Union[
 ]
 
 class BloomInfo(StrictValidatedModel):
+    """Configure the optional Bloom-filter deduplication backend."""
+
     MODE: bool = False
     SIZE: int = Field(default=100_000_000, gt=0)
     EXPECTED: int = Field(default=10_000_000, gt=0)
     HASH_COUNT: int = Field(default=0, ge=0)
 
 class LogInfo(StrictValidatedModel):
+    """Configure framework logging outputs and formatting."""
+
     _encoding_fields: ClassVar[List[str]] = ["LOG_ENCODING"]
 
     LOG_ENABLED: Optional[bool] = True
@@ -47,6 +54,7 @@ class LogInfo(StrictValidatedModel):
     @field_validator('LOG_LEVEL')
     @classmethod
     def normalize_mute_type(cls, log_level: str):
+        """Normalize and validate the configured logging level."""
         if log_level:
             valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
             if log_level.upper() not in valid_levels:
@@ -55,6 +63,8 @@ class LogInfo(StrictValidatedModel):
         return log_level
 
 class SettingsInfo(BaseValidatedModel):
+    """Store validated crawler and generic runtime configuration."""
+
     # _encoding_fields: ClassVar[List[str]] = ["FEED_EXPORT_ENCODING"]
 
     MAX_GLOBAL_CONCURRENT_TASKS: Optional[Union[int, None]] = 300 # asyncio.BoundedSemaphore()
@@ -83,6 +93,7 @@ class SettingsInfo(BaseValidatedModel):
     FFPROBE_EXECUTABLE: Union[str, Path] = "ffprobe"
     INFRA_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
     INFRA_RETRY_DELAY: float = Field(default=1.0, ge=0)
+    RESOURCES_PATH: List[ResourceTarget] = Field(default_factory=list)
     
     PROXY_URL: Optional[str] = None
     PROXIES: Optional[Dict] = None
@@ -131,14 +142,17 @@ class SettingsInfo(BaseValidatedModel):
     
     @property
     def _NEW_SEEN(self):
+        """Return the internal key used for newly observed requests."""
         return self._new_seen
     
     @property
     def _SENT_SEEN(self):
+        """Return the internal key used for emitted requests."""
         return self._sent_seeen
 
     # Used to warn users about custom fields not recognized by the framework; these should be maintained by the user
     def __init__(self, **data: Any):
+        """Validate settings and warn about application-owned extra fields."""
         super().__init__(**data)
         known_fields = set(type(self).model_fields.keys())
         extra_fields = set(data.keys()) - known_fields
@@ -159,12 +173,14 @@ class SettingsInfo(BaseValidatedModel):
     )
     @classmethod
     def validate_component(cls, v, info: ValidationInfo):
+        """Normalize supported component declarations into ComponentInfo."""
         if v is None or isinstance(v, ComponentInfo):
             return v
         return ComponentInfo.from_raw(v, info.field_name)
     
     @model_validator(mode='after')
     def check_after(self):
+        """Apply compatibility aliases and cross-field validation."""
         if self.CURL_CFFI_RUNTIME_DIR is None:
             object.__setattr__(
                 self,
