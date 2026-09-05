@@ -4,9 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.3** release: [docs/RELEASE-0.4.3.md](docs/RELEASE-0.4.3.md) · **0.4.2** release: [docs/RELEASE-0.4.2.md](docs/RELEASE-0.4.2.md)
+> Architecture roadmap: [docs/ARCHITECTURE-ROADMAP.md](docs/ARCHITECTURE-ROADMAP.md) · **0.4.4** release: [docs/RELEASE-0.4.4.md](docs/RELEASE-0.4.4.md) · **0.4.3** release: [docs/RELEASE-0.4.3.md](docs/RELEASE-0.4.3.md)
 
 ## [Unreleased]
+
+## [0.4.4] - 2026-09-05
 
 ### Added
 
@@ -31,6 +33,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preferences. The generated Demo includes an optional minimal aioquic server,
   while Server Push, datagrams, WebTransport, and QUIC proxy control remain
   explicitly outside the current request-only contract.
+- Application-owned `Resource` classes can be registered through settings and
+  shared by Spiders, pipelines, interceptors, extensions, and signal hooks.
+  Runtime startup, reverse-order shutdown, typed lookup, and optional lookup
+  remain framework-owned without normalizing vendor-specific storage APIs.
+- `EmailNotificationExtension` adds opt-in, lazy SMTP notifications with
+  aggregated completion summaries and optional immediate error reporting.
+- Experimental Worker monitoring adds explicit process, run, availability,
+  heartbeat, counter, and terminal states. The optional FastAPI Hub is an
+  observation surface only; durable application task state remains owned by a
+  user database and may be exposed through a read-only provider.
+- Public `RunContext`, `CrawlerRunHandle`, `start_spider_run()`, and
+  `start_all_spiders_run()` APIs let external managers correlate, await, stop,
+  and inspect framework runs without changing the default single-threaded
+  asyncio execution model.
+
+### Changed
+
+- Project topology helpers are generated under `project_support/` for normal
+  `startproject` projects as well as Demos; application entrypoints can use the
+  generated `managed_main()` example to map framework outcomes to durable task
+  transitions.
+- GitHub CI and release workflows use the current major releases of the
+  official checkout, Python setup, and artifact actions.
+
+### Fixed
+
+- HTTP/3-only requests preserve the experimental transport contract instead
+  of silently falling back when the selected curl runtime cannot satisfy it.
+- Worker observations reject duplicate or out-of-order run events, separate
+  reachability from lifecycle state, and distinguish forked process instances
+  using the operating-system process identifier.
 
 ## [0.4.3] - 2026-08-20
 

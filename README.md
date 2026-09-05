@@ -180,7 +180,9 @@ WebSocket connections are long-lived and event-driven. The initial
 before receiving; callbacks stop listening explicitly with
 `response.stop_listening()`.
 
-See [the 0.4.3 release guide](docs/en/RELEASE-0.4.3.md) for the runtime/profile
+See [the 0.4.4 release guide](docs/en/RELEASE-0.4.4.md) for the worker, media,
+resource, monitoring, and HTTP/3 boundaries, and
+[the 0.4.3 release guide](docs/en/RELEASE-0.4.3.md) for the runtime/profile
 boundary, concurrency defaults, session rate limiting, timeout delivery, and
 resource ownership rules.
 
@@ -291,7 +293,7 @@ Full technical documentation and module-level guides are available in [English](
 
 0.4.0 architecture and compatibility notes: [`docs/en/RELEASE-0.4.0.md`](docs/en/RELEASE-0.4.0.md).
 
-Release history: [`CHANGELOG.md`](CHANGELOG.md) · Architecture: [`docs/en/ARCHITECTURE-ROADMAP.md`](docs/en/ARCHITECTURE-ROADMAP.md) · **0.4.0**: [`docs/en/RELEASE-0.4.0.md`](docs/en/RELEASE-0.4.0.md) · **0.3.3**: [`docs/en/RELEASE-0.3.3.md`](docs/en/RELEASE-0.3.3.md).
+Release history: [`CHANGELOG.md`](CHANGELOG.md) · Architecture: [`docs/en/ARCHITECTURE-ROADMAP.md`](docs/en/ARCHITECTURE-ROADMAP.md) · **0.4.4**: [`docs/en/RELEASE-0.4.4.md`](docs/en/RELEASE-0.4.4.md) · **0.4.3**: [`docs/en/RELEASE-0.4.3.md`](docs/en/RELEASE-0.4.3.md).
 
 ---
 

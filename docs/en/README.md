@@ -27,6 +27,7 @@
 
 - [Architecture roadmap](ARCHITECTURE-ROADMAP.md)
 - [Mandatory verification contract](TESTING.md)
+- [Release 0.4.4](RELEASE-0.4.4.md)
 - [Release 0.4.3](RELEASE-0.4.3.md)
 - [Release 0.4.2](RELEASE-0.4.2.md)
 - [Release 0.4.0](RELEASE-0.4.0.md)
