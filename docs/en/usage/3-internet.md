@@ -469,6 +469,14 @@ and combines them into the ordinary buffered response. When `media_size == 0`,
 it performs one normal request because it cannot safely invent range bounds.
 The original request headers are never mutated.
 
+Each range independently uses `max_retry_times` (total attempts, including the
+first request) and `retry_delay`, inheriting `MAX_REQ_TIMES` and `DELAY_REQ_TIME`
+when omitted. Transport failures retry only the current range; completed ranges
+are retained. Exhausting a range's attempts fails the whole download through
+the error path without returning partial content. Non-transport errors such as
+size validation failures are not retried. `timeout` applies to each transport
+attempt; the downloader's overall safety budget scales with the range count.
+
 ### 2.4.1 Attributes
 | Attribute | Description |
 | --------- | ----------- |

@@ -162,6 +162,12 @@ inclusive byte range 顺序合并内容；`media_size == 0` 时退化为一次�
 `max_media_size` 可选地限制内存中允许保存的媒体大小，原始 Headers 不会被修改。
 它同样支持显式 `impersonate`、Session、回调与 Scheduler 持久化。
 
+每个分片独立使用 `max_retry_times`（总尝试次数，包含首次请求）和
+`retry_delay`；未设置时继承 `MAX_REQ_TIMES` 和 `DELAY_REQ_TIME`。
+传输异常只重试当前分片，已成功的分片不会重新下载。当前分片耗尽尝试次数后，
+整个下载进入错误处理流程，不返回部分内容。大小校验等非传输错误不会自动重试。
+`timeout` 作用于单次传输，下载器的整体安全超时预算按分片数量扩展。
+
 ## 5. Response 公共字段
 
 `Response` 保存 `session_id`、`raw_response`、`meta`、去重标记、Callback、Errback、描述、原始 Request 与扩展参数。`meta` 来自对应 Request，适合传递任务 ID 等轻量上下文，不应塞入大体积正文。

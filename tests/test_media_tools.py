@@ -59,6 +59,7 @@ def _media_wrapper(content: bytes) -> SessionWrapper:
     wrapper.stop_event = asyncio.Event()
     wrapper.request_limiter = _ImmediateLimiter()
     wrapper.session = _RangeSession(content)
+    wrapper.settings = SimpleNamespace(MAX_REQ_TIMES=2, DELAY_REQ_TIME=0)
     wrapper._impersonate_resolver = lambda value: value
     return wrapper
 
@@ -124,6 +125,166 @@ def test_media_request_validates_download_bounds():
         MediaRequest(media_size=-1)
     with pytest.raises(ValueError, match="exceeds max_media_size"):
         MediaRequest(media_size=10, max_media_size=5)
+
+
+@pytest.mark.parametrize("override", [None, 3])
+def test_media_retries_each_range_without_replaying_completed_bytes(override):
+    """Give every range its full budget while preserving assembled bytes."""
+    async def run() -> None:
+        """Fail each range until its last permitted attempt."""
+        wrapper = _media_wrapper(b"abcdef")
+        attempts = override or wrapper.settings.MAX_REQ_TIMES
+        seen = []
+        original = wrapper.session.request
+
+        async def flaky_request(method, **kwargs):
+            """Record all attempts and fail the first attempts of each range."""
+            byte_range = kwargs["headers"]["Range"]
+            seen.append(byte_range)
+            if seen.count(byte_range) < attempts:
+                raise TimeoutError("temporary range failure")
+            return await original(method, **kwargs)
+
+        wrapper.session.request = flaky_request
+        request = MediaRequest(
+            media_size=6, single_part_size=2,
+            max_retry_times=override, retry_delay=0,
+            headers={"Accept": "video/*"},
+        )
+        response = await wrapper.do_request(request)
+        assert response.content == b"abcdef"
+        assert seen == [part for part in (
+            "bytes=0-1", "bytes=2-3", "bytes=4-5"
+        ) for _ in range(attempts)]
+        assert request.headers == {"Accept": "video/*"}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("error,expected_attempts", [
+    (ConnectionError, 3), (ValueError, 1), (asyncio.CancelledError, 1),
+])
+def test_media_failed_range_never_restarts_download(error, expected_attempts):
+    """Exhaustion, programming errors, and cancellation never replay a file."""
+    async def run() -> None:
+        """Fail the second range and prove the third is never requested."""
+        wrapper = _media_wrapper(b"abcdef")
+        seen = []
+        original = wrapper.session.request
+
+        async def failing_request(method, **kwargs):
+            """Only the first range can complete."""
+            byte_range = kwargs["headers"]["Range"]
+            seen.append(byte_range)
+            if byte_range == "bytes=2-3":
+                raise error("range failed")
+            return await original(method, **kwargs)
+
+        wrapper.session.request = failing_request
+        with pytest.raises(error):
+            await wrapper.do_request(MediaRequest(
+                media_size=6, single_part_size=2,
+                max_retry_times=3, retry_delay=0,
+            ))
+        assert seen == ["bytes=0-1"] + ["bytes=2-3"] * expected_attempts
+
+    asyncio.run(run())
+
+
+def test_unknown_size_media_has_one_retry_budget():
+    """An unknown-size download still retries without multiplying attempts."""
+    async def run() -> None:
+        """Exhaust a single ordinary request's configured budget."""
+        wrapper = _media_wrapper(b"abcd")
+        seen = []
+
+        async def failing_request(method, **kwargs):
+            """Fail every ordinary transport request."""
+            seen.append(kwargs)
+            raise ConnectionError("offline")
+
+        wrapper.session.request = failing_request
+        with pytest.raises(ConnectionError):
+            await wrapper.do_request(MediaRequest(max_retry_times=3, retry_delay=0))
+        assert len(seen) == 3
+        assert all("Range" not in (call["headers"] or {}) for call in seen)
+
+    asyncio.run(run())
+
+
+def test_downloader_media_budget_covers_all_ranges():
+    """Allow full attempts for every range without changing HTTP or streams."""
+    from scrapy_cffi.core.downloader.fetch import Downloader
+    from scrapy_cffi.internet import HttpRequest
+
+    downloader = Downloader.__new__(Downloader)
+    downloader.settings = SimpleNamespace(
+        TIMEOUT=10, MAX_REQ_TIMES=2, DELAY_REQ_TIME=3,
+    )
+    assert downloader._request_deadline(HttpRequest(timeout=10)) == 25
+    assert downloader._request_deadline(MediaRequest(timeout=10)) == 25
+    assert downloader._request_deadline(MediaRequest(
+        timeout=10, media_size=5, single_part_size=2,
+        max_retry_times=3, retry_delay=0,
+    )) == 96
+    assert downloader._request_deadline(MediaRequest(
+        timeout=10, media_size=5, single_part_size=2, stream=True,
+    )) == 25
+
+
+@pytest.mark.parametrize("exhaust", [False, True])
+def test_media_range_retry_through_downloader_error_and_success_paths(exhaust):
+    """Deliver either a complete body or one typed failure and release session."""
+    from scrapy_cffi.core.downloader.fetch import Downloader
+    from scrapy_cffi.exceptions import RequestTimeoutError
+    from scrapy_cffi.platform.http import HttpTimeoutError
+    from scrapy_cffi.settings import SettingsInfo
+
+    async def run() -> None:
+        """Exercise Downloader and SessionWrapper together on a range failure."""
+        wrapper = _media_wrapper(b"abcdef")
+        original = wrapper.session.request
+        seen = []
+        released = []
+        results = []
+
+        async def flaky_request(method, **kwargs):
+            """Fail only the middle range once or until exhaustion."""
+            byte_range = kwargs["headers"]["Range"]
+            seen.append(byte_range)
+            if byte_range == "bytes=2-3" and (exhaust or seen.count(byte_range) == 1):
+                raise HttpTimeoutError("slow range")
+            return await original(method, **kwargs)
+
+        async def callback(response, request):
+            """Capture the result delivered to the engine boundary."""
+            results.append((response, request))
+
+        wrapper.session.request = flaky_request
+        downloader = Downloader(
+            stop_event=wrapper.stop_event,
+            settings=SettingsInfo(MAX_REQ_TIMES=2, DELAY_REQ_TIME=0),
+            sessions=SimpleNamespace(
+                get_or_create_session=lambda **kwargs: wrapper,
+                release=lambda **kwargs: released.append(kwargs),
+            ),
+            sessions_lock=asyncio.Lock(),
+            signalManager=SimpleNamespace(send=lambda **kwargs: None),
+        )
+        request = MediaRequest(media_size=6, single_part_size=2)
+        await downloader.fetch_http(request, callback)
+        assert len(results) == len(released) == 1
+        response, returned_request = results[0]
+        assert returned_request is request
+        if exhaust:
+            assert isinstance(response, RequestTimeoutError)
+            assert response.attempts == 2
+            assert seen == ["bytes=0-1", "bytes=2-3", "bytes=2-3"]
+        else:
+            assert response.content == b"abcdef"
+            assert seen == ["bytes=0-1", "bytes=2-3", "bytes=2-3", "bytes=4-5"]
+
+    asyncio.run(run())
 
 
 def test_unknown_size_media_applies_received_body_bound():

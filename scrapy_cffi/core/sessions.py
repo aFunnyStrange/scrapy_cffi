@@ -429,6 +429,10 @@ class SessionWrapper:
         return args
     
     async def do_request(self, request: Union["HttpRequest", "WebSocketRequest"], is_ws: bool = False):
+        if isinstance(request, MediaRequest) and not is_ws:
+            # Media owns a separate retry budget for each range; never replay
+            # the complete download after one range exhausts its attempts.
+            return await self.do_request_once(request)
         async for attempt in self._request_retryer(request):
             with attempt:
                 if is_ws:
@@ -436,14 +440,29 @@ class SessionWrapper:
                 else:
                     return await self.do_request_once(request)
                 
+    async def _media_part_request(
+        self,
+        request: MediaRequest,
+        headers: Optional[Dict] = None,
+    ) -> HttpResponseProtocol:
+        """Retry one media HTTP request without replaying completed ranges."""
+        async for attempt in self._request_retryer(request):
+            with attempt:
+                if self.stop_event.is_set():
+                    raise asyncio.CancelledError()
+                await self.request_limiter.wait()
+                if self.stop_event.is_set():
+                    raise asyncio.CancelledError()
+                return await self.session.request(
+                    method=request.method,
+                    **self._build_request_args(request, headers=headers),
+                )
+        raise RuntimeError("Media retry policy completed without a result")
+
     async def media_req(self, request: MediaRequest):
         """Download known-size media in sequential, bounded byte ranges."""
         if request.media_size == 0:
-            await self.request_limiter.wait()
-            response = await self.session.request(
-                method=request.method,
-                **self._build_request_args(request),
-            )
+            response = await self._media_part_request(request)
             if (
                 request.max_media_size is not None
                 and len(response.content) > request.max_media_size
@@ -468,10 +487,8 @@ class SessionWrapper:
             request_headers[range_key] = (
                 f"bytes={part_byte_start}-{part_byte_end}"
             )
-            await self.request_limiter.wait()
-            single_part_response: HttpResponseProtocol = await self.session.request(
-                method=request.method, 
-                **self._build_request_args(request, headers=request_headers)
+            single_part_response = await self._media_part_request(
+                request, headers=request_headers,
             )
             single_part_data = single_part_response.content
             media_data.extend(single_part_data)

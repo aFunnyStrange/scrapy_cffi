@@ -83,7 +83,16 @@ class Downloader:
             if request.retry_delay is not None
             else (self.settings.DELAY_REQ_TIME or 0)
         )
-        return timeout * attempts + retry_delay * max(attempts - 1, 0) + 2.0
+        request_count = 1
+        if isinstance(request, MediaRequest) and not request.stream:
+            request_count = max(
+                1,
+                (request.media_size + request.single_part_size - 1)
+                // request.single_part_size,
+            )
+        return request_count * (
+            timeout * attempts + retry_delay * max(attempts - 1, 0) + 2.0
+        )
 
     @staticmethod
     def _is_websocket_close_message(message) -> bool:
