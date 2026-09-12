@@ -462,11 +462,18 @@ connection lifecycle at the callback that owns the decision.
 ## 2.4 MediaRequest
 `MediaRequest` is a subclass of `HttpRequest` for sequential ranged downloads
 of image, audio, or video bodies. It runs on the existing crawler event loop and
-does not create worker tasks, threads, or parallel range requests.
+does not download ranges concurrently.
 
-When `media_size > 0`, the downloader requests inclusive byte ranges in order
-and combines them into the ordinary buffered response. When `media_size == 0`,
-it performs one normal request because it cannot safely invent range bounds.
+The downloader requests inclusive byte ranges and combines their bodies.
+Omit `media_size` (default `0`) to request the first range using `single_part_size`
+(default 2999999 bytes) and discover the total from `Content-Range`. The first
+body is retained. Valid responses update `request.media_size` automatically;
+the first range can also correct an explicitly supplied size.
+HTTP `200` is treated as a complete body, replacing any accumulated ranges.
+For an unknown `*` total, requests advance from the actual returned range until
+a total is provided or HTTP `416` reports `bytes */N` matching the received size.
+A short range or timeout never signals completion. Invalid ranges, body-length
+mismatches, or total-size changes during download fail the request.
 The original request headers are never mutated.
 
 Each range independently uses `max_retry_times` (total attempts, including the
@@ -475,13 +482,14 @@ when omitted. Transport failures retry only the current range; completed ranges
 are retained. Exhausting a range's attempts fails the whole download through
 the error path without returning partial content. Non-transport errors such as
 size validation failures are not retried. `timeout` applies to each transport
-attempt; the downloader's overall safety budget scales with the range count.
+attempt; media downloads have no fixed whole-download deadline based on their
+initially unknown range count.
 
 ### 2.4.1 Attributes
 | Attribute | Description |
 | --------- | ----------- |
 | **single_part_size** | Positive size in bytes of each sequential range. |
-| **media_size** | Known total byte size, or `0` for one ordinary request. |
+| **media_size** | Optional total byte size; `0` discovers it from responses. Updated automatically. |
 | **max_media_size** | Optional positive in-memory download bound. |
 
 

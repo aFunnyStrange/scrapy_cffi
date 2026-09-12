@@ -1,6 +1,6 @@
 import asyncio, time
 from ...utils import async_context_factory, safe_call
-from typing import TYPE_CHECKING, List, Callable
+from typing import TYPE_CHECKING, List, Callable, Optional
 from .internet import *
 from ...exceptions import DownloadError, RequestTimeoutError
 from ...platform.http import HttpTimeoutError, WebSocketFlag
@@ -74,8 +74,12 @@ class Downloader:
             attempts=attempts,
         )
 
-    def _request_deadline(self, request: Request) -> float:
+    def _request_deadline(self, request: Request) -> Optional[float]:
         """Return a safety bound that still permits all configured retries."""
+        if isinstance(request, MediaRequest) and not request.stream:
+            # The range count is discovered during download. Each media
+            # transport attempt has its own timeout in SessionWrapper.
+            return None
         timeout = max(float(request.timeout or self.settings.TIMEOUT or 30), 1.0)
         attempts = int(request.max_retry_times or self.settings.MAX_REQ_TIMES or 1)
         retry_delay = float(
@@ -83,16 +87,7 @@ class Downloader:
             if request.retry_delay is not None
             else (self.settings.DELAY_REQ_TIME or 0)
         )
-        request_count = 1
-        if isinstance(request, MediaRequest) and not request.stream:
-            request_count = max(
-                1,
-                (request.media_size + request.single_part_size - 1)
-                // request.single_part_size,
-            )
-        return request_count * (
-            timeout * attempts + retry_delay * max(attempts - 1, 0) + 2.0
-        )
+        return timeout * attempts + retry_delay * max(attempts - 1, 0) + 2.0
 
     @staticmethod
     def _is_websocket_close_message(message) -> bool:

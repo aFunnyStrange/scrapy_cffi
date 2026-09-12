@@ -157,8 +157,13 @@ yield WebSocketRequest(
 ## 4. MediaRequest
 
 继承 `HttpRequest`，用于图片、音频和视频的顺序 Range 下载。它只在现有
-asyncio loop 内逐段请求，不创建并发任务、线程或进程。`media_size > 0` 时按
-inclusive byte range 顺序合并内容；`media_size == 0` 时退化为一次普通请求。
+asyncio loop 内按 inclusive byte range 逐段请求和合并内容，不并发下载。
+无需指定 `media_size`：默认值 `0` 会先按 `single_part_size`（默认 2999999 字节）
+请求第一片，从 `Content-Range` 自动获取总大小，保留第一片并继续下载。
+有效响应会自动更新 `request.media_size`；显式指定的大小也可以由首片响应修正。
+服务器返回 `200` 时按完整响应处理，不拼接已有分片。总大小为 `*` 时按实际返回的
+区间继续请求，直到获得总大小或 `416` 的 `bytes */N` 与已下载字节数吻合。
+不会依据短分片或超时认定完成；错误区间、长度不匹配、下载中总大小变化会报错。
 `max_media_size` 可选地限制内存中允许保存的媒体大小，原始 Headers 不会被修改。
 它同样支持显式 `impersonate`、Session、回调与 Scheduler 持久化。
 
@@ -166,7 +171,7 @@ inclusive byte range 顺序合并内容；`media_size == 0` 时退化为一次�
 `retry_delay`；未设置时继承 `MAX_REQ_TIMES` 和 `DELAY_REQ_TIME`。
 传输异常只重试当前分片，已成功的分片不会重新下载。当前分片耗尽尝试次数后，
 整个下载进入错误处理流程，不返回部分内容。大小校验等非传输错误不会自动重试。
-`timeout` 作用于单次传输，下载器的整体安全超时预算按分片数量扩展。
+`timeout` 限制每次分片传输；媒体下载不再受启动时固定的整段超时预算限制。
 
 ## 5. Response 公共字段
 

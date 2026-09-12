@@ -243,8 +243,8 @@ class HttpRequest(Request):
 class MediaRequest(HttpRequest):
     """Download a known-size media body through sequential byte ranges.
 
-    The request never creates threads, tasks, or parallel range requests. A
-    zero ``media_size`` falls back to one ordinary buffered HTTP request.
+    Ranges are sequential. A zero ``media_size`` discovers the size from
+    Content-Range; validated responses update ``media_size`` automatically.
     """
 
     def __init__(self, 

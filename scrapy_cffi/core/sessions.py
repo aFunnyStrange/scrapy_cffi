@@ -5,7 +5,7 @@
 # WebSocket management: Each session can maintain multiple WebSocket connections, managed individually.
 # Safe async cleanup: Uses a background task (_reaper_loop) to close sessions when no longer needed.
 
-import asyncio, hashlib, random
+import asyncio, hashlib, random, re
 from functools import partial
 from http.cookiejar import Cookie
 from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed, retry_if_exception_type
@@ -453,68 +453,100 @@ class SessionWrapper:
                 await self.request_limiter.wait()
                 if self.stop_event.is_set():
                     raise asyncio.CancelledError()
-                return await self.session.request(
-                    method=request.method,
-                    **self._build_request_args(request, headers=headers),
+                return await asyncio.wait_for(
+                    self.session.request(
+                        method=request.method,
+                        **self._build_request_args(request, headers=headers),
+                    ),
+                    timeout=float(request.timeout or self.settings.TIMEOUT or 30),
                 )
         raise RuntimeError("Media retry policy completed without a result")
 
     async def media_req(self, request: MediaRequest):
-        """Download known-size media in sequential, bounded byte ranges."""
-        if request.media_size == 0:
-            response = await self._media_part_request(request)
-            if (
-                request.max_media_size is not None
-                and len(response.content) > request.max_media_size
-            ):
-                raise ValueError("downloaded media exceeds max_media_size")
-            return response
-
+        """Discover media size from responses and assemble validated ranges."""
         media_data = bytearray()
-        part_byte_start = 0
+        total = request.media_size or None
         single_part_response = None
-        while (
-            part_byte_start < request.media_size
-            and not self.stop_event.is_set()
-        ):
-            part_byte_end = min(
-                part_byte_start + request.single_part_size - 1,
-                request.media_size - 1,
-            )
+        while total is None or len(media_data) < total:
+            if self.stop_event.is_set():
+                raise asyncio.CancelledError()
+            part_byte_start = len(media_data)
+            part_byte_end = part_byte_start + request.single_part_size - 1
+            if total is not None:
+                part_byte_end = min(part_byte_end, total - 1)
             request_headers = dict(request.headers or {})
             range_key = request.find_header_key("Range")
             range_key = range_key if range_key else "Range"
             request_headers[range_key] = (
                 f"bytes={part_byte_start}-{part_byte_end}"
             )
-            single_part_response = await self._media_part_request(
+            response = await self._media_part_request(
                 request, headers=request_headers,
             )
-            single_part_data = single_part_response.content
-            media_data.extend(single_part_data)
-            if (
-                part_byte_start == 0
-                and single_part_response.status_code == 200
-                and len(single_part_data) == request.media_size
-            ):
-                part_byte_start = request.media_size
+            content_range = next((
+                value for key, value in response.headers.items()
+                if key.lower() == "content-range"
+            ), None)
+            if response.status_code == 416:
+                match = re.fullmatch(r"bytes \*/([0-9]+)", content_range or "", re.I)
+                if match is None or int(match[1]) != len(media_data):
+                    raise ValueError("unsatisfied media range does not match downloaded size")
+                if total is not None and total != int(match[1]):
+                    raise ValueError("media total changed during download")
+                request.media_size = int(match[1])
+                if single_part_response is None:
+                    # An empty resource has no satisfiable range. Fetch its
+                    # ordinary representation instead of exposing an error body.
+                    response = await self._media_part_request(request, headers={
+                        key: value for key, value in request_headers.items()
+                        if key.lower() != "range"
+                    })
+                    if response.status_code != 200 or response.content:
+                        raise ValueError("empty media response does not match declared size")
+                    return response
                 break
-            if len(media_data) > request.media_size:
-                raise ValueError(
-                    "downloaded media exceeds declared media_size"
+
+            data = response.content
+            if response.status_code == 200:
+                if total is not None and len(data) != total:
+                    raise ValueError("downloaded media size does not match declared media_size")
+                if request.max_media_size is not None and len(data) > request.max_media_size:
+                    raise ValueError("downloaded media exceeds max_media_size")
+                request.media_size = len(data)
+                return response
+            if response.status_code != 206:
+                raise ValueError("unexpected media HTTP status: %s" % response.status_code)
+
+            if content_range is None and total is not None:
+                # Retain support for known-size servers omitting Content-Range.
+                start, end, reported_total = part_byte_start, part_byte_end, total
+            else:
+                match = re.fullmatch(
+                    r"bytes ([0-9]+)-([0-9]+)/(\*|[0-9]+)", content_range or "", re.I,
                 )
+                if match is None:
+                    raise ValueError("missing or invalid media Content-Range")
+                start, end = int(match[1]), int(match[2])
+                reported_total = None if match[3] == "*" else int(match[3])
+            if start != part_byte_start or end < start or end > part_byte_end:
+                raise ValueError("media Content-Range does not match requested range")
+            if len(data) != end - start + 1:
+                raise ValueError("media body size does not match Content-Range")
+            if reported_total is not None:
+                if reported_total <= end:
+                    raise ValueError("invalid media Content-Range total")
+                if media_data and total is not None and reported_total != total:
+                    raise ValueError("media total changed during download")
+                total = reported_total
             if (
                 request.max_media_size is not None
-                and len(media_data) > request.max_media_size
+                and max(total or 0, end + 1) > request.max_media_size
             ):
                 raise ValueError("downloaded media exceeds max_media_size")
-            part_byte_start = part_byte_end + 1
-        if part_byte_start < request.media_size:
-            raise asyncio.CancelledError()
-        if len(media_data) != request.media_size:
-            raise ValueError(
-                "downloaded media size does not match declared media_size"
-            )
+            if total is not None:
+                request.media_size = total
+            media_data.extend(data)
+            single_part_response = response
         if single_part_response is not None:
             single_part_response.content = bytes(media_data)
         return single_part_response
