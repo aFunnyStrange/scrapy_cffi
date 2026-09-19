@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-09-19
+
+### Fixed
+
+- Retry asyncio transport timeouts on Python 3.9 and 3.10, where
+  `asyncio.TimeoutError` is distinct from the built-in `TimeoutError`.
+- Retry each media range independently, retaining completed ranges and failing
+  the download only when the current range exhausts its transport attempts.
+- Bound each media transport attempt without imposing a fixed whole-download
+  deadline derived from an initially unknown range count.
+
+### Added
+
+- Discover media size from `Content-Range` when `media_size` is omitted and
+  update the request automatically while retaining the first downloaded range.
+- Handle complete HTTP 200 responses, unknown totals, and explicit HTTP 416
+  completion; reject inconsistent ranges, body lengths, and changing totals.
+- Regression coverage for discovery, per-range retries, cancellation, size
+  limits, and real HTTP disconnections; updated English and Chinese usage docs.
+
 ## [0.4.4] - 2026-09-05
 
 ### Added

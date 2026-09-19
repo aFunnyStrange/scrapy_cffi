@@ -398,7 +398,11 @@ class SessionWrapper:
         return AsyncRetrying(
             stop=stop_after_attempt(retry_times),
             wait=wait_fixed(retry_delay),
-            retry=retry_if_exception_type((HttpTransportError, ConnectionError, TimeoutError, OSError)),
+            # asyncio.TimeoutError is distinct from TimeoutError on Python < 3.11.
+            retry=retry_if_exception_type((
+                HttpTransportError, ConnectionError, TimeoutError,
+                asyncio.TimeoutError, OSError,
+            )),
             reraise=True
         )
 
